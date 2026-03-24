@@ -44,6 +44,7 @@ func RegisterRoutes(
 	v0.RegisterHealthEndpoint(api, pathPrefix, cfg, metrics)
 	v0.RegisterPingEndpoint(api, pathPrefix)
 	v0.RegisterVersionEndpoint(api, pathPrefix, versionInfo)
+	v0.RegisterFrontendConfigEndpoint(api, pathPrefix, cfg)
 	v0.RegisterServersEndpoints(api, pathPrefix, registry)
 	v0.RegisterServersCreateEndpoint(api, pathPrefix, registry)
 	v0.RegisterEditEndpoints(api, pathPrefix, registry)
