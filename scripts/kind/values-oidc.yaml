@@ -1,0 +1,39 @@
+# OIDC settings for local kind development (Keycloak in-cluster).
+#
+# Usage:
+#   helm upgrade --install agentregistry charts/agentregistry \
+#     --kube-context kind-agentregistry \
+#     --namespace agentregistry \
+#     --reuse-values \
+#     -f scripts/kind/values-oidc.yaml
+
+config:
+  # make install-agentregistry forces this to true by default; override for OIDC workflows
+  enableAnonymousAuth: "false"
+
+extraEnvVars:
+  - name: AGENT_REGISTRY_OIDC_ENABLED
+    value: "true"
+  - name: AGENT_REGISTRY_OIDC_ISSUER
+    value: "http://keycloak.default.svc.cluster.local:8080/realms/agentregistry"
+  - name: AGENT_REGISTRY_OIDC_CLIENT_ID
+    value: "agentregistry-api"
+
+  # Keep empty while validating connectivity. Set a claim rule once mapper is configured.
+  # Example: '[{"ar_role":"publisher"}]'
+  - name: AGENT_REGISTRY_OIDC_EXTRA_CLAIMS
+    value: ""
+
+  # Replace io.navteca/* with your desired namespace patterns.
+  - name: AGENT_REGISTRY_OIDC_READ_PERMISSIONS
+    value: "*"
+  - name: AGENT_REGISTRY_OIDC_PUSH_PERMISSIONS
+    value: "*"
+  - name: AGENT_REGISTRY_OIDC_PUBLISH_PERMISSIONS
+    value: "*"
+  - name: AGENT_REGISTRY_OIDC_EDIT_PERMISSIONS
+    value: "*"
+  - name: AGENT_REGISTRY_OIDC_DELETE_PERMISSIONS
+    value: "*"
+  - name: AGENT_REGISTRY_OIDC_DEPLOY_PERMISSIONS
+    value: "*"

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { client } from "@/lib/admin-api"
+import { client, getRegistryAuthHeader } from "@/lib/admin-api"
 import { Loader2, CheckCircle2, XCircle, AlertCircle } from "lucide-react"
 
 interface ImportDialogProps {
@@ -50,9 +50,13 @@ export function ImportDialog({ open, onOpenChange, onImportComplete }: ImportDia
 
       // Import servers
       const baseUrl = (client.getConfig().baseUrl as string) || ''
+      const authHeader = getRegistryAuthHeader()
       const res = await fetch(`${baseUrl}/v0/import`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authHeader ? { Authorization: authHeader } : {}),
+        },
         body: JSON.stringify({
           source: source.trim(),
           headers: Object.keys(headerMap).length > 0 ? headerMap : undefined,
