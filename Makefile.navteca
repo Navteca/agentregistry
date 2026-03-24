@@ -1,0 +1,114 @@
+# Navteca-specific multi-arch publish workflow.
+# Kept separate from the project Makefile by design.
+
+.DEFAULT_GOAL := help
+
+SOURCE_MAKEFILE ?= Makefile
+
+AWS_PROFILE ?= navteca
+AWS_REGION ?= us-east-1
+
+ECR_REGISTRY ?= 607399646027.dkr.ecr.us-east-1.amazonaws.com
+ECR_REPO ?= navteca/images/agentregistry
+TAG ?= 0.3.0
+
+IMAGE_ROOT ?= $(ECR_REGISTRY)/$(ECR_REPO)
+IMAGE_SERVER ?= $(ECR_REGISTRY)/$(ECR_REPO)/server
+
+KUBECONFIG_CONTEXT ?=
+KUBE_NAMESPACE ?= default
+PULL_TEST_POD ?= image-pull-check-$(subst .,-,$(TAG))
+
+KUBECTL_CONTEXT_ARG := $(if $(strip $(KUBECONFIG_CONTEXT)),--context $(KUBECONFIG_CONTEXT),)
+
+.PHONY: help
+help:
+	@echo "Navteca multi-arch workflow"
+	@echo ""
+	@echo "Variables:"
+	@echo "  TAG=$(TAG)"
+	@echo "  AWS_PROFILE=$(AWS_PROFILE)"
+	@echo "  AWS_REGION=$(AWS_REGION)"
+	@echo "  ECR_REGISTRY=$(ECR_REGISTRY)"
+	@echo "  ECR_REPO=$(ECR_REPO)"
+	@echo "  KUBECONFIG_CONTEXT=$(KUBECONFIG_CONTEXT)"
+	@echo ""
+	@echo "Targets:"
+	@echo "  auth-ecr           Login Docker to ECR"
+	@echo "  ensure-repo        Create ECR repository if missing"
+	@echo "  build-amd64        Build/push amd64 + retag/push root repo"
+	@echo "  build-arm64        Build/load arm64 + retag/push root repo"
+	@echo "  create-manifest    Create TAG from amd64+arm64 tags"
+	@echo "  inspect-manifest   Inspect final manifest"
+	@echo "  publish            Full publish workflow"
+	@echo "  publish-and-test   publish + test-pull"
+	@echo "  test-pull          Run in-cluster pull test"
+	@echo "  cleanup-test       Remove test pod"
+
+.PHONY: auth-ecr
+auth-ecr:
+	aws --profile $(AWS_PROFILE) --region $(AWS_REGION) ecr get-login-password | \
+		docker login --username AWS --password-stdin $(ECR_REGISTRY)
+
+.PHONY: ensure-repo
+ensure-repo:
+	@aws --profile $(AWS_PROFILE) --region $(AWS_REGION) ecr describe-repositories \
+		--repository-names $(ECR_REPO) >/dev/null 2>&1 || \
+	aws --profile $(AWS_PROFILE) --region $(AWS_REGION) ecr create-repository \
+		--repository-name $(ECR_REPO) >/dev/null
+
+.PHONY: prune-buildx
+prune-buildx:
+	docker buildx prune -af
+
+.PHONY: build-amd64
+build-amd64:
+	$(MAKE) -f $(SOURCE_MAKEFILE) docker-server \
+		DOCKER_REGISTRY=$(ECR_REGISTRY) \
+		DOCKER_REPO=$(ECR_REPO) \
+		DOCKER_BUILD_ARGS='--push --platform linux/amd64' \
+		VERSION=$(TAG)-amd64
+	docker tag $(IMAGE_SERVER):$(TAG)-amd64 $(IMAGE_ROOT):$(TAG)-amd64
+	docker push $(IMAGE_ROOT):$(TAG)-amd64
+
+.PHONY: build-arm64
+build-arm64:
+	$(MAKE) -f $(SOURCE_MAKEFILE) docker-server \
+		DOCKER_REGISTRY=$(ECR_REGISTRY) \
+		DOCKER_REPO=$(ECR_REPO) \
+		DOCKER_BUILD_ARGS='--load --platform linux/arm64' \
+		VERSION=$(TAG)-arm64
+	docker tag $(IMAGE_SERVER):$(TAG)-arm64 $(IMAGE_ROOT):$(TAG)-arm64
+	docker push $(IMAGE_ROOT):$(TAG)-arm64
+
+.PHONY: create-manifest
+create-manifest:
+	docker buildx imagetools create -t $(IMAGE_ROOT):$(TAG) \
+		$(IMAGE_ROOT):$(TAG)-amd64 \
+		$(IMAGE_ROOT):$(TAG)-arm64
+
+.PHONY: inspect-manifest
+inspect-manifest:
+	docker buildx imagetools inspect $(IMAGE_ROOT):$(TAG)
+
+.PHONY: publish
+publish: auth-ecr ensure-repo build-amd64 prune-buildx build-arm64 create-manifest inspect-manifest
+
+.PHONY: publish-and-test
+publish-and-test: publish test-pull
+
+.PHONY: test-pull
+test-pull:
+	kubectl $(KUBECTL_CONTEXT_ARG) delete pod $(PULL_TEST_POD) -n $(KUBE_NAMESPACE) --ignore-not-found=true
+	kubectl $(KUBECTL_CONTEXT_ARG) run $(PULL_TEST_POD) -n $(KUBE_NAMESPACE) \
+		--image=$(IMAGE_ROOT):$(TAG) --restart=Never --command -- /bin/sh -c 'echo pulled && sleep 20'
+	kubectl $(KUBECTL_CONTEXT_ARG) wait -n $(KUBE_NAMESPACE) --for=condition=Ready pod/$(PULL_TEST_POD) --timeout=180s || true
+	@echo "--- pod status ---"
+	kubectl $(KUBECTL_CONTEXT_ARG) get pod $(PULL_TEST_POD) -n $(KUBE_NAMESPACE) -o wide
+	@echo "--- pull events ---"
+	kubectl $(KUBECTL_CONTEXT_ARG) describe pod $(PULL_TEST_POD) -n $(KUBE_NAMESPACE) | \
+		rg -n 'Image:|Pulling image|Successfully pulled image|Failed|ErrImagePull|ImagePullBackOff|Reason:' -i || true
+
+.PHONY: cleanup-test
+cleanup-test:
+	kubectl $(KUBECTL_CONTEXT_ARG) delete pod $(PULL_TEST_POD) -n $(KUBE_NAMESPACE) --ignore-not-found=true
