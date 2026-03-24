@@ -15,8 +15,7 @@ import (
 type Config struct {
 	ServerAddress            string `env:"SERVER_ADDRESS" envDefault:":8080"`
 	MCPPort                  uint16 `env:"MCP_PORT" envDefault:"0"`
-	DatabaseURL              string `env:"DATABASE_URL" envDefault:"postgres://agentregistry:agentregistry@localhost:5432/agentregistry?sslmode=disable"`
-	DatabaseVectorEnabled    bool   `env:"DATABASE_VECTOR_ENABLED" envDefault:"false"`
+	DatabaseURL              string `env:"DATABASE_URL" envDefault:"postgres://agentregistry:agentregistry@localhost:5432/agent-registry?sslmode=disable"`
 	SeedFrom                 string `env:"SEED_FROM" envDefault:""`
 	EnrichServerData         bool   `env:"ENRICH_SERVER_DATA" envDefault:"false"`
 	DisableBuiltinSeed       bool   `env:"DISABLE_BUILTIN_SEED" envDefault:"true"`
@@ -27,6 +26,11 @@ type Config struct {
 	EnableAnonymousAuth      bool   `env:"ENABLE_ANONYMOUS_AUTH" envDefault:"false"`
 	EnableRegistryValidation bool   `env:"ENABLE_REGISTRY_VALIDATION" envDefault:"true"`
 	LogLevel                 string `env:"LOG_LEVEL" envDefault:"info"`
+
+	// Frontend OIDC Configuration (served at runtime via GET /v0/config/frontend)
+	KeycloakURL      string `env:"KEYCLOAK_URL" envDefault:""`
+	KeycloakRealm    string `env:"KEYCLOAK_REALM" envDefault:""`
+	KeycloakClientID string `env:"KEYCLOAK_CLIENT_ID" envDefault:""`
 
 	// OIDC Configuration
 	OIDCEnabled      bool   `env:"OIDC_ENABLED" envDefault:"false"`
