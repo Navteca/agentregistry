@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { Plus_Jakarta_Sans } from "next/font/google"
 import { Navigation } from "@/components/navigation"
+import { AuthGate } from "@/components/auth-gate"
 import { Footer } from "@/components/footer"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
@@ -28,14 +29,14 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${jakarta.variable} font-sans`}>
         <ThemeProvider>
-          <div className="min-h-screen flex flex-col">
-            <Navigation />
-            <div className="flex-1">
-              {children}
+          <AuthGate>
+            <div className="min-h-screen flex flex-col">
+              <Navigation />
+              <div className="flex-1">{children}</div>
+              <Footer />
             </div>
-            <Footer />
-          </div>
-          <Toaster />
+            <Toaster />
+          </AuthGate>
         </ThemeProvider>
       </body>
     </html>

@@ -146,7 +146,19 @@ func NewHumaAPI(cfg *config.Config, registry service.RegistryService, mux *http.
 	if authnProvider != nil {
 		api.UseMiddleware(auth.AuthnMiddleware(authnProvider,
 			// don't authenticate on public paths
-			auth.WithSkipPaths("/health", "/metrics", "/ping", "/docs")),
+			auth.WithSkipPaths(
+				"/health",
+				"/metrics",
+				"/ping",
+				"/docs",
+				"/v0/auth/dns",
+				"/v0/auth/github-at",
+				"/v0/auth/github-oidc",
+				"/v0/auth/oidc",
+				"/v0/auth/http",
+				"/v0/auth/none",
+				"/v0/config/frontend",
+			)),
 		)
 	}
 

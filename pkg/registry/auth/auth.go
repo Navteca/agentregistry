@@ -97,9 +97,13 @@ func AuthnMiddleware(authn AuthnProvider, options ...MiddlewareOption) func(ctx 
 			_, _ = ctx.BodyWriter().Write([]byte("Unauthorized"))
 			return
 		}
-		if session != nil {
-			ctx = huma.WithContext(ctx, AuthSessionTo(ctx.Context(), session))
+		if session == nil {
+			ctx.SetStatus(http.StatusUnauthorized)
+			_, _ = ctx.BodyWriter().Write([]byte("Unauthorized"))
+			return
 		}
+
+		ctx = huma.WithContext(ctx, AuthSessionTo(ctx.Context(), session))
 		next(ctx)
 	}
 }
