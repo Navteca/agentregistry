@@ -264,9 +264,13 @@ docker-agentgateway: ## Build the custom agent gateway image
 .PHONY: docker-server
 docker-server: .env ## Build the server Docker image
 	@echo "Building server Docker image..."
-	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) -f docker/server.Dockerfile -t $(DOCKER_REGISTRY)/$(DOCKER_REPO)/server:$(VERSION) --build-arg LDFLAGS="$(LDFLAGS)" .
-	@echo "✓ Docker image built successfully"
-
+	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) -f docker/server.Dockerfile -t $(DOCKER_REGISTRY)/$(DOCKER_REPO)/server:$(VERSION) \
+		--build-arg LDFLAGS="$(LDFLAGS)" \
+		--build-arg AGENT_REGISTRY_KEYCLOAK_URL="$(AGENT_REGISTRY_KEYCLOAK_URL)" \
+		--build-arg AGENT_REGISTRY_KEYCLOAK_REALM="$(AGENT_REGISTRY_KEYCLOAK_REALM)" \
+		--build-arg AGENT_REGISTRY_KEYCLOAK_CLIENT_ID="$(AGENT_REGISTRY_KEYCLOAK_CLIENT_ID)" \
+		.
+		@echo "✓ Docker image built successfully"
 .PHONY: local-registry
 local-registry: ## Ensure the local registry (kind-registry) is running on port 5001
 	@echo "Ensuring local registry is running on port 5001..."

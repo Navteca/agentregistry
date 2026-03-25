@@ -59,6 +59,32 @@ config:
   existingSecret: ""
   # -- Hex-encoded HMAC key for signing JWT tokens (must be valid hex, e.g. "a3f4b2c1..."). Ignored when existingSecret is set.
   jwtPrivateKey: ""
+  # -- Browser-facing Keycloak base URL returned by GET /v0/config/frontend
+  keycloakURL: ""
+  # -- Browser-facing Keycloak realm returned by GET /v0/config/frontend
+  keycloakRealm: ""
+  # -- Browser-facing Keycloak client ID returned by GET /v0/config/frontend
+  keycloakClientID: ""
+  # -- Enable OIDC token exchange on the backend ("true" or "false")
+  oidcEnabled: ""
+  # -- OIDC issuer URL used by the backend to validate ID tokens
+  oidcIssuer: ""
+  # -- OIDC client ID expected by the backend when validating ID tokens
+  oidcClientID: ""
+  # -- JSON array of additional OIDC claims rules
+  oidcExtraClaims: ""
+  # -- Comma-separated edit permission patterns granted after OIDC login
+  oidcEditPermissions: ""
+  # -- Comma-separated publish permission patterns granted after OIDC login
+  oidcPublishPermissions: ""
+  # -- Comma-separated read permission patterns granted after OIDC login
+  oidcReadPermissions: ""
+  # -- Comma-separated push permission patterns granted after OIDC login
+  oidcPushPermissions: ""
+  # -- Comma-separated delete permission patterns granted after OIDC login
+  oidcDeletePermissions: ""
+  # -- Comma-separated deploy permission patterns granted after OIDC login
+  oidcDeployPermissions: ""
 
 # @section Deployment parameters
 

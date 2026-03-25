@@ -19,3 +19,42 @@ data:
   {{- if .Values.config.seedFrom }}
   AGENT_REGISTRY_SEED_FROM: {{ .Values.config.seedFrom | quote }}
   {{- end }}
+  {{- if .Values.config.keycloakURL }}
+  AGENT_REGISTRY_KEYCLOAK_URL: {{ .Values.config.keycloakURL | quote }}
+  {{- end }}
+  {{- if .Values.config.keycloakRealm }}
+  AGENT_REGISTRY_KEYCLOAK_REALM: {{ .Values.config.keycloakRealm | quote }}
+  {{- end }}
+  {{- if .Values.config.keycloakClientID }}
+  AGENT_REGISTRY_KEYCLOAK_CLIENT_ID: {{ .Values.config.keycloakClientID | quote }}
+  {{- end }}
+  {{- if ne (printf "%v" .Values.config.oidcEnabled) "" }}
+  AGENT_REGISTRY_OIDC_ENABLED: {{ printf "%v" .Values.config.oidcEnabled | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcIssuer }}
+  AGENT_REGISTRY_OIDC_ISSUER: {{ .Values.config.oidcIssuer | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcClientID }}
+  AGENT_REGISTRY_OIDC_CLIENT_ID: {{ .Values.config.oidcClientID | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcExtraClaims }}
+  AGENT_REGISTRY_OIDC_EXTRA_CLAIMS: {{ .Values.config.oidcExtraClaims | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcEditPermissions }}
+  AGENT_REGISTRY_OIDC_EDIT_PERMISSIONS: {{ .Values.config.oidcEditPermissions | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcPublishPermissions }}
+  AGENT_REGISTRY_OIDC_PUBLISH_PERMISSIONS: {{ .Values.config.oidcPublishPermissions | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcReadPermissions }}
+  AGENT_REGISTRY_OIDC_READ_PERMISSIONS: {{ .Values.config.oidcReadPermissions | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcPushPermissions }}
+  AGENT_REGISTRY_OIDC_PUSH_PERMISSIONS: {{ .Values.config.oidcPushPermissions | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcDeletePermissions }}
+  AGENT_REGISTRY_OIDC_DELETE_PERMISSIONS: {{ .Values.config.oidcDeletePermissions | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcDeployPermissions }}
+  AGENT_REGISTRY_OIDC_DEPLOY_PERMISSIONS: {{ .Values.config.oidcDeployPermissions | quote }}
+  {{- end }}
