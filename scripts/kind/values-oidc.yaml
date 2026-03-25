@@ -10,30 +10,21 @@
 config:
   # make install-agentregistry forces this to true by default; override for OIDC workflows
   enableAnonymousAuth: "false"
-
-extraEnvVars:
-  - name: AGENT_REGISTRY_OIDC_ENABLED
-    value: "true"
-  - name: AGENT_REGISTRY_OIDC_ISSUER
-    value: "http://keycloak.default.svc.cluster.local:8080/realms/agentregistry"
-  - name: AGENT_REGISTRY_OIDC_CLIENT_ID
-    value: "agentregistry-api"
+  keycloakURL: "http://keycloak.default.svc.cluster.local:8080"
+  keycloakRealm: "agentregistry"
+  keycloakClientID: "agentregistry-api"
+  oidcEnabled: "true"
+  oidcIssuer: "http://keycloak.default.svc.cluster.local:8080/realms/agentregistry"
+  oidcClientID: "agentregistry-api"
 
   # Keep empty while validating connectivity. Set a claim rule once mapper is configured.
   # Example: '[{"ar_role":"publisher"}]'
-  - name: AGENT_REGISTRY_OIDC_EXTRA_CLAIMS
-    value: ""
+  oidcExtraClaims: ""
 
   # Replace io.navteca/* with your desired namespace patterns.
-  - name: AGENT_REGISTRY_OIDC_READ_PERMISSIONS
-    value: "*"
-  - name: AGENT_REGISTRY_OIDC_PUSH_PERMISSIONS
-    value: "*"
-  - name: AGENT_REGISTRY_OIDC_PUBLISH_PERMISSIONS
-    value: "*"
-  - name: AGENT_REGISTRY_OIDC_EDIT_PERMISSIONS
-    value: "*"
-  - name: AGENT_REGISTRY_OIDC_DELETE_PERMISSIONS
-    value: "*"
-  - name: AGENT_REGISTRY_OIDC_DEPLOY_PERMISSIONS
-    value: "*"
+  oidcReadPermissions: "*"
+  oidcPushPermissions: "*"
+  oidcPublishPermissions: "*"
+  oidcEditPermissions: "*"
+  oidcDeletePermissions: "*"
+  oidcDeployPermissions: "*"

@@ -74,6 +74,38 @@ tests:
           path: data.AGENT_REGISTRY_SEED_FROM
           value: "https://example.com/seeds.json"
 
+  - it: includes Keycloak frontend config when set
+    set:
+      config.keycloakURL: "http://keycloak.default.svc.cluster.local:8080"
+      config.keycloakRealm: "agentregistry"
+      config.keycloakClientID: "agentregistry-api"
+    asserts:
+      - equal:
+          path: data.AGENT_REGISTRY_KEYCLOAK_URL
+          value: "http://keycloak.default.svc.cluster.local:8080"
+      - equal:
+          path: data.AGENT_REGISTRY_KEYCLOAK_REALM
+          value: "agentregistry"
+      - equal:
+          path: data.AGENT_REGISTRY_KEYCLOAK_CLIENT_ID
+          value: "agentregistry-api"
+
+  - it: includes backend OIDC config when set
+    set:
+      config.oidcEnabled: "true"
+      config.oidcIssuer: "http://keycloak.default.svc.cluster.local:8080/realms/agentregistry"
+      config.oidcClientID: "agentregistry-api"
+    asserts:
+      - equal:
+          path: data.AGENT_REGISTRY_OIDC_ENABLED
+          value: "true"
+      - equal:
+          path: data.AGENT_REGISTRY_OIDC_ISSUER
+          value: "http://keycloak.default.svc.cluster.local:8080/realms/agentregistry"
+      - equal:
+          path: data.AGENT_REGISTRY_OIDC_CLIENT_ID
+          value: "agentregistry-api"
+
   - it: overrides serverAddress
     set:
       config.serverAddress: ":9090"
