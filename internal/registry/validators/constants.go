@@ -5,6 +5,7 @@ import "errors"
 // Error messages for validation
 var (
 	// Repository validation errors
+	ErrRepositoryRequired   = errors.New("repository URL is required")
 	ErrInvalidRepositoryURL = errors.New("invalid repository URL")
 	ErrInvalidSubfolderPath = errors.New("invalid subfolder path")
 

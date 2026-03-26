@@ -28,7 +28,7 @@ type RepositorySource = keyof typeof repositoryHosts
 function validateRepositoryUrl(source: RepositorySource, rawUrl: string): string | null {
   const trimmedUrl = rawUrl.trim()
   if (!trimmedUrl) {
-    return null
+    return "Repository URL is required"
   }
 
   let parsedUrl: URL
@@ -120,16 +120,14 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
         server.websiteUrl = websiteUrl.trim()
       }
 
-      if (repositoryUrl.trim()) {
-        const repositoryUrlError = validateRepositoryUrl(repositorySource, repositoryUrl)
-        if (repositoryUrlError) {
-          throw new Error(repositoryUrlError)
-        }
+      const repositoryUrlError = validateRepositoryUrl(repositorySource, repositoryUrl)
+      if (repositoryUrlError) {
+        throw new Error(repositoryUrlError)
+      }
 
-        server.repository = {
-          source: repositorySource,
-          url: repositoryUrl.trim(),
-        }
+      server.repository = {
+        source: repositorySource,
+        url: repositoryUrl.trim(),
       }
 
       if (packages.length > 0) {
@@ -300,7 +298,7 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="repositoryUrl">Repository URL</Label>
+              <Label htmlFor="repositoryUrl">Repository URL *</Label>
               <div className="flex gap-2">
                 <Select value={repositorySource} onValueChange={(v) => setRepositorySource(v as RepositorySource)} disabled={loading}>
                   <SelectTrigger className="w-[120px]">
@@ -486,7 +484,7 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={loading || !name.trim() || !version.trim() || !description.trim()}
+            disabled={loading || !name.trim() || !version.trim() || !description.trim() || !repositoryUrl.trim()}
           >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Create Server

@@ -43,6 +43,7 @@ describe("AddServerDialog", () => {
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
     await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://github.com/navteca/hello-mcp")
 
     await user.click(screen.getByRole("button", { name: "Add Package" }))
     await user.type(screen.getByPlaceholderText("Package identifier"), "docker.io/luisgleon/my-mcp-server:0.1.8")
@@ -69,6 +70,7 @@ describe("AddServerDialog", () => {
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
     await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://github.com/navteca/hello-mcp")
 
     await user.click(screen.getByRole("button", { name: "Add Package" }))
     await user.type(screen.getByPlaceholderText("Package identifier"), "docker.io/luisgleon/my-mcp-server:0.1.8")
@@ -109,6 +111,7 @@ describe("AddServerDialog", () => {
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
     await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://github.com/navteca/hello-mcp")
 
     await user.click(screen.getByRole("button", { name: "Add Remote" }))
     await user.click(screen.getByRole("button", { name: "Create Server" }))
@@ -116,6 +119,19 @@ describe("AddServerDialog", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Remote URL is required for sse")
     })
+    expect(createServerV0).not.toHaveBeenCalled()
+  })
+
+  it("requires repository URL before creating a server", async () => {
+    const user = userEvent.setup()
+
+    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+
+    await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Version *"), "0.1.8")
+    await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+
+    expect(screen.getByRole("button", { name: "Create Server" })).toBeDisabled()
     expect(createServerV0).not.toHaveBeenCalled()
   })
 
@@ -127,7 +143,7 @@ describe("AddServerDialog", () => {
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
     await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
-    await user.type(screen.getByLabelText("Repository URL"), "https://gitlab.com/navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://gitlab.com/navteca/hello-mcp")
 
     await user.click(screen.getByRole("button", { name: "Create Server" }))
 
@@ -147,7 +163,7 @@ describe("AddServerDialog", () => {
     await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
     await user.click(screen.getByRole("combobox"))
     await user.click(screen.getByRole("option", { name: "GitLab" }))
-    await user.type(screen.getByLabelText("Repository URL"), "https://gitlab.com/navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://gitlab.com/navteca/hello-mcp")
 
     await user.click(screen.getByRole("button", { name: "Create Server" }))
 

@@ -14,6 +14,13 @@ import (
 	"github.com/modelcontextprotocol/registry/pkg/model"
 )
 
+func defaultRepository() *model.Repository {
+	return &model.Repository{
+		URL:    "https://github.com/owner/repo",
+		Source: "git",
+	}
+}
+
 func TestValidate(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -60,6 +67,16 @@ func TestValidate(t *testing.T) {
 				Version: "1.0.0",
 			},
 			expectedError: "",
+		},
+		{
+			name: "repository is required",
+			serverDetail: apiv0.ServerJSON{
+				Schema:      model.CurrentSchemaURL,
+				Name:        "com.example/test-server",
+				Description: "A test server",
+				Version:     "1.0.0",
+			},
+			expectedError: validators.ErrRepositoryRequired.Error(),
 		},
 		{
 			name: "Version rejects top-level version ranges",
@@ -778,6 +795,9 @@ func TestValidate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.name != "repository is required" && tt.serverDetail.Repository == nil {
+				tt.serverDetail.Repository = defaultRepository()
+			}
 			err := validators.ValidateServerJSON(&tt.serverDetail)
 
 			if tt.expectedError == "" {
@@ -934,6 +954,9 @@ func TestValidate_RemoteNamespaceMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.serverDetail.Repository == nil {
+				tt.serverDetail.Repository = defaultRepository()
+			}
 			err := validators.ValidateServerJSON(&tt.serverDetail)
 
 			if tt.expectError {
@@ -1018,6 +1041,9 @@ func TestValidate_ServerNameFormat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.serverDetail.Repository == nil {
+				tt.serverDetail.Repository = defaultRepository()
+			}
 			err := validators.ValidateServerJSON(&tt.serverDetail)
 
 			if tt.expectError {
@@ -1094,8 +1120,11 @@ func TestValidate_MultipleSlashesInServerName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			serverDetail := apiv0.ServerJSON{
-				Schema: model.CurrentSchemaURL,
-				Name:   tt.serverName,
+				Schema:      model.CurrentSchemaURL,
+				Name:        tt.serverName,
+				Repository:  defaultRepository(),
+				Description: "A test server",
+				Version:     "1.0.0",
 			}
 			err := validators.ValidateServerJSON(&serverDetail)
 
@@ -1631,6 +1660,9 @@ func TestValidate_TransportValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.serverDetail.Repository == nil {
+				tt.serverDetail.Repository = defaultRepository()
+			}
 			err := validators.ValidateServerJSON(&tt.serverDetail)
 
 			if tt.expectedError == "" {
