@@ -29,9 +29,11 @@ type Config struct {
 	LogLevel                 string `env:"LOG_LEVEL" envDefault:"info"`
 
 	// Frontend OIDC Configuration (served at runtime via GET /v0/config/frontend)
-	KeycloakURL      string `env:"KEYCLOAK_URL" envDefault:""`
-	KeycloakRealm    string `env:"KEYCLOAK_REALM" envDefault:""`
-	KeycloakClientID string `env:"KEYCLOAK_CLIENT_ID" envDefault:""`
+	KeycloakURL        string `env:"KEYCLOAK_URL" envDefault:""`
+	KeycloakRealm      string `env:"KEYCLOAK_REALM" envDefault:""`
+	KeycloakClientID   string `env:"KEYCLOAK_CLIENT_ID" envDefault:""`
+	FrontendAPIURL     string `env:"FRONTEND_API_URL" envDefault:""`
+	FrontendGatewayURL string `env:"FRONTEND_GATEWAY_URL" envDefault:""`
 
 	// OIDC Configuration
 	OIDCEnabled      bool   `env:"OIDC_ENABLED" envDefault:"false"`

@@ -28,6 +28,12 @@ data:
   {{- if .Values.config.keycloakClientID }}
   AGENT_REGISTRY_KEYCLOAK_CLIENT_ID: {{ .Values.config.keycloakClientID | quote }}
   {{- end }}
+  {{- if .Values.config.frontendApiURL }}
+  AGENT_REGISTRY_FRONTEND_API_URL: {{ .Values.config.frontendApiURL | quote }}
+  {{- end }}
+  {{- if .Values.config.frontendGatewayURL }}
+  AGENT_REGISTRY_FRONTEND_GATEWAY_URL: {{ .Values.config.frontendGatewayURL | quote }}
+  {{- end }}
   {{- if ne (printf "%v" .Values.config.oidcEnabled) "" }}
   AGENT_REGISTRY_OIDC_ENABLED: {{ printf "%v" .Values.config.oidcEnabled | quote }}
   {{- end }}
