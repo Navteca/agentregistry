@@ -13,20 +13,21 @@ import (
 // Config holds the application configuration
 // See .env.example for more documentation
 type Config struct {
-	ServerAddress            string `env:"SERVER_ADDRESS" envDefault:":8080"`
-	MCPPort                  uint16 `env:"MCP_PORT" envDefault:"0"`
-	DatabaseURL              string `env:"DATABASE_URL" envDefault:"postgres://agentregistry:agentregistry@localhost:5432/agentregistry?sslmode=disable"`
-	DatabaseVectorEnabled    bool   `env:"DATABASE_VECTOR_ENABLED" envDefault:"false"`
-	SeedFrom                 string `env:"SEED_FROM" envDefault:""`
-	EnrichServerData         bool   `env:"ENRICH_SERVER_DATA" envDefault:"false"`
-	DisableBuiltinSeed       bool   `env:"DISABLE_BUILTIN_SEED" envDefault:"true"`
-	Version                  string `env:"VERSION" envDefault:"dev"`
-	GithubClientID           string `env:"GITHUB_CLIENT_ID" envDefault:""`
-	GithubClientSecret       string `env:"GITHUB_CLIENT_SECRET" envDefault:""`
-	JWTPrivateKey            string `env:"JWT_PRIVATE_KEY" envDefault:""`
-	EnableAnonymousAuth      bool   `env:"ENABLE_ANONYMOUS_AUTH" envDefault:"false"`
-	EnableRegistryValidation bool   `env:"ENABLE_REGISTRY_VALIDATION" envDefault:"true"`
-	LogLevel                 string `env:"LOG_LEVEL" envDefault:"info"`
+	ServerAddress                  string `env:"SERVER_ADDRESS" envDefault:":8080"`
+	MCPPort                        uint16 `env:"MCP_PORT" envDefault:"0"`
+	DatabaseURL                    string `env:"DATABASE_URL" envDefault:"postgres://agentregistry:agentregistry@localhost:5432/agentregistry?sslmode=disable"`
+	DatabaseVectorEnabled          bool   `env:"DATABASE_VECTOR_ENABLED" envDefault:"false"`
+	SeedFrom                       string `env:"SEED_FROM" envDefault:""`
+	EnrichServerData               bool   `env:"ENRICH_SERVER_DATA" envDefault:"false"`
+	DisableBuiltinSeed             bool   `env:"DISABLE_BUILTIN_SEED" envDefault:"true"`
+	Version                        string `env:"VERSION" envDefault:"dev"`
+	GithubClientID                 string `env:"GITHUB_CLIENT_ID" envDefault:""`
+	GithubClientSecret             string `env:"GITHUB_CLIENT_SECRET" envDefault:""`
+	JWTPrivateKey                  string `env:"JWT_PRIVATE_KEY" envDefault:""`
+	EnableAnonymousAuth            bool   `env:"ENABLE_ANONYMOUS_AUTH" envDefault:"false"`
+	EnableRegistryValidation       bool   `env:"ENABLE_REGISTRY_VALIDATION" envDefault:"true"`
+	ValidateRepositoryReachability bool   `env:"VALIDATE_REPOSITORY_REACHABILITY" envDefault:"true"`
+	LogLevel                       string `env:"LOG_LEVEL" envDefault:"info"`
 
 	// Frontend OIDC Configuration (served at runtime via GET /v0/config/frontend)
 	KeycloakURL        string `env:"KEYCLOAK_URL" envDefault:""`

@@ -1,15 +1,20 @@
 package validators
 
 import (
+	"context"
+	"fmt"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var (
 	gitHubRepoURLRegex    = regexp.MustCompile(`^https?://(www\.)?github\.com/[\w.-]+/[\w.-]+/?$`)
 	gitLabRepoURLRegex    = regexp.MustCompile(`^https?://(www\.)?gitlab\.com/[\w.-]+/[\w.-]+/?$`)
 	bitbucketRepoURLRegex = regexp.MustCompile(`^https?://(www\.)?bitbucket\.org/[\w.-]+/[\w.-]+/?$`)
+	repositoryHTTPClient  = &http.Client{Timeout: 5 * time.Second}
 )
 
 // IsValidRepositoryURL checks if the given URL is valid for the specified repository source
@@ -28,6 +33,39 @@ func IsValidRepositoryURL(source RepositorySource, rawURL string) bool {
 	default:
 		return false
 	}
+}
+
+func ValidateRepositoryReachability(ctx context.Context, rawURL string) error {
+	if err := repositoryRequest(ctx, http.MethodHead, rawURL); err == nil {
+		return nil
+	} else if !shouldRetryRepositoryRequest(err) {
+		return err
+	}
+
+	return repositoryRequest(ctx, http.MethodGet, rawURL)
+}
+
+func repositoryRequest(ctx context.Context, method, rawURL string) error {
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, nil)
+	if err != nil {
+		return fmt.Errorf("%w: %s: %v", ErrRepositoryUnreachable, rawURL, err)
+	}
+
+	resp, err := repositoryHTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("%w: %s: %v", ErrRepositoryUnreachable, rawURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusBadRequest {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %s returned status %d", ErrRepositoryUnreachable, rawURL, resp.StatusCode)
+}
+
+func shouldRetryRepositoryRequest(err error) bool {
+	return strings.Contains(err.Error(), "status 405")
 }
 
 // HasNoSpaces checks if a string contains no spaces
