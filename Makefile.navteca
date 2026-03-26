@@ -66,7 +66,7 @@ build-amd64:
 	$(MAKE) -f $(SOURCE_MAKEFILE) docker-server \
 		DOCKER_REGISTRY=$(ECR_REGISTRY) \
 		DOCKER_REPO=$(ECR_REPO) \
-		DOCKER_BUILD_ARGS='--push --platform linux/amd64' \
+		DOCKER_BUILD_ARGS='--load --platform linux/amd64' \
 		VERSION=$(TAG)-amd64
 	docker tag $(IMAGE_SERVER):$(TAG)-amd64 $(IMAGE_ROOT):$(TAG)-amd64
 	docker push $(IMAGE_ROOT):$(TAG)-amd64
