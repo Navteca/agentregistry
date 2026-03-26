@@ -17,6 +17,39 @@ interface AddServerDialogProps {
   onServerAdded: () => void
 }
 
+const repositoryHosts = {
+  github: "github.com",
+  gitlab: "gitlab.com",
+  bitbucket: "bitbucket.org",
+} as const
+
+type RepositorySource = keyof typeof repositoryHosts
+
+function validateRepositoryUrl(source: RepositorySource, rawUrl: string): string | null {
+  const trimmedUrl = rawUrl.trim()
+  if (!trimmedUrl) {
+    return null
+  }
+
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(trimmedUrl)
+  } catch {
+    return "Repository URL must be a valid absolute URL"
+  }
+
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    return "Repository URL must use http or https"
+  }
+
+  const expectedHost = repositoryHosts[source]
+  if (parsedUrl.hostname !== expectedHost) {
+    return `Repository URL must match the selected provider (${expectedHost})`
+  }
+
+  return null
+}
+
 export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServerDialogProps) {
   const [loading, setLoading] = useState(false)
 
@@ -27,7 +60,7 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
   const [description, setDescription] = useState("")
   const [version, setVersion] = useState("")
   const [websiteUrl, setWebsiteUrl] = useState("")
-  const [repositorySource, setRepositorySource] = useState<"github" | "gitlab" | "bitbucket">("github")
+  const [repositorySource, setRepositorySource] = useState<RepositorySource>("github")
   const [repositoryUrl, setRepositoryUrl] = useState("")
 
   // Dynamic fields
@@ -43,6 +76,7 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
     setDescription("")
     setVersion("")
     setWebsiteUrl("")
+    setRepositorySource("github")
     setRepositoryUrl("")
     setPackages([])
     setRemotes([])
@@ -87,6 +121,11 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
       }
 
       if (repositoryUrl.trim()) {
+        const repositoryUrlError = validateRepositoryUrl(repositorySource, repositoryUrl)
+        if (repositoryUrlError) {
+          throw new Error(repositoryUrlError)
+        }
+
         server.repository = {
           source: repositorySource,
           url: repositoryUrl.trim(),
@@ -263,7 +302,7 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
             <div className="space-y-2">
               <Label htmlFor="repositoryUrl">Repository URL</Label>
               <div className="flex gap-2">
-                <Select value={repositorySource} onValueChange={(v) => setRepositorySource(v as "github" | "gitlab" | "bitbucket")} disabled={loading}>
+                <Select value={repositorySource} onValueChange={(v) => setRepositorySource(v as RepositorySource)} disabled={loading}>
                   <SelectTrigger className="w-[120px]">
                     <SelectValue />
                   </SelectTrigger>
@@ -282,6 +321,9 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
                   className="flex-1"
                 />
               </div>
+              <p className="text-xs text-muted-foreground">
+                Repository URL must match the selected provider.
+              </p>
             </div>
           </div>
 
@@ -454,4 +496,3 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
     </Dialog>
   )
 }
-

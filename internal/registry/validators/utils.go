@@ -7,17 +7,27 @@ import (
 )
 
 var (
-	// gitRepoURLRegex validates repository URLs for common git hosting providers
-	// (GitHub, GitLab, Bitbucket, etc.) in the standard owner/repo format.
-	gitRepoURLRegex = regexp.MustCompile(`^https?://(www\.)?(github\.com|gitlab\.com|bitbucket\.org)/[\w.-]+/[\w.-]+/?$`)
+	gitHubRepoURLRegex    = regexp.MustCompile(`^https?://(www\.)?github\.com/[\w.-]+/[\w.-]+/?$`)
+	gitLabRepoURLRegex    = regexp.MustCompile(`^https?://(www\.)?gitlab\.com/[\w.-]+/[\w.-]+/?$`)
+	bitbucketRepoURLRegex = regexp.MustCompile(`^https?://(www\.)?bitbucket\.org/[\w.-]+/[\w.-]+/?$`)
 )
 
 // IsValidRepositoryURL checks if the given URL is valid for the specified repository source
 func IsValidRepositoryURL(source RepositorySource, rawURL string) bool {
-	if source != SourceGit {
+	switch source {
+	case SourceGit:
+		return gitHubRepoURLRegex.MatchString(rawURL) ||
+			gitLabRepoURLRegex.MatchString(rawURL) ||
+			bitbucketRepoURLRegex.MatchString(rawURL)
+	case SourceGitHub:
+		return gitHubRepoURLRegex.MatchString(rawURL)
+	case SourceGitLab:
+		return gitLabRepoURLRegex.MatchString(rawURL)
+	case SourceBitbucket:
+		return bitbucketRepoURLRegex.MatchString(rawURL)
+	default:
 		return false
 	}
-	return gitRepoURLRegex.MatchString(rawURL)
 }
 
 // HasNoSpaces checks if a string contains no spaces

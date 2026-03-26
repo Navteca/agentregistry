@@ -286,11 +286,53 @@ func TestValidate(t *testing.T) {
 				Description: "A test server",
 				Repository: &model.Repository{
 					URL:    "https://bitbucket.org/owner/repo",
-					Source: "bitbucket", // Not in validSources
+					Source: "gitea",
 				},
 				Version: "1.0.0",
 			},
 			expectedError: validators.ErrInvalidRepositoryURL.Error(),
+		},
+		{
+			name: "server with github source and matching github url",
+			serverDetail: apiv0.ServerJSON{
+				Schema:      model.CurrentSchemaURL,
+				Name:        "com.example/test-server",
+				Description: "A test server",
+				Repository: &model.Repository{
+					URL:    "https://github.com/owner/repo",
+					Source: "github",
+				},
+				Version: "1.0.0",
+			},
+			expectedError: "",
+		},
+		{
+			name: "server with gitlab source and github url mismatch",
+			serverDetail: apiv0.ServerJSON{
+				Schema:      model.CurrentSchemaURL,
+				Name:        "com.example/test-server",
+				Description: "A test server",
+				Repository: &model.Repository{
+					URL:    "https://github.com/owner/repo",
+					Source: "gitlab",
+				},
+				Version: "1.0.0",
+			},
+			expectedError: validators.ErrInvalidRepositoryURL.Error(),
+		},
+		{
+			name: "server with bitbucket source and matching bitbucket url",
+			serverDetail: apiv0.ServerJSON{
+				Schema:      model.CurrentSchemaURL,
+				Name:        "com.example/test-server",
+				Description: "A test server",
+				Repository: &model.Repository{
+					URL:    "https://bitbucket.org/owner/repo",
+					Source: "bitbucket",
+				},
+				Version: "1.0.0",
+			},
+			expectedError: "",
 		},
 		{
 			name: "server with invalid git repository URL format - missing repo",

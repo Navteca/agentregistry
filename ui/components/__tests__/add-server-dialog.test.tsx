@@ -118,4 +118,47 @@ describe("AddServerDialog", () => {
     })
     expect(createServerV0).not.toHaveBeenCalled()
   })
+
+  it("prevents submit when repository URL does not match selected provider", async () => {
+    const user = userEvent.setup()
+
+    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+
+    await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Version *"), "0.1.8")
+    await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL"), "https://gitlab.com/navteca/hello-mcp")
+
+    await user.click(screen.getByRole("button", { name: "Create Server" }))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Repository URL must match the selected provider (github.com)")
+    })
+    expect(createServerV0).not.toHaveBeenCalled()
+  })
+
+  it("sends repository when URL matches selected provider", async () => {
+    const user = userEvent.setup()
+
+    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+
+    await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Version *"), "0.1.8")
+    await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.click(screen.getByRole("combobox"))
+    await user.click(screen.getByRole("option", { name: "GitLab" }))
+    await user.type(screen.getByLabelText("Repository URL"), "https://gitlab.com/navteca/hello-mcp")
+
+    await user.click(screen.getByRole("button", { name: "Create Server" }))
+
+    await waitFor(() => {
+      expect(createServerV0).toHaveBeenCalledTimes(1)
+    })
+
+    const callArg = vi.mocked(createServerV0).mock.calls[0]?.[0]
+    expect(callArg?.body.repository).toEqual({
+      source: "gitlab",
+      url: "https://gitlab.com/navteca/hello-mcp",
+    })
+  })
 })
