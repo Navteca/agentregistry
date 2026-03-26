@@ -65,6 +65,10 @@ config:
   keycloakRealm: ""
   # -- Browser-facing Keycloak client ID returned by GET /v0/config/frontend
   keycloakClientID: ""
+  # -- Optional frontend API base URL returned by GET /v0/config/frontend
+  frontendApiURL: ""
+  # -- Optional frontend gateway base URL returned by GET /v0/config/frontend
+  frontendGatewayURL: ""
   # -- Enable OIDC token exchange on the backend ("true" or "false")
   oidcEnabled: ""
   # -- OIDC issuer URL used by the backend to validate ID tokens

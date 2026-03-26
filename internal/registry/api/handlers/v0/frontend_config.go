@@ -9,11 +9,13 @@ import (
 	"github.com/agentregistry-dev/agentregistry/internal/registry/config"
 )
 
-// FrontendConfigBody holds the OIDC values the browser needs before authentication.
+// FrontendConfigBody holds public frontend bootstrap configuration values.
 type FrontendConfigBody struct {
 	KeycloakURL      string `json:"keycloak_url"`
 	KeycloakRealm    string `json:"keycloak_realm"`
 	KeycloakClientID string `json:"keycloak_client_id"`
+	APIBaseURL       string `json:"api_base_url,omitempty"`
+	GatewayBaseURL   string `json:"gateway_base_url,omitempty"`
 }
 
 // frontendConfigOutput wraps FrontendConfigBody and adds a Cache-Control response header
@@ -42,6 +44,8 @@ func RegisterFrontendConfigEndpoint(api huma.API, pathPrefix string, cfg *config
 				KeycloakURL:      cfg.KeycloakURL,
 				KeycloakRealm:    cfg.KeycloakRealm,
 				KeycloakClientID: cfg.KeycloakClientID,
+				APIBaseURL:       cfg.FrontendAPIURL,
+				GatewayBaseURL:   cfg.FrontendGatewayURL,
 			},
 		}, nil
 	})

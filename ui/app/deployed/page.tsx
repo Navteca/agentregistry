@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { listDeployments, removeDeployment, Deployment } from "@/lib/admin-api"
+import { listDeployments, removeDeployment, Deployment, getGatewayBaseUrl } from "@/lib/admin-api"
 import { Input } from "@/components/ui/input"
 import { Trash2, AlertCircle, Calendar, Package, Copy, Check, Link2, Server, Bot as BotIcon, Search, X } from "lucide-react"
 import {
@@ -30,8 +30,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
-const GATEWAY_BASE_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:21212"
-
 const STATUS_COLORS: Record<string, string> = {
   deployed:   'bg-green-500',
   discovered: 'bg-green-500',
@@ -44,10 +42,10 @@ function sanitizeName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9-]/g, '-')
 }
 
-function getAgentEndpointUrl(serverName: string, deploymentId: string): string {
+function getAgentEndpointUrl(gatewayBaseUrl: string, serverName: string, deploymentId: string): string {
   const name = sanitizeName(serverName)
   const id = sanitizeName(deploymentId)
-  return `${GATEWAY_BASE_URL}/agents/${name}-${id}`
+  return `${gatewayBaseUrl}/agents/${name}-${id}`
 }
 
 export default function DeployedPage() {
@@ -62,8 +60,9 @@ export default function DeployedPage() {
   const [filterProvider, setFilterProvider] = useState<string>("all")
   const [filterOrigin, setFilterOrigin] = useState<string>("all")
   const [filterStatus, setFilterStatus] = useState<string>("all")
+  const gatewayBaseUrl = getGatewayBaseUrl()
 
-  const gatewayUrl = `${GATEWAY_BASE_URL}/mcp`
+  const gatewayUrl = `${gatewayBaseUrl}/mcp`
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(gatewayUrl)
@@ -259,7 +258,7 @@ export default function DeployedPage() {
                         removing={removing}
                         copiedAgentId={copiedAgentId}
                         onCopyAgentUrl={copyAgentUrl}
-                        getAgentEndpointUrl={getAgentEndpointUrl}
+                        getAgentEndpointUrl={(name, id) => getAgentEndpointUrl(gatewayBaseUrl, name, id)}
                       />
                     ))}
                   </div>
@@ -302,7 +301,7 @@ export default function DeployedPage() {
                         removing={removing}
                         copiedAgentId={copiedAgentId}
                         onCopyAgentUrl={copyAgentUrl}
-                        getAgentEndpointUrl={getAgentEndpointUrl}
+                        getAgentEndpointUrl={(name, id) => getAgentEndpointUrl(gatewayBaseUrl, name, id)}
                       />
                     ))}
                   </div>

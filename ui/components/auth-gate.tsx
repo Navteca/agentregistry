@@ -2,7 +2,7 @@
 
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import Keycloak from "keycloak-js"
-import { clearRegistryAuthToken, getApiBaseUrl, setRegistryAuthToken } from "@/lib/admin-api"
+import { clearRegistryAuthToken, getApiBaseUrl, setApiBaseUrl, setGatewayBaseUrl, setRegistryAuthToken } from "@/lib/admin-api"
 import { refreshActiveUserProfile, setActiveKeycloakInstance } from "@/lib/keycloak-session"
 
 type GateStatus = "loading" | "ready" | "error"
@@ -25,10 +25,14 @@ interface FrontendConfig {
   keycloak_url: string
   keycloak_realm: string
   keycloak_client_id: string
+  api_base_url?: string
+  gateway_base_url?: string
 }
 
 async function fetchFrontendConfig(): Promise<FrontendConfig> {
-  const response = await fetch(`${getApiBaseUrl()}/v0/config/frontend`)
+  // Always use a relative URL here to bootstrap config from the same host.
+  // This prevents stale compiled API URLs from hijacking initial requests.
+  const response = await fetch(`/v0/config/frontend`)
   if (!response.ok) {
     throw new Error(`Failed to fetch frontend config (${response.status})`)
   }
@@ -105,6 +109,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
     const initAuth = async () => {
       try {
         const cfg = await fetchFrontendConfig()
+        if (cfg.api_base_url) {
+          setApiBaseUrl(cfg.api_base_url)
+        }
+        if (cfg.gateway_base_url) {
+          setGatewayBaseUrl(cfg.gateway_base_url)
+        }
 
         const keycloakUrl = cfg.keycloak_url
         const keycloakRealm = cfg.keycloak_realm
