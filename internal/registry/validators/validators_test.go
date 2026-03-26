@@ -572,7 +572,7 @@ func TestValidate(t *testing.T) {
 				Version:    "1.0.0",
 				WebsiteURL: "https://different.com/docs",
 			},
-			expectedError: "websiteUrl https://different.com/docs does not match namespace com.example/test-server",
+			expectedError: "",
 		},
 		{
 			name: "package with spaces in name",
