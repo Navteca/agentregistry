@@ -50,6 +50,56 @@ function validateRepositoryUrl(source: RepositorySource, rawUrl: string): string
   return null
 }
 
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>
+
+    const errors = Array.isArray(record.errors) ? record.errors : null
+    if (errors) {
+      for (const item of errors) {
+        if (item && typeof item === "object") {
+          const message = typeof (item as Record<string, unknown>).message === "string"
+            ? (item as Record<string, unknown>).message as string
+            : null
+          if (message) {
+            return message
+          }
+        }
+      }
+    }
+
+    const detail = typeof record.detail === "string" ? record.detail : null
+    if (detail) {
+      return detail
+    }
+
+    const message = typeof record.message === "string" ? record.message : null
+    if (message) {
+      return message
+    }
+
+    const title = typeof record.title === "string" ? record.title : null
+    if (title) {
+      return title
+    }
+
+    const nestedError = record.error
+    if (nestedError) {
+      return extractErrorMessage(nestedError)
+    }
+  }
+
+  return "Failed to create server"
+}
+
 export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServerDialogProps) {
   const [loading, setLoading] = useState(false)
 
@@ -187,7 +237,7 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
       resetForm()
     } catch (err) {
       // Show error toast
-      toast.error(err instanceof Error ? err.message : "Failed to create server")
+      toast.error(extractErrorMessage(err))
     } finally {
       setLoading(false)
     }

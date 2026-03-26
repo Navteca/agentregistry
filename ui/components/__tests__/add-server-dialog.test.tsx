@@ -177,4 +177,33 @@ describe("AddServerDialog", () => {
       url: "https://gitlab.com/navteca/hello-mcp",
     })
   })
+
+  it("shows backend detail error when repository URL is unreachable", async () => {
+    const user = userEvent.setup()
+    vi.mocked(createServerV0).mockRejectedValueOnce({
+      detail: "Failed to create server",
+      errors: [
+        {
+          message: "repository URL is not reachable: https://github.com/navteca/missing-repo returned status 404",
+        },
+      ],
+      status: 400,
+      title: "Bad Request",
+    } as never)
+
+    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+
+    await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Version *"), "0.1.8")
+    await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://github.com/navteca/missing-repo")
+
+    await user.click(screen.getByRole("button", { name: "Create Server" }))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "repository URL is not reachable: https://github.com/navteca/missing-repo returned status 404",
+      )
+    })
+  })
 })
