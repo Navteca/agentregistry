@@ -43,6 +43,7 @@ describe("AddServerDialog", () => {
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
     await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://github.com/navteca/hello-mcp")
 
     await user.click(screen.getByRole("button", { name: "Add Package" }))
     await user.type(screen.getByPlaceholderText("Package identifier"), "docker.io/luisgleon/my-mcp-server:0.1.8")
@@ -69,6 +70,7 @@ describe("AddServerDialog", () => {
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
     await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://github.com/navteca/hello-mcp")
 
     await user.click(screen.getByRole("button", { name: "Add Package" }))
     await user.type(screen.getByPlaceholderText("Package identifier"), "docker.io/luisgleon/my-mcp-server:0.1.8")
@@ -109,6 +111,7 @@ describe("AddServerDialog", () => {
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
     await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://github.com/navteca/hello-mcp")
 
     await user.click(screen.getByRole("button", { name: "Add Remote" }))
     await user.click(screen.getByRole("button", { name: "Create Server" }))
@@ -117,5 +120,90 @@ describe("AddServerDialog", () => {
       expect(toast.error).toHaveBeenCalledWith("Remote URL is required for sse")
     })
     expect(createServerV0).not.toHaveBeenCalled()
+  })
+
+  it("requires repository URL before creating a server", async () => {
+    const user = userEvent.setup()
+
+    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+
+    await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Version *"), "0.1.8")
+    await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+
+    expect(screen.getByRole("button", { name: "Create Server" })).toBeDisabled()
+    expect(createServerV0).not.toHaveBeenCalled()
+  })
+
+  it("prevents submit when repository URL does not match selected provider", async () => {
+    const user = userEvent.setup()
+
+    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+
+    await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Version *"), "0.1.8")
+    await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://gitlab.com/navteca/hello-mcp")
+
+    await user.click(screen.getByRole("button", { name: "Create Server" }))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Repository URL must match the selected provider (github.com)")
+    })
+    expect(createServerV0).not.toHaveBeenCalled()
+  })
+
+  it("sends repository when URL matches selected provider", async () => {
+    const user = userEvent.setup()
+
+    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+
+    await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Version *"), "0.1.8")
+    await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.click(screen.getByRole("combobox"))
+    await user.click(screen.getByRole("option", { name: "GitLab" }))
+    await user.type(screen.getByLabelText("Repository URL *"), "https://gitlab.com/navteca/hello-mcp")
+
+    await user.click(screen.getByRole("button", { name: "Create Server" }))
+
+    await waitFor(() => {
+      expect(createServerV0).toHaveBeenCalledTimes(1)
+    })
+
+    const callArg = vi.mocked(createServerV0).mock.calls[0]?.[0]
+    expect(callArg?.body.repository).toEqual({
+      source: "gitlab",
+      url: "https://gitlab.com/navteca/hello-mcp",
+    })
+  })
+
+  it("shows backend detail error when repository URL is unreachable", async () => {
+    const user = userEvent.setup()
+    vi.mocked(createServerV0).mockRejectedValueOnce({
+      detail: "Failed to create server",
+      errors: [
+        {
+          message: "repository URL is not reachable: https://github.com/navteca/missing-repo returned status 404",
+        },
+      ],
+      status: 400,
+      title: "Bad Request",
+    } as never)
+
+    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+
+    await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Version *"), "0.1.8")
+    await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://github.com/navteca/missing-repo")
+
+    await user.click(screen.getByRole("button", { name: "Create Server" }))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "repository URL is not reachable: https://github.com/navteca/missing-repo returned status 404",
+      )
+    })
   })
 })

@@ -122,9 +122,8 @@ func ValidateServerJSON(serverJSON *apiv0.ServerJSON) error {
 }
 
 func validateRepository(obj *model.Repository) error {
-	// Skip validation if repository is nil or empty (optional field)
-	if obj == nil || (obj.URL == "" && obj.Source == "") {
-		return nil
+	if obj == nil || strings.TrimSpace(obj.URL) == "" {
+		return ErrRepositoryRequired
 	}
 
 	// validate the repository source
@@ -436,8 +435,14 @@ func ValidatePublishRequest(ctx context.Context, req apiv0.ServerJSON, cfg *conf
 		return err
 	}
 
+	if cfg == nil || cfg.ValidateRepositoryReachability {
+		if err := ValidateRepositoryReachability(ctx, req.Repository.URL); err != nil {
+			return err
+		}
+	}
+
 	// Validate registry ownership for all packages if validation is enabled
-	if cfg.EnableRegistryValidation {
+	if cfg != nil && cfg.EnableRegistryValidation {
 		for i, pkg := range req.Packages {
 			if err := ValidatePackage(ctx, pkg, req.Name); err != nil {
 				return fmt.Errorf("registry validation failed for package %d (%s): %w", i, pkg.Identifier, err)

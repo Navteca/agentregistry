@@ -5,8 +5,10 @@ import "errors"
 // Error messages for validation
 var (
 	// Repository validation errors
-	ErrInvalidRepositoryURL = errors.New("invalid repository URL")
-	ErrInvalidSubfolderPath = errors.New("invalid subfolder path")
+	ErrRepositoryRequired    = errors.New("repository URL is required")
+	ErrInvalidRepositoryURL  = errors.New("invalid repository URL")
+	ErrRepositoryUnreachable = errors.New("repository URL is not reachable")
+	ErrInvalidSubfolderPath  = errors.New("invalid subfolder path")
 
 	// Package validation errors
 	ErrPackageNameHasSpaces  = errors.New("package name cannot contain spaces")
@@ -35,7 +37,10 @@ var (
 type RepositorySource string
 
 const (
-	SourceGit RepositorySource = "git"
+	SourceGit       RepositorySource = "git"
+	SourceGitHub    RepositorySource = "github"
+	SourceGitLab    RepositorySource = "gitlab"
+	SourceBitbucket RepositorySource = "bitbucket"
 )
 
 const (

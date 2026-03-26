@@ -17,6 +17,89 @@ interface AddServerDialogProps {
   onServerAdded: () => void
 }
 
+const repositoryHosts = {
+  github: "github.com",
+  gitlab: "gitlab.com",
+  bitbucket: "bitbucket.org",
+} as const
+
+type RepositorySource = keyof typeof repositoryHosts
+
+function validateRepositoryUrl(source: RepositorySource, rawUrl: string): string | null {
+  const trimmedUrl = rawUrl.trim()
+  if (!trimmedUrl) {
+    return "Repository URL is required"
+  }
+
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(trimmedUrl)
+  } catch {
+    return "Repository URL must be a valid absolute URL"
+  }
+
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    return "Repository URL must use http or https"
+  }
+
+  const expectedHost = repositoryHosts[source]
+  if (parsedUrl.hostname !== expectedHost) {
+    return `Repository URL must match the selected provider (${expectedHost})`
+  }
+
+  return null
+}
+
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>
+
+    const errors = Array.isArray(record.errors) ? record.errors : null
+    if (errors) {
+      for (const item of errors) {
+        if (item && typeof item === "object") {
+          const message = typeof (item as Record<string, unknown>).message === "string"
+            ? (item as Record<string, unknown>).message as string
+            : null
+          if (message) {
+            return message
+          }
+        }
+      }
+    }
+
+    const detail = typeof record.detail === "string" ? record.detail : null
+    if (detail) {
+      return detail
+    }
+
+    const message = typeof record.message === "string" ? record.message : null
+    if (message) {
+      return message
+    }
+
+    const title = typeof record.title === "string" ? record.title : null
+    if (title) {
+      return title
+    }
+
+    const nestedError = record.error
+    if (nestedError) {
+      return extractErrorMessage(nestedError)
+    }
+  }
+
+  return "Failed to create server"
+}
+
 export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServerDialogProps) {
   const [loading, setLoading] = useState(false)
 
@@ -27,7 +110,7 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
   const [description, setDescription] = useState("")
   const [version, setVersion] = useState("")
   const [websiteUrl, setWebsiteUrl] = useState("")
-  const [repositorySource, setRepositorySource] = useState<"github" | "gitlab" | "bitbucket">("github")
+  const [repositorySource, setRepositorySource] = useState<RepositorySource>("github")
   const [repositoryUrl, setRepositoryUrl] = useState("")
 
   // Dynamic fields
@@ -43,6 +126,7 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
     setDescription("")
     setVersion("")
     setWebsiteUrl("")
+    setRepositorySource("github")
     setRepositoryUrl("")
     setPackages([])
     setRemotes([])
@@ -86,11 +170,14 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
         server.websiteUrl = websiteUrl.trim()
       }
 
-      if (repositoryUrl.trim()) {
-        server.repository = {
-          source: repositorySource,
-          url: repositoryUrl.trim(),
-        }
+      const repositoryUrlError = validateRepositoryUrl(repositorySource, repositoryUrl)
+      if (repositoryUrlError) {
+        throw new Error(repositoryUrlError)
+      }
+
+      server.repository = {
+        source: repositorySource,
+        url: repositoryUrl.trim(),
       }
 
       if (packages.length > 0) {
@@ -150,7 +237,7 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
       resetForm()
     } catch (err) {
       // Show error toast
-      toast.error(err instanceof Error ? err.message : "Failed to create server")
+      toast.error(extractErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -261,9 +348,9 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="repositoryUrl">Repository URL</Label>
+              <Label htmlFor="repositoryUrl">Repository URL *</Label>
               <div className="flex gap-2">
-                <Select value={repositorySource} onValueChange={(v) => setRepositorySource(v as "github" | "gitlab" | "bitbucket")} disabled={loading}>
+                <Select value={repositorySource} onValueChange={(v) => setRepositorySource(v as RepositorySource)} disabled={loading}>
                   <SelectTrigger className="w-[120px]">
                     <SelectValue />
                   </SelectTrigger>
@@ -282,6 +369,9 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
                   className="flex-1"
                 />
               </div>
+              <p className="text-xs text-muted-foreground">
+                Repository URL must match the selected provider.
+              </p>
             </div>
           </div>
 
@@ -444,7 +534,7 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={loading || !name.trim() || !version.trim() || !description.trim()}
+            disabled={loading || !name.trim() || !version.trim() || !description.trim() || !repositoryUrl.trim()}
           >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Create Server
@@ -454,4 +544,3 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
     </Dialog>
   )
 }
-
