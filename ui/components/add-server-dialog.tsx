@@ -230,14 +230,20 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
       const { data } = await createServerV0({ body: server, throwOnError: true })
 
       // Show success toast
-      toast.success(`Server "${data?.server.name}" created successfully!`)
+      toast.success(`Server "${data?.server.name ?? server.name}" created successfully!`)
+
+      const createdServerIdentity = {
+        name: data?.server?.name ?? server.name,
+        version: data?.server?.version ?? server.version,
+      }
 
       // Trigger scoring in the background (fire-and-forget)
       void triggerMcpScoringForCreatedServer({
-        server: data?.server,
+        server: createdServerIdentity,
         scoreServer: scoreServerV0,
         onSuccess: () => {
           toast.success("MCP scoring completed")
+          onServerAdded()
         },
         onFailure: () => {
           toast.error("MCP scoring failed — you can retry from the Score tab")
