@@ -157,6 +157,18 @@ export function ServerCard({ server, onDelete, onDeploy, showDelete = false, sho
               </Tooltip>
             )
           )}
+          {showDelete && onDelete && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-7 gap-1 text-xs"
+              onClick={(e) => { e.stopPropagation(); onDelete(server) }}
+              aria-label="Remove server"
+            >
+              <Trash2 className="h-3 w-3" aria-hidden="true" />
+              Remove
+            </Button>
+          )}
           {showExternalLinks && serverData.repository?.url && (
             <Button
               variant="ghost"
@@ -177,18 +189,6 @@ export function ServerCard({ server, onDelete, onDeploy, showDelete = false, sho
               aria-label="Visit website"
             >
               <Globe className="h-3.5 w-3.5" aria-hidden="true" />
-            </Button>
-          )}
-          {showDelete && onDelete && (
-            <Button
-              variant="destructive"
-              size="sm"
-              className="h-7 gap-1 text-xs"
-              onClick={(e) => { e.stopPropagation(); onDelete(server) }}
-              aria-label="Remove server"
-            >
-              <Trash2 className="h-3 w-3" aria-hidden="true" />
-              Remove
             </Button>
           )}
         </div>
