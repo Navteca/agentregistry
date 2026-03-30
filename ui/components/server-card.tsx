@@ -181,13 +181,14 @@ export function ServerCard({ server, onDelete, onDeploy, showDelete = false, sho
           )}
           {showDelete && onDelete && (
             <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+              variant="destructive"
+              size="sm"
+              className="h-7 gap-1 text-xs"
               onClick={(e) => { e.stopPropagation(); onDelete(server) }}
-              aria-label="Delete server"
+              aria-label="Remove server"
             >
-              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+              <Trash2 className="h-3 w-3" aria-hidden="true" />
+              Remove
             </Button>
           )}
         </div>

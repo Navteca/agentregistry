@@ -833,6 +833,25 @@ func (db *PostgreSQL) DeleteServer(ctx context.Context, tx pgx.Tx, serverName, v
 
 	executor := db.getExecutor(tx)
 
+	// Prevent catalog deletion while deployment rows still reference this server version.
+	var deploymentExists bool
+	if err := executor.QueryRow(ctx,
+		`SELECT EXISTS (
+			SELECT 1
+			FROM deployments
+			WHERE server_name = $1
+			  AND version = $2
+			  AND resource_type = 'mcp'
+		)`,
+		serverName,
+		version,
+	).Scan(&deploymentExists); err != nil {
+		return fmt.Errorf("failed to check deployments for server delete: %w", err)
+	}
+	if deploymentExists {
+		return database.ErrConflict
+	}
+
 	// Check if the version being deleted is the current latest.
 	var wasLatest bool
 	err := executor.QueryRow(ctx,

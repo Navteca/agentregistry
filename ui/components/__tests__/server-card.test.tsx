@@ -116,12 +116,19 @@ describe("ServerCard", () => {
     expect(btn).toBeDisabled()
   })
 
-  it("shows delete button when showDelete is true", () => {
+  it("shows remove button when showDelete is true", () => {
     const onDelete = vi.fn()
-    const { container } = render(<ServerCard server={mockServer} showDelete onDelete={onDelete} />)
-    // Trash2 icon renders an SVG inside the delete button
-    const trashIcon = container.querySelector("svg.lucide-trash2")
-    expect(trashIcon).toBeTruthy()
+    render(<ServerCard server={mockServer} showDelete onDelete={onDelete} />)
+    expect(screen.getByRole("button", { name: "Remove server" })).toBeInTheDocument()
+  })
+
+  it("calls onDelete without triggering onClick", async () => {
+    const onDelete = vi.fn()
+    const onClick = vi.fn()
+    render(<ServerCard server={mockServer} showDelete onDelete={onDelete} onClick={onClick} />)
+    await userEvent.click(screen.getByRole("button", { name: "Remove server" }))
+    expect(onDelete).toHaveBeenCalledOnce()
+    expect(onClick).not.toHaveBeenCalled()
   })
 
   it("renders without optional fields", () => {
