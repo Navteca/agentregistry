@@ -3,11 +3,12 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { AddServerDialog } from "../add-server-dialog"
-import { createServerV0 } from "@/lib/admin-api"
+import { createServerV0, scoreServerV0 } from "@/lib/admin-api"
 import { toast } from "sonner"
 
 vi.mock("@/lib/admin-api", () => ({
   createServerV0: vi.fn(),
+  scoreServerV0: vi.fn(),
 }))
 
 vi.mock("sonner", () => ({
@@ -21,14 +22,17 @@ describe("AddServerDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(createServerV0).mockResolvedValue({
-      data: { server: { name: "io.navteca/hello-mcp" } },
+      data: { server: { name: "io.navteca/hello-mcp", version: "0.1.8" } },
+    } as never)
+    vi.mocked(scoreServerV0).mockResolvedValue({
+      data: { scores: { total: 93 } },
     } as never)
   })
 
   it("defaults new packages to oci registry type", async () => {
     const user = userEvent.setup()
 
-    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+    render(<AddServerDialog open onOpenChange={() => { }} onServerAdded={() => { }} />)
 
     await user.click(screen.getByRole("button", { name: "Add Package" }))
 
@@ -38,7 +42,7 @@ describe("AddServerDialog", () => {
   it("prevents submit when package transport is streamable-http without URL", async () => {
     const user = userEvent.setup()
 
-    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+    render(<AddServerDialog open onOpenChange={() => { }} onServerAdded={() => { }} />)
 
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
@@ -65,7 +69,7 @@ describe("AddServerDialog", () => {
   it("sends transport URL in package payload for streamable-http", async () => {
     const user = userEvent.setup()
 
-    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+    render(<AddServerDialog open onOpenChange={() => { }} onServerAdded={() => { }} />)
 
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
@@ -106,7 +110,7 @@ describe("AddServerDialog", () => {
   it("prevents submit when remote transport requires URL and it is empty", async () => {
     const user = userEvent.setup()
 
-    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+    render(<AddServerDialog open onOpenChange={() => { }} onServerAdded={() => { }} />)
 
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
@@ -125,7 +129,7 @@ describe("AddServerDialog", () => {
   it("requires repository URL before creating a server", async () => {
     const user = userEvent.setup()
 
-    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+    render(<AddServerDialog open onOpenChange={() => { }} onServerAdded={() => { }} />)
 
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
@@ -138,7 +142,7 @@ describe("AddServerDialog", () => {
   it("prevents submit when repository URL does not match selected provider", async () => {
     const user = userEvent.setup()
 
-    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+    render(<AddServerDialog open onOpenChange={() => { }} onServerAdded={() => { }} />)
 
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
@@ -156,7 +160,7 @@ describe("AddServerDialog", () => {
   it("sends repository when URL matches selected provider", async () => {
     const user = userEvent.setup()
 
-    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+    render(<AddServerDialog open onOpenChange={() => { }} onServerAdded={() => { }} />)
 
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")
@@ -178,6 +182,85 @@ describe("AddServerDialog", () => {
     })
   })
 
+  it("triggers scoring after successful server creation", async () => {
+    const user = userEvent.setup()
+
+    render(<AddServerDialog open onOpenChange={() => { }} onServerAdded={() => { }} />)
+
+    await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Version *"), "0.1.8")
+    await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://github.com/navteca/hello-mcp")
+
+    await user.click(screen.getByRole("button", { name: "Create Server" }))
+
+    await waitFor(() => {
+      expect(createServerV0).toHaveBeenCalledTimes(1)
+    })
+
+    await waitFor(() => {
+      expect(scoreServerV0).toHaveBeenCalledTimes(1)
+    })
+
+    const scoreCallArg = vi.mocked(scoreServerV0).mock.calls[0]?.[0]
+    expect(scoreCallArg?.path.serverName).toBe(encodeURIComponent("io.navteca/hello-mcp"))
+    expect(scoreCallArg?.path.version).toBe("0.1.8")
+  })
+
+  it("shows success toast when scoring succeeds", async () => {
+    const user = userEvent.setup()
+
+    render(<AddServerDialog open onOpenChange={() => { }} onServerAdded={() => { }} />)
+
+    await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Version *"), "0.1.8")
+    await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://github.com/navteca/hello-mcp")
+
+    await user.click(screen.getByRole("button", { name: "Create Server" }))
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("MCP scoring completed")
+    })
+  })
+
+  it("shows error toast when scoring fails", async () => {
+    vi.mocked(scoreServerV0).mockRejectedValueOnce(new Error("Service unavailable") as never)
+    const user = userEvent.setup()
+
+    render(<AddServerDialog open onOpenChange={() => { }} onServerAdded={() => { }} />)
+
+    await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Version *"), "0.1.8")
+    await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://github.com/navteca/hello-mcp")
+
+    await user.click(screen.getByRole("button", { name: "Create Server" }))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("MCP scoring failed — you can retry from the Score tab")
+    })
+  })
+
+  it("does not call scoring when server creation fails", async () => {
+    vi.mocked(createServerV0).mockRejectedValueOnce(new Error("Server creation failed") as never)
+    const user = userEvent.setup()
+
+    render(<AddServerDialog open onOpenChange={() => { }} onServerAdded={() => { }} />)
+
+    await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
+    await user.type(screen.getByLabelText("Version *"), "0.1.8")
+    await user.type(screen.getByLabelText("Description *"), "MCP server built with FastMCP")
+    await user.type(screen.getByLabelText("Repository URL *"), "https://github.com/navteca/hello-mcp")
+
+    await user.click(screen.getByRole("button", { name: "Create Server" }))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled()
+    })
+    expect(scoreServerV0).not.toHaveBeenCalled()
+  })
+
   it("shows backend detail error when repository URL is unreachable", async () => {
     const user = userEvent.setup()
     vi.mocked(createServerV0).mockRejectedValueOnce({
@@ -191,7 +274,7 @@ describe("AddServerDialog", () => {
       title: "Bad Request",
     } as never)
 
-    render(<AddServerDialog open onOpenChange={() => {}} onServerAdded={() => {}} />)
+    render(<AddServerDialog open onOpenChange={() => { }} onServerAdded={() => { }} />)
 
     await user.type(screen.getByLabelText("Server Name *"), "io.navteca/hello-mcp")
     await user.type(screen.getByLabelText("Version *"), "0.1.8")

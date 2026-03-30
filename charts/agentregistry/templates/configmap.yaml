@@ -64,3 +64,9 @@ data:
   {{- if .Values.config.oidcDeployPermissions }}
   AGENT_REGISTRY_OIDC_DEPLOY_PERMISSIONS: {{ .Values.config.oidcDeployPermissions | quote }}
   {{- end }}
+  {{- if .Values.config.mcpScoringURL }}
+  AGENT_REGISTRY_MCP_SCORING_URL: {{ .Values.config.mcpScoringURL | quote }}
+  {{- end }}
+  {{- if .Values.config.mcpScoringTimeout }}
+  AGENT_REGISTRY_MCP_SCORING_TIMEOUT: {{ .Values.config.mcpScoringTimeout | quote }}
+  {{- end }}

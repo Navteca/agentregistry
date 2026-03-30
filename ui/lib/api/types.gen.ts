@@ -72,6 +72,16 @@ export type AgentSemanticMeta = {
     score: number;
 };
 
+export type Analysis = {
+    'best-practices': CategoryDetail;
+    cost: CategoryDetail;
+    critical_issues: Array<Issue>;
+    key_strengths: Array<string>;
+    overall_assessment: string;
+    recommendations: Array<string>;
+    security: CategoryDetail;
+};
+
 export type Argument = {
     /**
      * A list of possible values for the input. If provided, the user must select one of these values.
@@ -127,6 +137,15 @@ export type Argument = {
     variables?: {
         [key: string]: Input;
     };
+};
+
+export type CategoryDetail = {
+    issues: Array<Issue>;
+    rules_met: number;
+    rules_na: number;
+    rules_not_met: number;
+    score: number;
+    strengths: Array<string>;
 };
 
 export type CreateProviderInput = {
@@ -262,6 +281,14 @@ export type ErrorModel = {
     type?: string;
 };
 
+export type FrontendConfigBody = {
+    api_base_url?: string;
+    gateway_base_url?: string;
+    keycloak_client_id: string;
+    keycloak_realm: string;
+    keycloak_url: string;
+};
+
 export type GitHubOidcTokenExchangeInputBody = {
     /**
      * GitHub Actions OIDC token
@@ -345,6 +372,13 @@ export type Input = {
     value?: string;
 };
 
+export type Issue = {
+    category: string;
+    rule_id: string;
+    severity: string;
+    summary: string;
+};
+
 export type KeyValueInput = {
     /**
      * A list of possible values for the input. If provided, the user must select one of these values.
@@ -388,6 +422,15 @@ export type KeyValueInput = {
     variables?: {
         [key: string]: Input;
     };
+};
+
+export type McpSurface = {
+    description: string;
+    prompt_count: number;
+    resource_count: number;
+    tool_count: number;
+    tool_names: Array<string>;
+    transports: Array<string>;
 };
 
 export type McpServerType = {
@@ -555,6 +598,30 @@ export type Repository = {
 export type ResourceDeploymentsMeta = {
     count: number;
     deployments: Array<DeploymentSummary>;
+};
+
+export type Rule = {
+    evidence: string;
+    outcome: string;
+    rationale: string;
+    rule_id: string;
+};
+
+export type ScoreServerResponse = {
+    analysis: Analysis;
+    mcp_surface: McpSurface;
+    rules: Array<Rule>;
+    scores: Scores;
+    serverName: string;
+    summary: string;
+    version: string;
+};
+
+export type Scores = {
+    'best-practices': number;
+    cost: number;
+    security: number;
+    total: number;
 };
 
 export type ServerJson = {
@@ -1047,6 +1114,31 @@ export type ExchangeHttpTokenV0Responses = {
 };
 
 export type ExchangeHttpTokenV0Response = ExchangeHttpTokenV0Responses[keyof ExchangeHttpTokenV0Responses];
+
+export type GetFrontendConfigData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v0/config/frontend';
+};
+
+export type GetFrontendConfigErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetFrontendConfigError = GetFrontendConfigErrors[keyof GetFrontendConfigErrors];
+
+export type GetFrontendConfigResponses = {
+    /**
+     * OK
+     */
+    200: FrontendConfigBody;
+};
+
+export type GetFrontendConfigResponse = GetFrontendConfigResponses[keyof GetFrontendConfigResponses];
 
 export type ListDeploymentsData = {
     body?: never;
@@ -1916,6 +2008,40 @@ export type GetServerVersionReadmeV0Responses = {
 };
 
 export type GetServerVersionReadmeV0Response = GetServerVersionReadmeV0Responses[keyof GetServerVersionReadmeV0Responses];
+
+export type ScoreServerV0Data = {
+    body?: never;
+    path: {
+        /**
+         * URL-encoded server name
+         */
+        serverName: string;
+        /**
+         * URL-encoded server version
+         */
+        version: string;
+    };
+    query?: never;
+    url: '/v0/servers/{serverName}/versions/{version}/score';
+};
+
+export type ScoreServerV0Errors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ScoreServerV0Error = ScoreServerV0Errors[keyof ScoreServerV0Errors];
+
+export type ScoreServerV0Responses = {
+    /**
+     * OK
+     */
+    200: ScoreServerResponse;
+};
+
+export type ScoreServerV0Response = ScoreServerV0Responses[keyof ScoreServerV0Responses];
 
 export type ListSkillsV0Data = {
     body?: never;

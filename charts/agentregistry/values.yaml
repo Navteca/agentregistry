@@ -89,6 +89,11 @@ config:
   oidcDeletePermissions: ""
   # -- Comma-separated deploy permission patterns granted after OIDC login
   oidcDeployPermissions: ""
+  # -- Base URL of the mcp-scoring service. Leave empty to disable scoring.
+  # -- In-cluster example: http://mcpscoring-mcp-scoring.mcp-scoring.svc.cluster.local:8000
+  mcpScoringURL: ""
+  # -- Timeout in seconds for scoring requests (default: 120)
+  mcpScoringTimeout: "120"
 
 # @section Deployment parameters
 
@@ -309,7 +314,7 @@ database:
     # -- External PostgreSQL connection string.
     # -- When set, Agent Registry connects here instead of the bundled instance. The bundled pod (if enabled) still deploys but is unused; the init container is skipped.
     url: ""
-    # -- Enable features that require a pgvector-capable PostgreSQL instance. e.g. vector schema migrations, embeddings and semantic search. 
+    # -- Enable features that require a pgvector-capable PostgreSQL instance. e.g. vector schema migrations, embeddings and semantic search.
     vectorEnabled: false
     # -- Bundled PostgreSQL — dev/eval only.
     bundled:

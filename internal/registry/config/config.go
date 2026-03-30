@@ -61,6 +61,11 @@ type Config struct {
 	RuntimeDir string `env:"RUNTIME_DIR" envDefault:"/tmp/arctl-runtime"`
 	Verbose    bool   `env:"VERBOSE" envDefault:"false"`
 
+	// MCP Scoring — external service for analyzing MCP server quality.
+	// When empty, scoring is disabled.
+	MCPScoringURL     string `env:"MCP_SCORING_URL" envDefault:""`
+	MCPScoringTimeout int    `env:"MCP_SCORING_TIMEOUT" envDefault:"120"`
+
 	// Embeddings / Semantic Search
 	Embeddings EmbeddingsConfig
 }

@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { createServerV0, type ServerJson } from "@/lib/admin-api"
+import { createServerV0, scoreServerV0, type ServerJson } from "@/lib/admin-api"
+import { triggerMcpScoringForCreatedServer } from "@/lib/mcp-scoring"
 import { Loader2, AlertCircle, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -140,13 +141,13 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
       if (!name.trim()) {
         throw new Error("Server name is required")
       }
-      
+
       // Validate name format (namespace/name)
       const namePattern = /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/
       if (!namePattern.test(name.trim())) {
         throw new Error("Server name must be in format 'namespace/name' (e.g., 'io.example/my-server')")
       }
-      
+
       if (!version.trim()) {
         throw new Error("Version is required")
       }
@@ -230,6 +231,18 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
 
       // Show success toast
       toast.success(`Server "${data?.server.name}" created successfully!`)
+
+      // Trigger scoring in the background (fire-and-forget)
+      void triggerMcpScoringForCreatedServer({
+        server: data?.server,
+        scoreServer: scoreServerV0,
+        onSuccess: () => {
+          toast.success("MCP scoring completed")
+        },
+        onFailure: () => {
+          toast.error("MCP scoring failed — you can retry from the Score tab")
+        },
+      })
 
       // Close dialog and refresh
       onOpenChange(false)

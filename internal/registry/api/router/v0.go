@@ -47,6 +47,7 @@ func RegisterRoutes(
 	v0.RegisterFrontendConfigEndpoint(api, pathPrefix, cfg)
 	v0.RegisterServersEndpoints(api, pathPrefix, registry)
 	v0.RegisterServersCreateEndpoint(api, pathPrefix, registry)
+	v0.RegisterScoringEndpoint(api, pathPrefix, registry, cfg)
 	v0.RegisterEditEndpoints(api, pathPrefix, registry)
 	v0auth.RegisterAuthEndpoints(api, pathPrefix, cfg)
 	platformExt := v0.PlatformExtensions{}
