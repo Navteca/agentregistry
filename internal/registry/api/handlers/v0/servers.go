@@ -119,6 +119,9 @@ func RegisterServersEndpoints(api huma.API, pathPrefix string, registry service.
 			if errors.Is(err, database.ErrNotFound) {
 				return nil, huma.Error404NotFound("Server not found")
 			}
+			if errors.Is(err, database.ErrConflict) {
+				return nil, huma.Error409Conflict("Server version is currently referenced by deployments. Remove deployments first.")
+			}
 			if errors.Is(err, auth.ErrUnauthenticated) {
 				return nil, huma.Error401Unauthorized("Authentication required")
 			}

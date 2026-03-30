@@ -27,13 +27,22 @@ import { SkillDetail } from "@/components/skill-detail"
 import { AgentDetail } from "@/components/agent-detail"
 import { PromptDetail } from "@/components/prompt-detail"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { ImportDialog } from "@/components/import-dialog"
 import { AddServerDialog } from "@/components/add-server-dialog"
 import { AddSkillDialog } from "@/components/add-skill-dialog"
 import { AddAgentDialog } from "@/components/add-agent-dialog"
 import { AddPromptDialog } from "@/components/add-prompt-dialog"
 import { DeployDialog } from "@/components/deploy-dialog"
-import { listServersV0, listSkillsV0, listAgentsV0, listPromptsV0, ServerResponse, SkillResponse, AgentResponse, PromptResponse } from "@/lib/admin-api"
+import { deleteServerVersionV0, listServersV0, listSkillsV0, listAgentsV0, listPromptsV0, ServerResponse, SkillResponse, AgentResponse, PromptResponse } from "@/lib/admin-api"
+import { toast } from "sonner"
 import MCPIcon from "@/components/icons/mcp"
 import {
   Search,
@@ -108,6 +117,45 @@ export default function AdminPage() {
   const [selectedPrompt, setSelectedPrompt] = useState<GroupedPrompt | null>(null)
   const [deployServerTarget, setDeployServerTarget] = useState<ServerResponse | null>(null)
   const [deployAgentTarget, setDeployAgentTarget] = useState<AgentResponse | null>(null)
+  const [serverToRemove, setServerToRemove] = useState<GroupedServer | null>(null)
+  const [removingServer, setRemovingServer] = useState(false)
+
+  const extractErrorMessage = (error: unknown): string => {
+    if (error instanceof Error && error.message) {
+      return error.message
+    }
+    if (typeof error === "string" && error.trim()) {
+      return error
+    }
+    if (error && typeof error === "object") {
+      const record = error as Record<string, unknown>
+      const detail = typeof record.detail === "string" ? record.detail : null
+      if (detail) return detail
+      const message = typeof record.message === "string" ? record.message : null
+      if (message) return message
+      const title = typeof record.title === "string" ? record.title : null
+      if (title) return title
+      const nestedError = record.error
+      if (nestedError) return extractErrorMessage(nestedError)
+    }
+    return "Failed to remove server"
+  }
+
+  const isConflictError = (error: unknown): boolean => {
+    if (!error || typeof error !== "object") {
+      return false
+    }
+    const record = error as Record<string, unknown>
+    const directStatus = record.status ?? record.statusCode
+    if (directStatus === 409) {
+      return true
+    }
+    if (record.response && typeof record.response === "object") {
+      const responseStatus = (record.response as Record<string, unknown>).status
+      return responseStatus === 409
+    }
+    return false
+  }
 
   const getStars = (server: ServerResponse): number => {
     const publisherProvided = server.server._meta?.['io.modelcontextprotocol.registry/publisher-provided'] as Record<string, unknown> | undefined
@@ -311,6 +359,48 @@ export default function AdminPage() {
   }
 
   useEffect(() => { fetchData() }, [])
+
+  const confirmRemoveServer = async () => {
+    if (!serverToRemove) {
+      return
+    }
+
+    const targetName = serverToRemove.server.name
+    const targetVersion = serverToRemove.server.version
+
+    try {
+      setRemovingServer(true)
+      await deleteServerVersionV0({
+        path: {
+          serverName: targetName,
+          version: targetVersion,
+        },
+        throwOnError: true,
+      })
+
+      toast.success(`Removed ${targetName}@${targetVersion}`)
+
+      if (
+        selectedServer &&
+        selectedServer.server.name === targetName &&
+        selectedServer.server.version === targetVersion
+      ) {
+        setSelectedServer(null)
+      }
+
+      setServerToRemove(null)
+      await fetchData()
+    } catch (err) {
+      const errorMessage = extractErrorMessage(err)
+      if (isConflictError(err) || errorMessage.toLowerCase().includes("deployment")) {
+        toast.error("Cannot remove this server version while deployments still reference it")
+      } else {
+        toast.error(errorMessage)
+      }
+    } finally {
+      setRemovingServer(false)
+    }
+  }
 
   const isSheetOpen = !!(selectedServer || selectedSkill || selectedAgent || selectedPrompt)
   const closeSheet = () => {
@@ -594,6 +684,8 @@ export default function AdminPage() {
                     onClick={() => setSelectedServer(server)}
                     showDeploy
                     onDeploy={(s) => setDeployServerTarget(s)}
+                    showDelete
+                    onDelete={() => setServerToRemove(server)}
                   />
                 ))}
               </div>
@@ -722,6 +814,51 @@ export default function AdminPage() {
           {selectedPrompt && <PromptDetail prompt={selectedPrompt} allVersions={selectedPrompt.allVersions} />}
         </SheetContent>
       </Sheet>
+
+      <Dialog
+        open={!!serverToRemove}
+        onOpenChange={(open) => {
+          if (!open && !removingServer) {
+            setServerToRemove(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Server Version</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove <strong>{serverToRemove?.server.name}</strong> version{" "}
+              <strong>{serverToRemove?.server.version}</strong> from the catalog?
+              <br />
+              <br />
+              This permanently deletes this version. Deployments are not automatically removed.
+              {serverToRemove && serverToRemove.versionCount > 1 ? (
+                <>
+                  <br />
+                  <br />
+                  {serverToRemove.versionCount - 1} other version(s) will remain available.
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setServerToRemove(null)}
+              disabled={removingServer}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmRemoveServer}
+              disabled={removingServer}
+            >
+              {removingServer ? "Removing..." : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }

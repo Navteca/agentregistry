@@ -19,6 +19,7 @@ import (
 	"github.com/agentregistry-dev/agentregistry/internal/registry/embeddings"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/service"
 	"github.com/agentregistry-dev/agentregistry/pkg/models"
+	"github.com/agentregistry-dev/agentregistry/pkg/registry/auth"
 	"github.com/agentregistry-dev/agentregistry/pkg/registry/database"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -432,6 +433,89 @@ func TestGetServerVersionEndpoint(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDeleteServerVersionEndpoint(t *testing.T) {
+	testSeed := make([]byte, ed25519.SeedSize)
+	_, randErr := rand.Read(testSeed)
+	require.NoError(t, randErr)
+	testConfig := &config.Config{
+		JWTPrivateKey:            hex.EncodeToString(testSeed),
+		EnableRegistryValidation: false,
+	}
+
+	ctx := context.Background()
+	db := internaldb.NewTestDB(t)
+	registryService := service.NewRegistryService(db, testConfig, nil)
+	ctxWithAdmin := auth.WithSystemContext(ctx)
+
+	mux := http.NewServeMux()
+	api := humago.New(mux, huma.DefaultConfig("Test API", "1.0.0"))
+	v0.RegisterServersEndpoints(api, "/v0", registryService)
+
+	t.Run("deletes server version successfully", func(t *testing.T) {
+		serverName := "com.example/delete-server"
+		_, err := registryService.CreateServer(ctxWithAdmin, &apiv0.ServerJSON{
+			Schema:      model.CurrentSchemaURL,
+			Name:        serverName,
+			Description: "Delete endpoint test server",
+			Version:     "1.0.0",
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodDelete, "/v0/servers/"+url.PathEscape(serverName)+"/versions/1.0.0", nil)
+		req = req.WithContext(auth.WithSystemContext(req.Context()))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		getReq := httptest.NewRequest(http.MethodGet, "/v0/servers/"+url.PathEscape(serverName)+"/versions/1.0.0", nil)
+		getReq = getReq.WithContext(auth.WithSystemContext(getReq.Context()))
+		getW := httptest.NewRecorder()
+		mux.ServeHTTP(getW, getReq)
+		require.Equal(t, http.StatusNotFound, getW.Code)
+	})
+
+	t.Run("returns conflict when deployments reference server version", func(t *testing.T) {
+		serverName := "com.example/delete-server-in-use"
+		version := "2.0.0"
+
+		_, err := registryService.CreateServer(ctxWithAdmin, &apiv0.ServerJSON{
+			Schema:      model.CurrentSchemaURL,
+			Name:        serverName,
+			Description: "Server that has deployments",
+			Version:     version,
+		})
+		require.NoError(t, err)
+
+		_, err = db.CreateProvider(ctxWithAdmin, nil, &models.CreateProviderInput{
+			ID:       "provider-delete-test",
+			Name:     "Delete Test Provider",
+			Platform: "local",
+			Config:   map[string]any{},
+		})
+		require.NoError(t, err)
+
+		err = db.CreateDeployment(ctxWithAdmin, nil, &models.Deployment{
+			ServerName:       serverName,
+			Version:          version,
+			ProviderID:       "provider-delete-test",
+			ResourceType:     "mcp",
+			Status:           models.DeploymentStatusDeployed,
+			Origin:           "managed",
+			Env:              map[string]string{},
+			ProviderConfig:   models.JSONObject{},
+			ProviderMetadata: models.JSONObject{},
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodDelete, "/v0/servers/"+url.PathEscape(serverName)+"/versions/"+url.PathEscape(version), nil)
+		req = req.WithContext(auth.WithSystemContext(req.Context()))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		require.Equal(t, http.StatusConflict, w.Code)
+		assert.Contains(t, w.Body.String(), "Remove deployments first")
+	})
 }
 
 type stubEmbeddingProvider struct {
