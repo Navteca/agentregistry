@@ -2,14 +2,14 @@ import { describe, expect, it, vi } from "vitest"
 import { buildScorePath, triggerMcpScoringForCreatedServer } from "../mcp-scoring"
 
 describe("mcp-scoring integration helper", () => {
-  it("builds encoded score path when name and version are present", () => {
+  it("builds score path when name and version are present", () => {
     const path = buildScorePath({
       name: "io.github.navteca/hello mcp",
       version: "1.0.0+build/meta",
     })
     expect(path).toEqual({
-      serverName: "io.github.navteca%2Fhello%20mcp",
-      version: "1.0.0%2Bbuild%2Fmeta",
+      serverName: "io.github.navteca/hello mcp",
+      version: "1.0.0+build/meta",
     })
   })
 
@@ -44,7 +44,7 @@ describe("mcp-scoring integration helper", () => {
     expect(scoreServer).toHaveBeenCalledTimes(1)
     expect(scoreServer).toHaveBeenCalledWith({
       path: {
-        serverName: "io.github%2Fnavteca",
+        serverName: "io.github/navteca",
         version: "1.0.0",
       },
     })
