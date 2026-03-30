@@ -60,7 +60,9 @@ func generateSpec(apiVersion string) *huma.OpenAPI {
 	// registration time to set up JWT managers, so we need a minimal config
 	// with a valid dummy key. The key is never used for actual signing.
 	cfg := &config.Config{
-		JWTPrivateKey: "0000000000000000000000000000000000000000000000000000000000000000",
+		JWTPrivateKey:     "0000000000000000000000000000000000000000000000000000000000000000",
+		MCPScoringURL:     "http://placeholder-for-openapi-gen",
+		MCPScoringTimeout: 120,
 	}
 
 	// Register all routes. Service and metrics are nil because they are only

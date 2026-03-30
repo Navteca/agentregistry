@@ -114,6 +114,33 @@ tests:
           path: data.AGENT_REGISTRY_SERVER_ADDRESS
           value: ":9090"
 
+  - it: does not include AGENT_REGISTRY_MCP_SCORING_URL when mcpScoringURL is empty
+    asserts:
+      - notExists:
+          path: data.AGENT_REGISTRY_MCP_SCORING_URL
+
+  - it: includes AGENT_REGISTRY_MCP_SCORING_URL when mcpScoringURL is set
+    set:
+      config.mcpScoringURL: "http://mcpscoring-mcp-scoring.mcp-scoring.svc.cluster.local:8000"
+    asserts:
+      - equal:
+          path: data.AGENT_REGISTRY_MCP_SCORING_URL
+          value: "http://mcpscoring-mcp-scoring.mcp-scoring.svc.cluster.local:8000"
+
+  - it: includes AGENT_REGISTRY_MCP_SCORING_TIMEOUT when mcpScoringTimeout is set
+    set:
+      config.mcpScoringTimeout: "60"
+    asserts:
+      - equal:
+          path: data.AGENT_REGISTRY_MCP_SCORING_TIMEOUT
+          value: "60"
+
+  - it: includes default AGENT_REGISTRY_MCP_SCORING_TIMEOUT
+    asserts:
+      - equal:
+          path: data.AGENT_REGISTRY_MCP_SCORING_TIMEOUT
+          value: "120"
+
   - it: applies fullnameOverride
     set:
       fullnameOverride: myapp

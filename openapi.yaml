@@ -335,6 +335,30 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/ErrorModel'
+    /v0/config/frontend:
+        get:
+            tags:
+                - auth
+            summary: Frontend OIDC configuration
+            description: Returns the Keycloak URL, realm, and client ID required by the browser to initialise OIDC authentication. This endpoint is intentionally unauthenticated.
+            operationId: get-frontend-config
+            responses:
+                "200":
+                    description: OK
+                    headers:
+                        Cache-Control:
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/FrontendConfigBody'
+                default:
+                    description: Error
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorModel'
     /v0/deployments:
         get:
             tags:
@@ -1348,6 +1372,48 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/ErrorModel'
+    /v0/servers/{serverName}/versions/{version}/score:
+        post:
+            tags:
+                - servers
+                - scoring
+            summary: Trigger MCP scoring for a server version
+            description: Calls the external mcp-scoring service to analyze the server's repository and persists the results.
+            operationId: score-server-v0
+            parameters:
+                - name: serverName
+                  in: path
+                  description: URL-encoded server name
+                  required: true
+                  schema:
+                    type: string
+                    description: URL-encoded server name
+                    examples:
+                        - com.example%2Fmy-server
+                  example: com.example%2Fmy-server
+                - name: version
+                  in: path
+                  description: URL-encoded server version
+                  required: true
+                  schema:
+                    type: string
+                    description: URL-encoded server version
+                    examples:
+                        - 1.0.0
+                  example: 1.0.0
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ScoreServerResponse'
+                default:
+                    description: Error
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorModel'
     /v0/skills:
         get:
             tags:
@@ -1743,6 +1809,38 @@ components:
                     format: double
             required:
                 - score
+        Analysis:
+            type: object
+            additionalProperties: false
+            properties:
+                best-practices:
+                    $ref: '#/components/schemas/CategoryDetail'
+                cost:
+                    $ref: '#/components/schemas/CategoryDetail'
+                critical_issues:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Issue'
+                key_strengths:
+                    type: array
+                    items:
+                        type: string
+                overall_assessment:
+                    type: string
+                recommendations:
+                    type: array
+                    items:
+                        type: string
+                security:
+                    $ref: '#/components/schemas/CategoryDetail'
+            required:
+                - overall_assessment
+                - security
+                - best-practices
+                - cost
+                - key_strengths
+                - critical_issues
+                - recommendations
         Argument:
             type: object
             additionalProperties: false
@@ -1803,6 +1901,37 @@ components:
                         $ref: '#/components/schemas/Input'
             required:
                 - type
+        CategoryDetail:
+            type: object
+            additionalProperties: false
+            properties:
+                issues:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Issue'
+                rules_met:
+                    type: integer
+                    format: int64
+                rules_na:
+                    type: integer
+                    format: int64
+                rules_not_met:
+                    type: integer
+                    format: int64
+                score:
+                    type: integer
+                    format: int64
+                strengths:
+                    type: array
+                    items:
+                        type: string
+            required:
+                - score
+                - rules_met
+                - rules_not_met
+                - rules_na
+                - strengths
+                - issues
         CreateProviderInput:
             type: object
             additionalProperties: false
@@ -2010,6 +2139,24 @@ components:
                     default: about:blank
                     examples:
                         - https://example.com/errors/example
+        FrontendConfigBody:
+            type: object
+            additionalProperties: false
+            properties:
+                api_base_url:
+                    type: string
+                gateway_base_url:
+                    type: string
+                keycloak_client_id:
+                    type: string
+                keycloak_realm:
+                    type: string
+                keycloak_url:
+                    type: string
+            required:
+                - keycloak_url
+                - keycloak_realm
+                - keycloak_client_id
         GitHubOIDCTokenExchangeInputBody:
             type: object
             additionalProperties: false
@@ -2120,6 +2267,23 @@ components:
                 value:
                     type: string
                     description: The value for the input. If this is not set, the user may be prompted to provide a value. Identifiers wrapped in {curly_braces} will be replaced with the corresponding properties from the input variables map.
+        Issue:
+            type: object
+            additionalProperties: false
+            properties:
+                category:
+                    type: string
+                rule_id:
+                    type: string
+                severity:
+                    type: string
+                summary:
+                    type: string
+            required:
+                - rule_id
+                - category
+                - summary
+                - severity
         KeyValueInput:
             type: object
             additionalProperties: false
@@ -2167,6 +2331,36 @@ components:
                         $ref: '#/components/schemas/Input'
             required:
                 - name
+        MCPSurface:
+            type: object
+            additionalProperties: false
+            properties:
+                description:
+                    type: string
+                prompt_count:
+                    type: integer
+                    format: int64
+                resource_count:
+                    type: integer
+                    format: int64
+                tool_count:
+                    type: integer
+                    format: int64
+                tool_names:
+                    type: array
+                    items:
+                        type: string
+                transports:
+                    type: array
+                    items:
+                        type: string
+            required:
+                - tool_count
+                - tool_names
+                - prompt_count
+                - resource_count
+                - transports
+                - description
         McpServerType:
             type: object
             additionalProperties: false
@@ -2472,6 +2666,72 @@ components:
             required:
                 - deployments
                 - count
+        Rule:
+            type: object
+            additionalProperties: false
+            properties:
+                evidence:
+                    type: string
+                outcome:
+                    type: string
+                rationale:
+                    type: string
+                rule_id:
+                    type: string
+            required:
+                - rule_id
+                - outcome
+                - evidence
+                - rationale
+        ScoreServerResponse:
+            type: object
+            additionalProperties: false
+            properties:
+                analysis:
+                    $ref: '#/components/schemas/Analysis'
+                mcp_surface:
+                    $ref: '#/components/schemas/MCPSurface'
+                rules:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Rule'
+                scores:
+                    $ref: '#/components/schemas/Scores'
+                serverName:
+                    type: string
+                summary:
+                    type: string
+                version:
+                    type: string
+            required:
+                - serverName
+                - version
+                - scores
+                - rules
+                - mcp_surface
+                - summary
+                - analysis
+        Scores:
+            type: object
+            additionalProperties: false
+            properties:
+                best-practices:
+                    type: integer
+                    format: int64
+                cost:
+                    type: integer
+                    format: int64
+                security:
+                    type: integer
+                    format: int64
+                total:
+                    type: integer
+                    format: int64
+            required:
+                - security
+                - best-practices
+                - cost
+                - total
         ServerJSON:
             type: object
             additionalProperties: false
