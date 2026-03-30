@@ -17,8 +17,9 @@ export function buildScorePath(server: CreatedServerIdentity): ScorePath | null 
     return null
   }
   return {
-    serverName: encodeURIComponent(name),
-    version: encodeURIComponent(version),
+    // SDK path serialization handles URL encoding for path params.
+    serverName: name,
+    version,
   }
 }
 

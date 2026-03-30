@@ -203,7 +203,7 @@ describe("AddServerDialog", () => {
     })
 
     const scoreCallArg = vi.mocked(scoreServerV0).mock.calls[0]?.[0]
-    expect(scoreCallArg?.path.serverName).toBe(encodeURIComponent("io.navteca/hello-mcp"))
+    expect(scoreCallArg?.path.serverName).toBe("io.navteca/hello-mcp")
     expect(scoreCallArg?.path.version).toBe("0.1.8")
   })
 
