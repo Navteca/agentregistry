@@ -109,11 +109,51 @@ describe("ServerCard", () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
+  it("renders edit button to the left of deploy", () => {
+    const onEdit = vi.fn()
+    const onDeploy = vi.fn()
+    const ociServer: ServerResponse = {
+      server: { ...mockServer.server, packages: [{ registryType: "oci", identifier: "ghcr.io/acme/db", transport: { type: "stdio" } }] },
+      _meta: mockServer._meta,
+    }
+    render(<ServerCard server={ociServer} showEdit onEdit={onEdit} showDeploy onDeploy={onDeploy} />)
+
+    const editButton = screen.getByRole("button", { name: "Edit server" })
+    const deployButton = screen.getByRole("button", { name: /Deploy/i })
+
+    expect(editButton.compareDocumentPosition(deployButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("calls onEdit without triggering onClick", async () => {
+    const onEdit = vi.fn()
+    const onClick = vi.fn()
+    render(<ServerCard server={mockServer} showEdit onEdit={onEdit} onClick={onClick} />)
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit server" }))
+
+    expect(onEdit).toHaveBeenCalledOnce()
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it("does not render edit button when callback is missing", () => {
+    render(<ServerCard server={mockServer} showEdit />)
+    expect(screen.queryByRole("button", { name: "Edit server" })).not.toBeInTheDocument()
+  })
+
   it("disables deploy button when server has no OCI package", () => {
     const onDeploy = vi.fn()
     render(<ServerCard server={mockServer} showDeploy onDeploy={onDeploy} />)
     const btn = screen.getByText("Deploy").closest("button")!
     expect(btn).toBeDisabled()
+  })
+
+  it("does not trigger row click when disabled deploy wrapper is clicked", async () => {
+    const onClick = vi.fn()
+    render(<ServerCard server={mockServer} showDeploy onDeploy={vi.fn()} onClick={onClick} />)
+
+    await userEvent.click(screen.getByText("Deploy").closest("span")!)
+
+    expect(onClick).not.toHaveBeenCalled()
   })
 
   it("shows remove button when showDelete is true", () => {
@@ -144,5 +184,54 @@ describe("ServerCard", () => {
     render(<ServerCard server={minimal} />)
     expect(screen.getByText("Bare minimum.")).toBeInTheDocument()
     expect(screen.getByText("0.0.1")).toBeInTheDocument()
+  })
+
+  it("opens repository and website links without triggering row click", async () => {
+    const onClick = vi.fn()
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null)
+    render(<ServerCard server={mockServer} onClick={onClick} />)
+
+    await userEvent.click(screen.getByRole("button", { name: "View repository" }))
+    await userEvent.click(screen.getByRole("button", { name: "Visit website" }))
+
+    expect(openSpy).toHaveBeenNthCalledWith(1, "https://github.com/acme/database-server", "_blank")
+    expect(openSpy).toHaveBeenNthCalledWith(2, "https://acme.dev/database-server", "_blank")
+    expect(onClick).not.toHaveBeenCalled()
+    openSpy.mockRestore()
+  })
+
+  it("falls back to raw date string when date formatting throws", () => {
+    const dateSpy = vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(() => {
+      throw new Error("format failed")
+    })
+    render(<ServerCard server={mockServer} />)
+    expect(screen.getByText("2024-11-01T00:00:00Z")).toBeInTheDocument()
+    dateSpy.mockRestore()
+  })
+
+  it("renders icon, verification badges, and star metadata when present", () => {
+    const richServer: ServerResponse = {
+      server: {
+        ...mockServer.server,
+        icons: [{ src: "https://cdn.acme.dev/icon.png" }],
+        _meta: {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "aregistry.ai/metadata": {
+              stars: 1234,
+              identity: {
+                org_is_verified: true,
+                publisher_identity_verified_by_jwt: true,
+              },
+            },
+          },
+        },
+      },
+      _meta: mockServer._meta,
+    }
+
+    const { container } = render(<ServerCard server={richServer} />)
+
+    expect(container.querySelector('img[src="https://cdn.acme.dev/icon.png"]')).toBeInTheDocument()
+    expect(screen.getByText("1,234")).toBeInTheDocument()
   })
 })

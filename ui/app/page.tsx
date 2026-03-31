@@ -41,6 +41,7 @@ import { AddSkillDialog } from "@/components/add-skill-dialog"
 import { AddAgentDialog } from "@/components/add-agent-dialog"
 import { AddPromptDialog } from "@/components/add-prompt-dialog"
 import { DeployDialog } from "@/components/deploy-dialog"
+import { EditServerDialog } from "@/components/edit-server-dialog"
 import { deleteServerVersionV0, listServersV0, listSkillsV0, listAgentsV0, listPromptsV0, ServerResponse, SkillResponse, AgentResponse, PromptResponse } from "@/lib/admin-api"
 import { toast } from "sonner"
 import MCPIcon from "@/components/icons/mcp"
@@ -116,6 +117,7 @@ export default function AdminPage() {
   const [selectedAgent, setSelectedAgent] = useState<GroupedAgent | null>(null)
   const [selectedPrompt, setSelectedPrompt] = useState<GroupedPrompt | null>(null)
   const [deployServerTarget, setDeployServerTarget] = useState<ServerResponse | null>(null)
+  const [editServerTarget, setEditServerTarget] = useState<ServerResponse | null>(null)
   const [deployAgentTarget, setDeployAgentTarget] = useState<AgentResponse | null>(null)
   const [serverToRemove, setServerToRemove] = useState<GroupedServer | null>(null)
   const [removingServer, setRemovingServer] = useState(false)
@@ -469,12 +471,12 @@ export default function AdminPage() {
         s.skill.title?.toLowerCase().includes(query) ||
         s.skill.description.toLowerCase().includes(query)
       ))
-      setFilteredAgents(groupedAgents.filter(({agent}) =>
+      setFilteredAgents(groupedAgents.filter(({ agent }) =>
         agent.name?.toLowerCase().includes(query) ||
         agent.modelProvider?.toLowerCase().includes(query) ||
         agent.description.toLowerCase().includes(query)
       ))
-      setFilteredPrompts(groupedPrompts.filter(({prompt}) =>
+      setFilteredPrompts(groupedPrompts.filter(({ prompt }) =>
         prompt.name?.toLowerCase().includes(query) ||
         prompt.description?.toLowerCase().includes(query) ||
         prompt.content?.toLowerCase().includes(query)
@@ -528,23 +530,20 @@ export default function AdminPage() {
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
-                className={`group relative flex items-center gap-2 px-4 py-3 text-[15px] font-medium transition-colors ${
-                  activeTab === key
+                className={`group relative flex items-center gap-2 px-4 py-3 text-[15px] font-medium transition-colors ${activeTab === key
                     ? "text-foreground"
                     : "text-muted-foreground hover:text-foreground"
-                }`}
+                  }`}
               >
-                <span className={`h-4 w-4 flex items-center justify-center transition-colors ${
-                  activeTab === key ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                }`}>
+                <span className={`h-4 w-4 flex items-center justify-center transition-colors ${activeTab === key ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                  }`}>
                   {icon}
                 </span>
                 {label}
-                <span className={`text-[13px] tabular-nums px-1.5 py-0.5 rounded-full transition-colors ${
-                  activeTab === key
+                <span className={`text-[13px] tabular-nums px-1.5 py-0.5 rounded-full transition-colors ${activeTab === key
                     ? "bg-primary/10 text-primary"
                     : "bg-muted text-muted-foreground"
-                }`}>
+                  }`}>
                   {getCount(key)}
                 </span>
                 {activeTab === key && (
@@ -683,7 +682,9 @@ export default function AdminPage() {
                     versionCount={server.versionCount}
                     onClick={() => setSelectedServer(server)}
                     showDeploy
+                    showEdit
                     onDeploy={(s) => setDeployServerTarget(s)}
+                    onEdit={(s) => setEditServerTarget(s)}
                     showDelete
                     onDelete={() => setServerToRemove(server)}
                   />
@@ -776,8 +777,14 @@ export default function AdminPage() {
 
       <ImportDialog open={importDialogOpen} onOpenChange={setImportDialogOpen} onImportComplete={fetchData} />
       <AddServerDialog open={addServerDialogOpen} onOpenChange={setAddServerDialogOpen} onServerAdded={fetchData} />
+      <EditServerDialog
+        open={!!editServerTarget}
+        onOpenChange={(open) => { if (!open) setEditServerTarget(null) }}
+        server={editServerTarget}
+        onServerUpdated={fetchData}
+      />
       <AddSkillDialog open={addSkillDialogOpen} onOpenChange={setAddSkillDialogOpen} onSkillAdded={fetchData} />
-      <AddAgentDialog open={addAgentDialogOpen} onOpenChange={setAddAgentDialogOpen} onAgentAdded={() => {}} />
+      <AddAgentDialog open={addAgentDialogOpen} onOpenChange={setAddAgentDialogOpen} onAgentAdded={() => { }} />
       <AddPromptDialog open={addPromptDialogOpen} onOpenChange={setAddPromptDialogOpen} onPromptAdded={fetchData} />
 
       <DeployDialog
@@ -799,9 +806,9 @@ export default function AdminPage() {
         <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
           <SheetTitle className="sr-only">
             {selectedServer ? (selectedServer.server.title || selectedServer.server.name) :
-             selectedAgent ? selectedAgent.agent.name :
-             selectedSkill ? (selectedSkill.skill.title || selectedSkill.skill.name) :
-             selectedPrompt ? selectedPrompt.prompt.name : 'Details'}
+              selectedAgent ? selectedAgent.agent.name :
+                selectedSkill ? (selectedSkill.skill.title || selectedSkill.skill.name) :
+                  selectedPrompt ? selectedPrompt.prompt.name : 'Details'}
           </SheetTitle>
           {selectedServer && (
             <ServerDetail
