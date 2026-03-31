@@ -8,20 +8,33 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { Package, ExternalLink, GitBranch, Star, Github, Globe, Trash2, ShieldCheck, BadgeCheck, Play } from "lucide-react"
+import { Package, ExternalLink, GitBranch, Star, Github, Globe, Trash2, ShieldCheck, BadgeCheck, Play, SquarePen } from "lucide-react"
 
 interface ServerCardProps {
   server: ServerResponse
   onDelete?: (server: ServerResponse) => void
   onDeploy?: (server: ServerResponse) => void
+  onEdit?: (server: ServerResponse) => void
   showDelete?: boolean
   showDeploy?: boolean
+  showEdit?: boolean
   showExternalLinks?: boolean
   onClick?: () => void
   versionCount?: number
 }
 
-export function ServerCard({ server, onDelete, onDeploy, showDelete = false, showDeploy = false, showExternalLinks = true, onClick, versionCount }: ServerCardProps) {
+export function ServerCard({
+  server,
+  onDelete,
+  onDeploy,
+  onEdit,
+  showDelete = false,
+  showDeploy = false,
+  showEdit = false,
+  showExternalLinks = true,
+  onClick,
+  versionCount,
+}: ServerCardProps) {
   const { server: serverData, _meta } = server
   const official = _meta?.['io.modelcontextprotocol.registry/official']
 
@@ -30,6 +43,7 @@ export function ServerCard({ server, onDelete, onDeploy, showDelete = false, sho
   const githubStars = publisherMetadata?.stars
   const identityData = publisherMetadata?.identity
   const hasOciPackage = serverData.packages?.some(pkg => pkg.registryType === "oci") ?? false
+  const repositoryUrl = serverData.repository?.url
 
   const formatDate = (dateString: string) => {
     try {
@@ -127,6 +141,18 @@ export function ServerCard({ server, onDelete, onDeploy, showDelete = false, sho
         </div>
 
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+          {showEdit && onEdit && (
+            <Button
+              variant="default"
+              size="sm"
+              className="h-7 gap-1 text-xs"
+              onClick={(e) => { e.stopPropagation(); onEdit(server) }}
+              aria-label="Edit server"
+            >
+              <SquarePen className="h-3 w-3" aria-hidden="true" />
+              Edit
+            </Button>
+          )}
           {showDeploy && onDeploy && (
             hasOciPackage ? (
               <Button
@@ -169,12 +195,12 @@ export function ServerCard({ server, onDelete, onDeploy, showDelete = false, sho
               Remove
             </Button>
           )}
-          {showExternalLinks && serverData.repository?.url && (
+          {showExternalLinks && repositoryUrl && (
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={(e) => { e.stopPropagation(); window.open(serverData.repository?.url || '', '_blank') }}
+              onClick={(e) => { e.stopPropagation(); window.open(repositoryUrl, '_blank') }}
               aria-label="View repository"
             >
               <Github className="h-3.5 w-3.5" aria-hidden="true" />
