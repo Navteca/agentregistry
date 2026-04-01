@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="398px" height="85px" viewBox="0 0 398 85" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Group 2</title>
+    <defs>
+        <filter color-interpolation-filters="auto" id="filter-1">
+            <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 1.000000 0 0 0 0 1.000000 0 0 0 0 1.000000 0 0 0 1.000000 0"></feColorMatrix>
+        </filter>
+    </defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Group-2">
+            <g filter="url(#filter-1)" id="Group">
+                <g transform="translate(0.000000, 4.000000)">
+                    <line x1="43.3269231" y1="54.326087" x2="59.6730769" y2="68.673913" id="Line-Copy-16" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <line x1="41.3333333" y1="49.3333333" x2="63" y2="67" id="Line-Copy-17" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <line x1="40.3333333" y1="42.3333333" x2="66" y2="64" id="Line-Copy-18" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <line x1="39.3372093" y1="38.3333333" x2="67.6627907" y2="61.6666667" id="Line-Copy-19" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <line x1="40.3369565" y1="32.3333333" x2="70.6630435" y2="57.6666667" id="Line-Copy-20" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <line x1="41.3333333" y1="28.3292683" x2="72.6666667" y2="54.6707317" id="Line-Copy-21" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <line x1="41.3333333" y1="28.3292683" x2="72.6666667" y2="54.6707317" id="Line-Copy-22" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <line x1="43.3297872" y1="24.3292683" x2="73.6702128" y2="50.6707317" id="Line-Copy-23" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <line x1="45.3369565" y1="19.3375" x2="75.6630435" y2="45.6625" id="Line-Copy-24" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <line x1="47.3295455" y1="17.3378378" x2="75.6704545" y2="41.6621622" id="Line-Copy-25" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <line x1="49.3292683" y1="14.3285714" x2="75.6707317" y2="36.6714286" id="Line-Copy-26" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <line x1="52.3333333" y1="11.328125" x2="75.6666667" y2="31.671875" id="Line-Copy-27" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <line x1="54.3333333" y1="8.33333333" x2="73.6666667" y2="25.6666667" id="Line-Copy-28" stroke="#B5C9DF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></line>
+                    <circle id="Oval-Copy-3" stroke="#B5C9DF" stroke-width="2" cx="38.5" cy="38.5" r="37.5"></circle>
+                    <circle id="Oval-Copy-4" stroke="#B5C9DF" stroke-width="2" cx="77.5" cy="38.5" r="37.5"></circle>
+                </g>
+            </g>
+            <text id="AIRegistry-Copy-2" font-family="Art-Galleria-Regular, Art Galleria" font-size="74" font-weight="normal" fill="#FFFFFF">
+                <tspan x="136.464" y="70">AIRegistry</tspan>
+            </text>
+        </g>
+    </g>
+</svg>

@@ -4,6 +4,12 @@
 .DEFAULT_GOAL := help
 
 SOURCE_MAKEFILE ?= Makefile
+SELF_MAKEFILE := $(lastword $(MAKEFILE_LIST))
+
+ifneq (,$(wildcard .env))
+  include .env
+  export
+endif
 
 AWS_PROFILE ?= navteca
 AWS_REGION ?= us-east-1
@@ -13,7 +19,16 @@ ECR_REPO ?= navteca/images/agentregistry
 TAG ?= 0.3.0
 
 IMAGE_ROOT ?= $(ECR_REGISTRY)/$(ECR_REPO)
-IMAGE_SERVER ?= $(ECR_REGISTRY)/$(ECR_REPO)/server
+DOCKER_BUILDER ?= docker buildx
+BUILD_DATE ?= $(shell date -u '+%Y-%m-%d')
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD || echo "unknown")
+
+LDFLAGS := \
+	-s -w \
+	-X 'github.com/agentregistry-dev/agentregistry/internal/version.Version=$(TAG)' \
+	-X 'github.com/agentregistry-dev/agentregistry/internal/version.GitCommit=$(GIT_COMMIT)' \
+	-X 'github.com/agentregistry-dev/agentregistry/internal/version.BuildDate=$(BUILD_DATE)' \
+	-X 'github.com/agentregistry-dev/agentregistry/internal/version.DockerRegistry=$(ECR_REGISTRY)'
 
 KUBECONFIG_CONTEXT ?=
 KUBE_NAMESPACE ?= default
@@ -36,8 +51,8 @@ help:
 	@echo "Targets:"
 	@echo "  auth-ecr           Login Docker to ECR"
 	@echo "  ensure-repo        Create ECR repository if missing"
-	@echo "  build-amd64        Build/push amd64 + retag/push root repo"
-	@echo "  build-arm64        Build/load arm64 + retag/push root repo"
+	@echo "  build-amd64        Build/push the root amd64 image only"
+	@echo "  build-arm64        Build/push the root arm64 image only"
 	@echo "  create-manifest    Create TAG from amd64+arm64 tags"
 	@echo "  inspect-manifest   Inspect final manifest"
 	@echo "  publish            Full publish workflow"
@@ -61,25 +76,25 @@ ensure-repo:
 prune-buildx:
 	docker buildx prune -af
 
+.PHONY: build-image
+build-image:
+	@echo "Building $(IMAGE_ROOT):$(TAG)-$(ARCH)"
+	$(DOCKER_BUILDER) build --push --platform linux/$(ARCH) \
+		-f docker/server.Dockerfile \
+		-t $(IMAGE_ROOT):$(TAG)-$(ARCH) \
+		--build-arg LDFLAGS="$(LDFLAGS)" \
+		--build-arg AGENT_REGISTRY_KEYCLOAK_URL="$(AGENT_REGISTRY_KEYCLOAK_URL)" \
+		--build-arg AGENT_REGISTRY_KEYCLOAK_REALM="$(AGENT_REGISTRY_KEYCLOAK_REALM)" \
+		--build-arg AGENT_REGISTRY_KEYCLOAK_CLIENT_ID="$(AGENT_REGISTRY_KEYCLOAK_CLIENT_ID)" \
+		.
+
 .PHONY: build-amd64
 build-amd64:
-	$(MAKE) -f $(SOURCE_MAKEFILE) docker-server \
-		DOCKER_REGISTRY=$(ECR_REGISTRY) \
-		DOCKER_REPO=$(ECR_REPO) \
-		DOCKER_BUILD_ARGS='--load --platform linux/amd64' \
-		VERSION=$(TAG)-amd64
-	docker tag $(IMAGE_SERVER):$(TAG)-amd64 $(IMAGE_ROOT):$(TAG)-amd64
-	docker push $(IMAGE_ROOT):$(TAG)-amd64
+	$(MAKE) -f $(SELF_MAKEFILE) build-image ARCH=amd64
 
 .PHONY: build-arm64
 build-arm64:
-	$(MAKE) -f $(SOURCE_MAKEFILE) docker-server \
-		DOCKER_REGISTRY=$(ECR_REGISTRY) \
-		DOCKER_REPO=$(ECR_REPO) \
-		DOCKER_BUILD_ARGS='--load --platform linux/arm64' \
-		VERSION=$(TAG)-arm64
-	docker tag $(IMAGE_SERVER):$(TAG)-arm64 $(IMAGE_ROOT):$(TAG)-arm64
-	docker push $(IMAGE_ROOT):$(TAG)-arm64
+	$(MAKE) -f $(SELF_MAKEFILE) build-image ARCH=arm64
 
 .PHONY: create-manifest
 create-manifest:
