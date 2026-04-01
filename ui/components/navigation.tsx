@@ -75,7 +75,7 @@ export function Navigation() {
           <Link href="/" className="flex items-center shrink-0 rounded-md px-2 py-1">
             <Image
               src={mounted && theme === "dark" ? "/logo-dark.svg" : "/logo-light.svg"}
-              alt="Agent Registry"
+              alt="AIRegistry"
               width={180}
               height={60}
               className="h-12 w-auto"

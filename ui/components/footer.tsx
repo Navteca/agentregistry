@@ -15,20 +15,11 @@ export function Footer() {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Image
             src={mounted && theme === "dark" ? "/logo-dark.svg" : "/logo-light.svg"}
-            alt="Agent Registry"
+            alt="AIRegistry"
             className="h-12 w-auto"
             width={180}
             height={60}
           />
-          <span>created at</span>
-          <a
-            href="https://solo.io"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-foreground hover:text-primary transition-colors"
-          >
-            Solo.io
-          </a>
         </div>
 
         <div className="flex items-center gap-4">
