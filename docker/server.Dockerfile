@@ -69,8 +69,7 @@ RUN DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker} && \
     esac) && \
     mkdir -p $DOCKER_CONFIG/cli-plugins && \
     curl -SL https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-linux-${COMPOSE_ARCH} -o $DOCKER_CONFIG/cli-plugins/docker-compose && \
-    chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose && \
-    docker compose version
+    chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
 
 COPY --from=builder /app/bin/arctl-server /app/bin/arctl-server
 
