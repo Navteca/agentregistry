@@ -22,7 +22,9 @@ func shouldSkipMCPHostVerify() bool {
 var (
 	// gitRepoURLRegex validates repository URLs for common git hosting providers
 	// (GitHub, GitLab, Bitbucket, etc.) in the standard owner/repo format.
-	gitRepoURLRegex = regexp.MustCompile(`^https?://(www\.)?(github\.com|gitlab\.com|bitbucket\.org)/[\w.-]+/[\w.-]+/?$`)
+	// An optional .git suffix is accepted since it is a common convention when
+	// cloning repositories.
+	gitRepoURLRegex = regexp.MustCompile(`^https?://(www\.)?(github\.com|gitlab\.com|bitbucket\.org)/[\w.-]+/[\w.-]+(\.git)?/?$`)
 )
 
 // ValidateRepoURL validates a repository URL for the specified source type.
