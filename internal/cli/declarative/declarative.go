@@ -239,6 +239,21 @@ func newCLIRegistry() *kinds.Registry {
 			p := item.(*models.Provider)
 			return []string{p.Name, p.Platform}
 		},
+		ToResourceFunc: func(item any) *kinds.Document {
+			p, ok := item.(*models.Provider)
+			if !ok {
+				return nil
+			}
+			return &kinds.Document{
+				APIVersion: scheme.APIVersion,
+				Kind:       "Provider",
+				Metadata:   kinds.Metadata{Name: p.Name},
+				Spec: kinds.ProviderSpec{
+					Platform: p.Platform,
+					Config:   p.Config,
+				},
+			}
+		},
 		Get: func(_ context.Context, name, _ string) (any, error) {
 			return apiClient.GetProvider(name)
 		},
@@ -268,9 +283,50 @@ func newCLIRegistry() *kinds.Registry {
 			d := item.(*models.Deployment)
 			return []string{d.ID, d.ServerName, d.Version, d.ResourceType, d.ProviderID, d.Status}
 		},
+		ToResourceFunc: func(item any) *kinds.Document {
+			d, ok := item.(*models.Deployment)
+			if !ok {
+				return nil
+			}
+			// Render only the declarative DeploymentSpec fields so `-o yaml`
+			// output round-trips through `arctl apply -f`. Server-managed
+			// state (ID, Status, Origin, ProviderMetadata, DeployedAt, etc.)
+			// is intentionally omitted.
+			return &kinds.Document{
+				APIVersion: scheme.APIVersion,
+				Kind:       "Deployment",
+				Metadata:   kinds.Metadata{Name: d.ServerName, Version: d.Version},
+				Spec: kinds.DeploymentSpec{
+					ProviderID:     d.ProviderID,
+					ResourceType:   d.ResourceType,
+					Env:            d.Env,
+					ProviderConfig: d.ProviderConfig,
+					PreferRemote:   d.PreferRemote,
+				},
+			}
+		},
+		Get:    deploymentGetFunc,
 		Delete: deploymentDeleteFunc,
 	})
 	return reg
+}
+
+// deploymentGetFunc returns the first deployment matching ServerName == name.
+// Deployments are keyed by ID but users refer to them by name; a single name
+// can map to multiple deployments (different versions/providers). For `get`
+// we surface the first match — callers that need to disambiguate should use
+// `arctl get deployments` for the full list.
+func deploymentGetFunc(_ context.Context, name, _ string) (any, error) {
+	all, err := apiClient.GetDeployedServers()
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range all {
+		if d != nil && d.ServerName == name {
+			return d, nil
+		}
+	}
+	return nil, database.ErrNotFound
 }
 
 // deploymentDeleteFunc looks up deployments by (name, version) and deletes each match
