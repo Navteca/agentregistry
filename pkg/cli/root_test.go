@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/agentregistry-dev/agentregistry/internal/client"
+	"github.com/agentregistry-dev/agentregistry/pkg/cli/annotations"
 	"github.com/agentregistry-dev/agentregistry/pkg/types"
 	"github.com/spf13/cobra"
 )
@@ -35,59 +36,62 @@ func TestNormalizeBaseURL(t *testing.T) {
 }
 
 func TestPreRunBehavior(t *testing.T) {
+	// Build a synthetic command tree mirroring the current (declarative) CLI
+	// surface: top-level init/build, agent/run, mcp/{run,add-tool}, skill/pull,
+	// plus helper commands (configure, completion, version).
 	root := &cobra.Command{Use: "arctl"}
 
-	agentCmd := &cobra.Command{Use: "agent"}
+	// Top-level declarative commands (no API client needed).
 	initCmd := &cobra.Command{Use: "init"}
 	buildCmd := &cobra.Command{Use: "build"}
-	listCmd := &cobra.Command{Use: "list"}
-	agentCmd.AddCommand(initCmd)
-	agentCmd.AddCommand(buildCmd)
-	agentCmd.AddCommand(listCmd)
+	// Subcommand of top-level "init" (e.g. arctl init mcp fastmcp-python NAME).
+	initMCPCmd := &cobra.Command{Use: "mcp"}
+	initCmd.AddCommand(initMCPCmd)
+
+	// agent/mcp/skill parents keep only run-time / add-tool / pull children.
+	agentCmd := &cobra.Command{Use: "agent"}
+	agentRunCmd := &cobra.Command{Use: "run"}
+	agentCmd.AddCommand(agentRunCmd)
 
 	mcpCmd := &cobra.Command{Use: "mcp"}
-	mcpInitCmd := &cobra.Command{Use: "init"}
-	mcpBuildCmd := &cobra.Command{Use: "build"}
+	mcpRunCmd := &cobra.Command{Use: "run"}
 	mcpAddToolCmd := &cobra.Command{Use: "add-tool"}
-	mcpCmd.AddCommand(mcpInitCmd)
-	mcpCmd.AddCommand(mcpBuildCmd)
+	mcpCmd.AddCommand(mcpRunCmd)
 	mcpCmd.AddCommand(mcpAddToolCmd)
 
 	skillCmd := &cobra.Command{Use: "skill"}
-	skillInitCmd := &cobra.Command{Use: "init"}
-	skillBuildCmd := &cobra.Command{Use: "build"}
-	skillCmd.AddCommand(skillInitCmd)
-	skillCmd.AddCommand(skillBuildCmd)
-
-	// Subcommand under "mcp init" (e.g. arctl mcp init python mymcp)
-	initPythonCmd := &cobra.Command{Use: "python"}
-	mcpInitCmd.AddCommand(initPythonCmd)
+	skillPullCmd := &cobra.Command{Use: "pull"}
+	skillCmd.AddCommand(skillPullCmd)
 
 	configureCmd := &cobra.Command{Use: "configure"}
 	completionCmd := &cobra.Command{Use: "completion"}
 	zshCompletionCmd := &cobra.Command{Use: "zsh"}
 	completionCmd.AddCommand(zshCompletionCmd)
 	versionCmd := &cobra.Command{Use: "version"}
-	root.AddCommand(agentCmd, mcpCmd, skillCmd, configureCmd, completionCmd, versionCmd)
+	root.AddCommand(initCmd, buildCmd, agentCmd, mcpCmd, skillCmd, configureCmd, completionCmd, versionCmd)
 
 	tests := []struct {
 		name     string
 		cmd      *cobra.Command
 		wantSkip bool
 	}{
-		{"agent init", initCmd, true},
-		{"agent build", buildCmd, true},
-		{"mcp init", mcpInitCmd, true},
-		{"mcp build", mcpBuildCmd, true},
+		// Top-level declarative init/build skip setup (no API client).
+		{"init", initCmd, true},
+		{"build", buildCmd, true},
+		{"init mcp (subcommand of init)", initMCPCmd, true},
+		// mcp add-tool runs locally, no API client.
 		{"mcp add-tool", mcpAddToolCmd, true},
-		{"skill init", skillInitCmd, true},
-		{"skill build", skillBuildCmd, true},
+		// Helper commands skip setup.
 		{"configure", configureCmd, true},
 		{"completion", completionCmd, true},
 		{"completion zsh", zshCompletionCmd, true},
-		{"version", versionCmd, true},
-		{"mcp init python (subcommand of init)", initPythonCmd, true},
-		{"agent list", listCmd, false},
+		// version goes through pre-run using AnnotationOptionalRegistry to have an optional registry connection
+		{"version", versionCmd, false},
+		// Run/pull/etc. need the API client.
+		{"agent run", agentRunCmd, false},
+		{"mcp run", mcpRunCmd, false},
+		{"skill pull", skillPullCmd, false},
+		// Edge cases.
 		{"nil cmd", nil, false},
 		{"top-level command with parent", agentCmd, false},
 	}
@@ -101,26 +105,28 @@ func TestPreRunBehavior(t *testing.T) {
 	}
 }
 
-func TestShouldSkipTokenResolution(t *testing.T) {
+func TestHasAnnotation(t *testing.T) {
+	key := "random-annotation"
+
 	root := &cobra.Command{Use: "arctl"}
 
 	// Command with annotation
 	annotatedCmd := &cobra.Command{
 		Use:         "no-auth-cmd",
-		Annotations: map[string]string{AnnotationSkipTokenResolution: "true"},
+		Annotations: map[string]string{key: "true"},
 	}
 	// Child inherits from annotated parent
-	childOfAnnotated := &cobra.Command{Use: "child"}
-	annotatedCmd.AddCommand(childOfAnnotated)
+	childInherits := &cobra.Command{Use: "child"}
+	annotatedCmd.AddCommand(childInherits)
 
-	// Child explicitly opts back in to resolving token (overrides parent)
+	// Child explicitly opts back in (overrides parent)
 	childOptIn := &cobra.Command{
 		Use:         "secure-child",
-		Annotations: map[string]string{AnnotationSkipTokenResolution: "false"},
+		Annotations: map[string]string{key: "false"},
 	}
 	annotatedCmd.AddCommand(childOptIn)
 
-	// Grandchild of opt-in child (no annotation — inherits "false" from childOptIn)
+	// Grandchild of opt-in child (no annotation, should inherits "false" from childOptIn)
 	grandchild := &cobra.Command{Use: "grandchild"}
 	childOptIn.AddCommand(grandchild)
 
@@ -130,12 +136,12 @@ func TestShouldSkipTokenResolution(t *testing.T) {
 	root.AddCommand(annotatedCmd, normalCmd)
 
 	tests := []struct {
-		name     string
-		cmd      *cobra.Command
-		wantSkip bool
+		name string
+		cmd  *cobra.Command
+		want bool
 	}{
 		{"annotated command", annotatedCmd, true},
-		{"child inherits from annotated parent", childOfAnnotated, true},
+		{"child inherits from annotated parent", childInherits, true},
 		{"child overrides parent with false", childOptIn, false},
 		{"grandchild inherits false from nearest parent", grandchild, false},
 		{"command without annotation", normalCmd, false},
@@ -144,9 +150,9 @@ func TestShouldSkipTokenResolution(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := shouldSkipTokenResolution(tt.cmd)
-			if got != tt.wantSkip {
-				t.Errorf("shouldSkipTokenResolution() = %v, want %v", got, tt.wantSkip)
+			got := hasAnnotation(tt.cmd, key)
+			if got != tt.want {
+				t.Errorf("hasAnnotation() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -286,7 +292,7 @@ func TestPreRunSetup(t *testing.T) {
 
 		annotatedCmd := &cobra.Command{
 			Use:         "skip-auth",
-			Annotations: map[string]string{AnnotationSkipTokenResolution: "true"},
+			Annotations: map[string]string{annotations.AnnotationSkipTokenResolution: "true"},
 		}
 
 		c, err := preRunSetup(ctx, annotatedCmd, baseURL, "")
@@ -320,7 +326,7 @@ func TestPreRunSetup(t *testing.T) {
 
 		annotatedCmd := &cobra.Command{
 			Use:         "skip-auth",
-			Annotations: map[string]string{AnnotationSkipTokenResolution: "true"},
+			Annotations: map[string]string{annotations.AnnotationSkipTokenResolution: "true"},
 		}
 
 		c, err := preRunSetup(ctx, annotatedCmd, baseURL, "explicit-token")
@@ -423,6 +429,48 @@ func TestPreRunSetup(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), baseURL) {
 			t.Errorf("error should include the registry URL, got: %s", err.Error())
+		}
+	})
+
+	// optional-registry annotation: pre-run still resolves token + URL, but
+	// only soft-fails for registry connectivity/client creation failures;
+	// token resolution errors must still propagate.
+	optionalRegistryCmd := &cobra.Command{
+		Use:         "version",
+		Annotations: map[string]string{annotations.AnnotationOptionalRegistry: "true"},
+	}
+
+	t.Run("optional_registry_connectivity_soft_fail", func(t *testing.T) {
+		Configure(CLIOptions{
+			ClientFactory: func(_ context.Context, _, _ string) (*client.Client, error) {
+				return nil, errors.New("connection refused")
+			},
+		})
+		defer func() { Configure(oldOpts) }()
+
+		c, err := preRunSetup(ctx, optionalRegistryCmd, baseURL, token)
+		if err != nil {
+			t.Fatalf("expected soft-fail, got error: %v", err)
+		}
+		if c == nil {
+			t.Fatal("expected non-nil client from soft-fail path")
+		}
+	})
+
+	t.Run("optional_registry_does_not_swallow_token_resolution_error", func(t *testing.T) {
+		// A failure with token resolution should still propagate, because optional registry is strictly about connectivity.
+		tokenErr := errors.New("token store unreadable")
+		Configure(CLIOptions{
+			TokenProviderFactory: func(_ *cobra.Command) (types.CLITokenProvider, error) {
+				return &mockTokenProvider{err: tokenErr}, nil
+			},
+			ClientFactory: clientFactory,
+		})
+		defer func() { Configure(oldOpts) }()
+
+		_, err := preRunSetup(ctx, optionalRegistryCmd, baseURL, "")
+		if !errors.Is(err, tokenErr) {
+			t.Errorf("expected wrapped token error, got %v", err)
 		}
 	})
 }

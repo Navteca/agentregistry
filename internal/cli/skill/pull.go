@@ -1,14 +1,15 @@
 package skill
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/agentregistry-dev/agentregistry/internal/cli/common/docker"
 	"github.com/agentregistry-dev/agentregistry/internal/cli/common/gitutil"
+	"github.com/agentregistry-dev/agentregistry/internal/client"
+	"github.com/agentregistry-dev/agentregistry/pkg/api/v1alpha1"
 	"github.com/agentregistry-dev/agentregistry/pkg/printer"
 	"github.com/spf13/cobra"
 )
@@ -19,7 +20,7 @@ var PullCmd = &cobra.Command{
 	Use:   "pull <skill-name> [output-directory]",
 	Short: "Pull a skill from the registry and extract it locally",
 	Long: `Pull a skill from the registry and extract its contents to a local directory.
-Supports skills packaged as Docker images or hosted in Git repositories.
+Supports skills hosted in Git repositories.
 
 If output-directory is not specified, it will be extracted to ./skills/<skill-name>`,
 	Args: cobra.RangeArgs(1, 2),
@@ -48,14 +49,22 @@ func runPull(cmd *cobra.Command, args []string) error {
 	printer.PrintInfo(fmt.Sprintf("Pulling skill: %s", skillName))
 
 	// 1. Resolve which version to pull
-	version, err := resolveSkillVersion(skillName, pullVersion)
+	version, err := resolveSkillVersion(cmd.Context(), skillName, pullVersion)
 	if err != nil {
 		return err
 	}
 
 	// 2. Fetch skill metadata from registry
 	printer.PrintInfo("Fetching skill metadata from registry...")
-	skillResp, err := apiClient.GetSkillVersion(skillName, version)
+	skillResp, err := client.GetTyped(
+		cmd.Context(),
+		apiClient,
+		v1alpha1.KindSkill,
+		v1alpha1.DefaultNamespace,
+		skillName,
+		version,
+		func() *v1alpha1.Skill { return &v1alpha1.Skill{} },
+	)
 	if err != nil {
 		return fmt.Errorf("failed to fetch skill from registry: %w", err)
 	}
@@ -64,16 +73,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("skill '%s' version '%s' not found in registry", skillName, version)
 	}
 
-	printer.PrintSuccess(fmt.Sprintf("Found skill: %s (version %s)", skillResp.Skill.Name, skillResp.Skill.Version))
-
-	// 2. Determine source: Docker package or git repository
-	var dockerImage string
-	for _, pkg := range skillResp.Skill.Packages {
-		if pkg.RegistryType == "docker" {
-			dockerImage = pkg.Identifier
-			break
-		}
-	}
+	printer.PrintSuccess(fmt.Sprintf("Found skill: %s (version %s)", skillResp.Metadata.Name, skillResp.Metadata.Version))
 
 	absOutputDir, err := filepath.Abs(outputDir)
 	if err != nil {
@@ -84,16 +84,12 @@ func runPull(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	if dockerImage != "" {
-		if err := pullFromDocker(dockerImage, absOutputDir); err != nil {
-			return err
-		}
-	} else if skillResp.Skill.Repository != nil && skillResp.Skill.Repository.Source == "git" {
-		if err := pullFromGit(skillResp.Skill.Repository.URL, absOutputDir); err != nil {
+	if skillResp.Spec.Source != nil && skillResp.Spec.Source.Repository != nil && strings.TrimSpace(skillResp.Spec.Source.Repository.URL) != "" {
+		if err := pullFromGit(skillResp.Spec.Source.Repository.URL, absOutputDir); err != nil {
 			return err
 		}
 	} else {
-		return fmt.Errorf("skill has no Docker package or Git repository")
+		return fmt.Errorf("skill has no Git repository")
 	}
 
 	printer.PrintSuccess(fmt.Sprintf("Successfully pulled skill to: %s", absOutputDir))
@@ -104,12 +100,22 @@ func runPull(cmd *cobra.Command, args []string) error {
 // If a version is explicitly provided, it is used directly.
 // If only one version exists, that version is selected automatically.
 // If multiple versions exist, the user is prompted to specify one.
-func resolveSkillVersion(skillName, requestedVersion string) (string, error) {
+//
+// ctx flows in from the cobra command so Ctrl-C / parent timeouts cancel
+// the registry list call cleanly.
+func resolveSkillVersion(ctx context.Context, skillName, requestedVersion string) (string, error) {
 	if requestedVersion != "" {
 		return requestedVersion, nil
 	}
 
-	versions, err := apiClient.GetSkillVersions(skillName)
+	versions, err := client.ListVersionsOfName(
+		ctx,
+		apiClient,
+		v1alpha1.KindSkill,
+		v1alpha1.DefaultNamespace,
+		skillName,
+		func() *v1alpha1.Skill { return &v1alpha1.Skill{} },
+	)
 	if err != nil {
 		return "", fmt.Errorf("failed to list skill versions: %w", err)
 	}
@@ -119,71 +125,19 @@ func resolveSkillVersion(skillName, requestedVersion string) (string, error) {
 	}
 
 	if len(versions) == 1 {
-		return versions[0].Skill.Version, nil
+		return versions[0].Metadata.Version, nil
 	}
 
 	printer.PrintError(fmt.Sprintf("skill '%s' has %d versions, please specify one with --version:", skillName, len(versions)))
-	for _, v := range versions {
+	for i, v := range versions {
 		latest := ""
-		if v.Meta.Official != nil && v.Meta.Official.IsLatest {
+		if i == 0 {
 			latest = " (latest)"
 		}
-		printer.PrintInfo(fmt.Sprintf("  %s%s", v.Skill.Version, latest))
+		printer.PrintInfo(fmt.Sprintf("  %s%s", v.Metadata.Version, latest))
 	}
 
 	return "", fmt.Errorf("multiple versions available, specify one with --version")
-}
-
-// pullFromDocker pulls a skill from a Docker image and extracts its contents.
-func pullFromDocker(dockerImage, absOutputDir string) error {
-	printer.PrintInfo(fmt.Sprintf("Docker image: %s", dockerImage))
-
-	printer.PrintInfo("Pulling Docker image...")
-	pullCmd := exec.Command("docker", "pull", dockerImage)
-	pullCmd.Stdout = os.Stdout
-	pullCmd.Stderr = os.Stderr
-	if err := pullCmd.Run(); err != nil {
-		return fmt.Errorf("failed to pull Docker image: %w", err)
-	}
-
-	printer.PrintInfo(fmt.Sprintf("Extracting skill contents to: %s", absOutputDir))
-
-	// Create a container from the image (without running it)
-	createCmd := exec.Command("docker", "create", "--entrypoint", "/bin/sh", dockerImage, "-c", "echo")
-	createOutput, err := createCmd.CombinedOutput()
-	if err != nil {
-		// If that fails, try without entrypoint override (for images with proper entrypoints)
-		createCmd = exec.Command("docker", "create", dockerImage)
-		createOutput, err = createCmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("failed to create container from image: %w\nOutput: %s", err, string(createOutput))
-		}
-	}
-	containerIDStr := strings.TrimSpace(string(createOutput))
-
-	defer func() {
-		rmCmd := exec.Command("docker", "rm", containerIDStr)
-		_ = rmCmd.Run()
-	}()
-
-	tempDir, err := os.MkdirTemp("", "skill-extract-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp directory: %w", err)
-	}
-	defer func() { _ = os.RemoveAll(tempDir) }()
-
-	cpCmd := exec.Command("docker", "cp", containerIDStr+":"+"/.", tempDir)
-	cpCmd.Stderr = os.Stderr
-	if err := cpCmd.Run(); err != nil {
-		return fmt.Errorf("failed to extract contents from container: %w", err)
-	}
-
-	// Copy only non-empty files and folders to the final destination
-	if err := docker.CopyNonEmptyContents(tempDir, absOutputDir); err != nil {
-		return fmt.Errorf("failed to copy non-empty contents: %w", err)
-	}
-
-	return nil
 }
 
 // pullFromGit clones a git repository and copies the skill files to the output directory.

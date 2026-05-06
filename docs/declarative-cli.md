@@ -5,7 +5,7 @@ Define agents, MCP servers, skills, and prompts as YAML files and manage them wi
 ## Quick Start
 
 ```bash
-arctl init agent adk python summarizer --model-provider gemini --model-name gemini-2.0-flash
+arctl init agent adk python summarizer --model-provider gemini --model-name gemini-2.5-flash
 arctl build summarizer/ --push    # optional: build and push Docker image
 arctl apply -f summarizer/agent.yaml
 ```
@@ -22,7 +22,7 @@ arctl apply -f summarizer/agent.yaml
 ## Agents
 
 ```bash
-arctl init agent adk python summarizer --model-provider gemini --model-name gemini-2.0-flash
+arctl init agent adk python summarizer --model-provider gemini --model-name gemini-2.5-flash
 arctl build summarizer/ --push    # optional: build and push Docker image
 arctl apply -f summarizer/agent.yaml
 arctl get agent summarizer
@@ -64,4 +64,4 @@ arctl apply -f full-stack.yaml
 arctl get all
 ```
 
-See [`examples/declarative/`](../examples/declarative/) for ready-to-use YAML files, including [`full-stack.yaml`](../examples/declarative/full-stack.yaml) which defines an agent and all its dependencies in a single file.
+See [`examples/`](../examples/) for ready-to-use YAML files, including [`full-stack.yaml`](../examples/full-stack.yaml) which defines an agent and all its dependencies in a single file.

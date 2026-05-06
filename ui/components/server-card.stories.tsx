@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
 import { ServerCard } from "./server-card"
-import type { ServerResponse } from "@/lib/api/types.gen"
+import type { ServerResponse } from "@/lib/admin-api"
 
 const mockServer: ServerResponse = {
   server: {
@@ -10,24 +10,16 @@ const mockServer: ServerResponse = {
     description:
       "A production-ready MCP server that provides read and write access to PostgreSQL databases with connection pooling and query optimization.",
     version: "3.2.1",
-    repository: {
-      url: "https://github.com/acme/database-server",
-      source: "github",
-    },
-    websiteUrl: "https://acme.dev/database-server",
-    packages: [
-      {
+    source: {
+      repository: {
+        url: "https://github.com/acme/database-server",
+      },
+      package: {
         registryType: "npm",
         identifier: "@acme/database-server",
         transport: { type: "stdio" },
       },
-    ],
-    remotes: [
-      {
-        type: "streamable-http",
-        url: "https://mcp.acme.dev/database",
-      },
-    ],
+    },
   },
   _meta: {
     "io.modelcontextprotocol.registry/official": {

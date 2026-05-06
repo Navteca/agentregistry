@@ -13,17 +13,12 @@ import (
 // Config holds the application configuration
 // See .env.example for more documentation
 type Config struct {
-	ServerAddress            string `env:"SERVER_ADDRESS" envDefault:":8080"`
-	MCPPort                  uint16 `env:"MCP_PORT" envDefault:"0"`
-	DatabaseURL              string `env:"DATABASE_URL" envDefault:"postgres://agentregistry:agentregistry@localhost:5432/agentregistry?sslmode=disable"`
-	DatabaseVectorEnabled    bool   `env:"DATABASE_VECTOR_ENABLED" envDefault:"false"`
-	SeedFrom                 string `env:"SEED_FROM" envDefault:""`
-	EnrichServerData         bool   `env:"ENRICH_SERVER_DATA" envDefault:"false"`
-	DisableBuiltinSeed       bool   `env:"DISABLE_BUILTIN_SEED" envDefault:"true"`
-	Version                  string `env:"VERSION" envDefault:"dev"`
-	JWTPrivateKey            string `env:"JWT_PRIVATE_KEY" envDefault:""`
-	EnableRegistryValidation bool   `env:"ENABLE_REGISTRY_VALIDATION" envDefault:"true"`
-	LogLevel                 string `env:"LOG_LEVEL" envDefault:"info"`
+	ServerAddress string `env:"SERVER_ADDRESS" envDefault:":8080"`
+	MCPPort       uint16 `env:"MCP_PORT" envDefault:"0"`
+	DatabaseURL   string `env:"DATABASE_URL" envDefault:"postgres://agentregistry:agentregistry@localhost:5432/agentregistry?sslmode=disable"`
+	Version       string `env:"VERSION" envDefault:"dev"`
+	JWTPrivateKey string `env:"JWT_PRIVATE_KEY" envDefault:""`
+	LogLevel      string `env:"LOG_LEVEL" envDefault:"info"`
 
 	// Platform mode: "docker" or "kubernetes". Controls which deployment
 	// provider IDs are available in the UI. Defaults to "kubernetes" so
@@ -42,16 +37,19 @@ type Config struct {
 	Embeddings EmbeddingsConfig
 }
 
-// EmbeddingsConfig captures configuration needed to generate embeddings
+// EmbeddingsConfig is the runtime gate for the (currently unwired)
+// semantic-search feature. Enabled drives the database migrator's
+// Skip predicate so the pgvector migration only runs when the flag
+// is true; the public HTTP / generated-client surface for semantic
+// search has been removed pending a rebuild.
+//
+// TODO(semantic-search): when re-implementing semantic search, add
+// back the provider/model/dimensions/credentials fields needed to
+// reach an embedding provider, decide on hybrid-search lexical
+// inputs, and gate the public surface (list params, response fields,
+// admin endpoints) on this same flag.
 type EmbeddingsConfig struct {
-	Enabled       bool   `env:"EMBEDDINGS_ENABLED" envDefault:"false"`
-	Provider      string `env:"EMBEDDINGS_PROVIDER" envDefault:"openai"`
-	Model         string `env:"EMBEDDINGS_MODEL" envDefault:"text-embedding-3-small"`
-	Dimensions    int    `env:"EMBEDDINGS_DIMENSIONS" envDefault:"1536"`
-	OpenAIAPIKey  string `env:"OPENAI_API_KEY" envDefault:""`
-	OpenAIBaseURL string `env:"OPENAI_BASE_URL" envDefault:"https://api.openai.com/v1"`
-	OpenAIOrg     string `env:"OPENAI_ORG" envDefault:""`
-	OnPublish     bool   `env:"EMBEDDINGS_ON_PUBLISH" envDefault:"false"`
+	Enabled bool `env:"EMBEDDINGS_ENABLED" envDefault:"false"`
 }
 
 // NewConfig creates a new configuration with default values

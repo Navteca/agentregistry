@@ -86,6 +86,21 @@ type RegistryService struct {
 }
 ```
 
+### Authorization
+
+Authz is enforced at the **database layer** by default — every store method calls `s.authz.Check(...)` before the query. Services don't normally need to invoke authz themselves; the DB call fails with `auth.ErrForbidden` when a caller lacks permission.
+
+**When to gate at the API or service layer instead:** only when the operation doesn't reach the DB with a check. Current cases:
+
+- External platform calls with no downstream DB write — e.g. `UndeployDeployment` and `CancelDeployment` hit adapters before any DB update, so the gate has to fire in the service before the adapter call.
+- Admin-scope handlers with no per-resource authz — e.g. `POST /v0/embeddings/index` is gated on `IsRegistryAdmin` in the handler.
+
+**List operations intentionally skip per-row authz checks.** The DB's `List*` methods return what matches the SQL filter; they do not invoke `authz.Check` per row. The `AuthzProvider` interface only gates single-resource operations (`Check`, `IsRegistryAdmin`) — it has no row-filter hook. Per-row visibility filtering for Lists would require a custom `database.Store` implementation wired in at the composition root (`registry_app.go`), either joining against a permissions table in SQL or calling `authz.Check` per row.
+
+Prefer DB-layer gates. If you add an API-layer gate, document the reason in the handler or service comment.
+
+See [docs/auth/authz-matrix.md](./docs/auth/authz-matrix.md) for the per-endpoint permission table.
+
 ### Interface Design
 
 Every significant component must define an interface for its dependencies. This enables:
@@ -429,6 +444,19 @@ When working with this codebase, AI assistants should:
 
 ---
 
+## Pull Requests
+
+When creating or updating a pull request in this repo, use `.github/PULL_REQUEST_TEMPLATE.md` as the source of truth for the PR body.
+
+- Use the **exact top-level headings** from the template (`# Description`, `# Change Type`, `# Changelog`). The CI labeler (`kgateway-dev/pr-kind-labeler`) enforces the presence of a `# Description` section and will fail if headings use `##` or are missing.
+- Include at least one `/kind ...` entry in the Change Type section.
+- Fill the `release-note` block exactly as required by the template. If no release note applies, write `NONE`.
+- When the PR is intended to close an issue, include `Fixes #<issue>` in the description so GitHub links the issue correctly.
+
+If an agent opens a PR without following the template, it should update the PR body before considering the task complete.
+
+---
+
 ## Code Review Checklist
 
 - [ ] Database access only through database layer or authorizer
@@ -466,3 +494,4 @@ When working with this codebase, AI assistants should:
 - [README.md](./README.md) - Project overview and quick start
 - [DEVELOPMENT.md](./DEVELOPMENT.md) - Architecture details
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Contribution guidelines
+- [docs/auth/authz-matrix.md](./docs/auth/authz-matrix.md) - AuthZ matrix for HTTP endpoints

@@ -1,0 +1,15 @@
+apiVersion: ar.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: acme/fetch
+  version: "1.0.0"
+spec:
+  title: Fetch Server
+  description: "Fetches and extracts content from URLs"
+  source:
+    package:
+      registryType: oci
+      identifier: localhost:5001/acme/fetch:1.0.0
+      runtimeHint: docker                       # optional: hint for local runtime
+      transport:
+        type: stdio                             # stdio | sse | streamable-http

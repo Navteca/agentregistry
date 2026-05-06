@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/agentregistry-dev/agentregistry/internal/cli/mcp/build"
@@ -17,20 +18,19 @@ import (
 	platformtypes "github.com/agentregistry-dev/agentregistry/internal/registry/platforms/types"
 	platformutils "github.com/agentregistry-dev/agentregistry/internal/registry/platforms/utils"
 	"github.com/agentregistry-dev/agentregistry/internal/utils"
-	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	"github.com/agentregistry-dev/agentregistry/pkg/api/v1alpha1"
 	"github.com/spf13/cobra"
 	"github.com/stoewer/go-strcase"
 )
 
 var (
-	runVersion    string
-	runInspector  bool
-	runYes        bool
-	runVerbose    bool
-	runBuildFlag  bool
-	runEnvVars    []string
-	runArgVars    []string
-	runHeaderVars []string
+	runVersion   string
+	runInspector bool
+	runYes       bool
+	runVerbose   bool
+	runBuildFlag bool
+	runEnvVars   []string
+	runArgVars   []string
 )
 
 var RunCmd = &cobra.Command{
@@ -55,7 +55,6 @@ func init() {
 	RunCmd.Flags().BoolVar(&runBuildFlag, "build", true, "Build the MCP server before running")
 	RunCmd.Flags().StringArrayVarP(&runEnvVars, "env", "e", []string{}, "Environment variables (key=value)")
 	RunCmd.Flags().StringArrayVar(&runArgVars, "arg", []string{}, "Runtime arguments (key=value)")
-	RunCmd.Flags().StringArrayVar(&runHeaderVars, "header", []string{}, "Headers for remote servers (key=value)")
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
@@ -84,7 +83,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 }
 
 // runMCPServerWithPlatform starts an MCP server using the local platform.
-func runMCPServerWithPlatform(ctx context.Context, server *apiv0.ServerResponse) error {
+func runMCPServerWithPlatform(ctx context.Context, server *v1alpha1.MCPServer) error {
 	// Parse environment variables, arguments, and headers from flags
 	envValues, err := parseKeyValuePairs(runEnvVars)
 	if err != nil {
@@ -96,17 +95,11 @@ func runMCPServerWithPlatform(ctx context.Context, server *apiv0.ServerResponse)
 		return fmt.Errorf("failed to parse arguments: %w", err)
 	}
 
-	headerValues, err := parseKeyValuePairs(runHeaderVars)
-	if err != nil {
-		return fmt.Errorf("failed to parse headers: %w", err)
-	}
-
 	runRequest := &platformutils.MCPServerRunRequest{
-		RegistryServer: &server.Server,
-		PreferRemote:   false,
-		EnvValues:      envValues,
-		ArgValues:      argValues,
-		HeaderValues:   headerValues,
+		Name:      server.Metadata.Name,
+		Spec:      server.Spec,
+		EnvValues: envValues,
+		ArgValues: argValues,
 	}
 
 	// Generate a random platform working directory name and project name.
@@ -141,7 +134,7 @@ func runMCPServerWithPlatform(ctx context.Context, server *apiv0.ServerResponse)
 		return fmt.Errorf("local platform config is required")
 	}
 
-	fmt.Printf("Starting MCP server: %s (version %s)...\n", server.Server.Name, server.Server.Version)
+	fmt.Printf("Starting MCP server: %s (version %s)...\n", server.Metadata.Name, server.Metadata.Version)
 
 	if err := localplatform.WriteLocalPlatformFiles(platformDir, cfg, agentGatewayPort); err != nil {
 		return fmt.Errorf("failed to write local platform files: %w", err)
@@ -295,7 +288,7 @@ func runLocalMCPServer(projectPath string) error {
 	// Load the manifest
 	manifestManager := manifest.NewManager(absPath)
 	if !manifestManager.Exists() {
-		return fmt.Errorf("mcp.yaml not found in %s. Run 'arctl mcp init' first", absPath)
+		return fmt.Errorf("mcp.yaml not found in %s. Run 'arctl init mcp' first", absPath)
 	}
 
 	projectManifest, err := manifestManager.Load()
@@ -325,7 +318,7 @@ func runLocalMCPServer(projectPath string) error {
 	} else {
 		// Only check if image exists when skipping build
 		if err := checkDockerImageExists(imageName); err != nil {
-			return fmt.Errorf("docker image %s not found. Run 'arctl mcp build %s' first or remove --no-build flag\n%w", imageName, projectPath, err)
+			return fmt.Errorf("docker image %s not found. Run 'arctl build %s' first or remove --no-build flag\n%w", imageName, projectPath, err)
 		}
 	}
 
@@ -359,8 +352,10 @@ func runLocalMCPServerWithDocker(manifest *manifest.ProjectManifest, imageName s
 		envValues["HOST"] = "0.0.0.0"
 	}
 
-	// Build docker run command
-	containerName := fmt.Sprintf("arctl-run-%s", manifest.Name)
+	// Build docker run command.
+	// Docker container names only allow [a-zA-Z0-9][a-zA-Z0-9_.-], so we must
+	// sanitize any namespace separators present in MCP names (e.g. "myorg/my-server").
+	containerName := fmt.Sprintf("arctl-run-%s", sanitizeContainerName(manifest.Name))
 	args := []string{
 		"run",
 		"--rm",
@@ -471,7 +466,25 @@ func checkDockerImageExists(imageName string) error {
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("image not found. run `arctl mcp build %s` to build the image", imageName)
+		return fmt.Errorf("image not found. run `arctl build %s` to build the image", imageName)
 	}
 	return nil
+}
+
+// sanitizeContainerName returns a string safe to use as a Docker container
+// name. Docker requires names to match [a-zA-Z0-9][a-zA-Z0-9_.-]+, which rules
+// out the "/" in namespaced MCP names (e.g. "myorg/my-server"). Any character
+// outside the allowed set is replaced with "-".
+func sanitizeContainerName(name string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z',
+			r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9',
+			r == '_', r == '.', r == '-':
+			return r
+		default:
+			return '-'
+		}
+	}, name)
 }

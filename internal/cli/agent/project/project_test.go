@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"github.com/agentregistry-dev/agentregistry/internal/version"
-	"github.com/agentregistry-dev/agentregistry/pkg/models"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConstructImageName(t *testing.T) {
@@ -168,67 +169,82 @@ func TestConstructMCPServerImageName(t *testing.T) {
 	}
 }
 
-func TestEnsureOtelCollectorConfig(t *testing.T) {
-	tests := []struct {
-		name          string
-		telemetry     string
-		preCreate     bool
-		wantFileExist bool
-	}{
-		{
-			name:          "no telemetry endpoint - file not created",
-			telemetry:     "",
-			preCreate:     false,
-			wantFileExist: false,
-		},
-		{
-			name:          "telemetry set and file missing - file created",
-			telemetry:     "http://localhost:4318/v1/traces",
-			preCreate:     false,
-			wantFileExist: true,
-		},
-		{
-			name:          "telemetry set and file exists - file preserved",
-			telemetry:     "http://localhost:4318/v1/traces",
-			preCreate:     true,
-			wantFileExist: true,
-		},
-	}
+func TestLoadAgent_EnvelopeFormat(t *testing.T) {
+	dir := t.TempDir()
+	envelopeYAML := `apiVersion: ar.dev/v1alpha1
+kind: Agent
+metadata:
+  name: summarizer
+  version: "1.0.0"
+spec:
+  source:
+    image: ghcr.io/acme/summarizer:v1
+    repository:
+      url: https://github.com/acme/summarizer
+  language: python
+  framework: adk
+  modelProvider: gemini
+  modelName: gemini-2.0-flash
+  description: "Summarizes documents"
+  mcpServers:
+    - kind: MCPServer
+      name: acme/fetch
+      version: "1.0.0"
+  skills:
+    - kind: Skill
+      name: acme/summarize
+      version: "1.0.0"
+  prompts:
+    - kind: Prompt
+      name: acme/system
+      version: "1.0.0"
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte(envelopeYAML), 0o644))
+	got, err := LoadAgent(dir)
+	require.NoError(t, err)
+	require.NotNil(t, got)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			manifest := &models.AgentManifest{
-				Name:              "test-agent",
-				TelemetryEndpoint: tt.telemetry,
-			}
+	// Envelope decode is offline; the runnable runtime form is built
+	// later by manifest.Resolve (which makes registry calls). LoadAgent
+	// only verifies the envelope round-trips into v1alpha1.Agent.
+	assert.Equal(t, "summarizer", got.Metadata.Name)
+	assert.Equal(t, "1.0.0", got.Metadata.Version)
+	assert.Equal(t, "ghcr.io/acme/summarizer:v1", got.Spec.Source.Image)
+	assert.Equal(t, "python", got.Spec.Language)
+	assert.Equal(t, "adk", got.Spec.Framework)
+	assert.Equal(t, "gemini", got.Spec.ModelProvider)
+	assert.Equal(t, "gemini-2.0-flash", got.Spec.ModelName)
 
-			configPath := filepath.Join(dir, "otel-collector-config.yaml")
-			if tt.preCreate {
-				if err := os.WriteFile(configPath, []byte("custom-config"), 0o644); err != nil {
-					t.Fatalf("failed to pre-create config: %v", err)
-				}
-			}
+	require.Len(t, got.Spec.MCPServers, 1)
+	assert.Equal(t, "acme/fetch", got.Spec.MCPServers[0].Name)
+	assert.Equal(t, "1.0.0", got.Spec.MCPServers[0].Version)
 
-			err := EnsureOtelCollectorConfig(dir, manifest, false)
-			if err != nil {
-				t.Fatalf("EnsureOtelCollectorConfig() error = %v", err)
-			}
+	require.Len(t, got.Spec.Skills, 1)
+	assert.Equal(t, "acme/summarize", got.Spec.Skills[0].Name)
+	assert.Equal(t, "1.0.0", got.Spec.Skills[0].Version)
 
-			_, statErr := os.Stat(configPath)
-			fileExists := statErr == nil
+	require.Len(t, got.Spec.Prompts, 1)
+	assert.Equal(t, "acme/system", got.Spec.Prompts[0].Name)
+	assert.Equal(t, "1.0.0", got.Spec.Prompts[0].Version)
+}
 
-			if fileExists != tt.wantFileExist {
-				t.Errorf("file exists = %v, want %v", fileExists, tt.wantFileExist)
-			}
-
-			// If file was pre-created, ensure it wasn't overwritten
-			if tt.preCreate && fileExists {
-				content, _ := os.ReadFile(configPath)
-				if string(content) != "custom-config" {
-					t.Errorf("pre-existing file was overwritten")
-				}
-			}
-		})
-	}
+// TestLoadAgent_RejectsLegacyFlatFormat pins the contract that the
+// flat AgentManifest YAML shape (agentName / image / language at top
+// level, no apiVersion) is no longer accepted on disk. The on-disk
+// manifest must be a v1alpha1.Agent envelope; the legacy decoder was
+// removed alongside the dual-format LoadManifest dispatch.
+func TestLoadAgent_RejectsLegacyFlatFormat(t *testing.T) {
+	dir := t.TempDir()
+	flatYAML := `agentName: legacy
+image: ghcr.io/acme/legacy:v1
+language: python
+framework: adk
+modelProvider: gemini
+modelName: gemini-2.0-flash
+description: "Legacy flat manifest"
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte(flatYAML), 0o644))
+	_, err := LoadAgent(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a v1alpha1 envelope")
 }

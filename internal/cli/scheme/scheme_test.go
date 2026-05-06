@@ -1,42 +1,69 @@
 package scheme_test
 
 import (
-	"reflect"
+	"encoding/json"
+	"os"
+	"sync"
 	"testing"
 
 	"github.com/agentregistry-dev/agentregistry/internal/cli/scheme"
-	"github.com/agentregistry-dev/agentregistry/internal/registry/kinds"
+	"github.com/agentregistry-dev/agentregistry/pkg/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// syntheticSpec is the typed spec used in scheme tests.
-type syntheticSpec struct {
-	Image       string `yaml:"image"`
-	Description string `yaml:"description"`
+var (
+	registerOnce          sync.Once
+	extensionRegisterOnce sync.Once
+)
+
+type extensionSpec struct {
+	Value string `json:"value" yaml:"value"`
 }
 
-// newTestRegistry returns a registry with Agent and MCPServer kinds registered
-// using syntheticSpec so tests do not depend on real service implementations.
-func newTestRegistry() *kinds.Registry {
-	reg := kinds.NewRegistry()
-	reg.Register(kinds.Kind{
-		Kind:     "agent",
-		Plural:   "agents",
-		Aliases:  []string{"Agent"},
-		SpecType: reflect.TypeFor[syntheticSpec](),
-	})
-	reg.Register(kinds.Kind{
-		Kind:     "mcpserver",
-		Plural:   "mcpservers",
-		Aliases:  []string{"MCPServer"},
-		SpecType: reflect.TypeFor[syntheticSpec](),
-	})
-	return reg
+type extensionObject struct {
+	v1alpha1.TypeMeta `json:",inline" yaml:",inline"`
+	Metadata          v1alpha1.ObjectMeta `json:"metadata" yaml:"metadata"`
+	Spec              extensionSpec       `json:"spec" yaml:"spec"`
+	Status            v1alpha1.Status     `json:"status,omitzero" yaml:"status,omitempty"`
 }
 
-func TestDecodeBytes_SingleDoc(t *testing.T) {
-	reg := newTestRegistry()
+func (e *extensionObject) GetMetadata() *v1alpha1.ObjectMeta    { return &e.Metadata }
+func (e *extensionObject) SetMetadata(meta v1alpha1.ObjectMeta) { e.Metadata = meta }
+func (e *extensionObject) Validate() error                      { return nil }
+func (e *extensionObject) MarshalSpec() (json.RawMessage, error) {
+	return json.Marshal(e.Spec)
+}
+func (e *extensionObject) UnmarshalSpec(data json.RawMessage) error {
+	return json.Unmarshal(data, &e.Spec)
+}
+func (e *extensionObject) GetStatus() *v1alpha1.Status      { return &e.Status }
+func (e *extensionObject) SetStatus(status v1alpha1.Status) { e.Status = status }
+func (e *extensionObject) MarshalStatus() (json.RawMessage, error) {
+	return v1alpha1.MarshalStatusForStorage(e.Status)
+}
+func (e *extensionObject) UnmarshalStatus(data json.RawMessage) error {
+	return v1alpha1.UnmarshalStatusFromStorage(data, &e.Status)
+}
+
+// TestMain registers the two kinds the tests below need against the
+// scheme package-level table. The CLI's declarative package isn't
+// imported here so its init() doesn't fire — these registrations stand
+// alone for the scheme test binary.
+func TestMain(m *testing.M) {
+	registerOnce.Do(func() {
+		scheme.Register(&scheme.Kind{
+			Kind: "agent", Plural: "agents", Aliases: []string{"Agent"},
+		})
+		scheme.Register(&scheme.Kind{
+			Kind: "mcp", Plural: "mcps",
+			Aliases: []string{"MCPServer", "mcpserver", "mcpservers"},
+		})
+	})
+	os.Exit(m.Run())
+}
+
+func TestDecodeBytesSingleDoc(t *testing.T) {
 	input := `
 apiVersion: ar.dev/v1alpha1
 kind: Agent
@@ -44,24 +71,25 @@ metadata:
   name: acme/bot
   version: "1.0.0"
 spec:
-  image: ghcr.io/acme/bot:latest
+  source:
+    image: ghcr.io/acme/bot:latest
   description: "A bot"
 `
-	resources, err := scheme.DecodeBytes(reg, []byte(input))
-	require.NoError(t, err)
-	require.Len(t, resources, 1)
-	assert.Equal(t, "ar.dev/v1alpha1", resources[0].APIVersion)
-	assert.Equal(t, "agent", resources[0].Kind)
-	assert.Equal(t, "acme/bot", resources[0].Metadata.Name)
-	assert.Equal(t, "1.0.0", resources[0].Metadata.Version)
 
-	spec, ok := resources[0].Spec.(*syntheticSpec)
-	require.True(t, ok, "expected *syntheticSpec, got %T", resources[0].Spec)
-	assert.Equal(t, "ghcr.io/acme/bot:latest", spec.Image)
+	objs, err := scheme.DecodeBytes([]byte(input))
+	require.NoError(t, err)
+	require.Len(t, objs, 1)
+
+	agent, ok := objs[0].(*v1alpha1.Agent)
+	require.True(t, ok, "expected *v1alpha1.Agent, got %T", objs[0])
+	assert.Equal(t, "ar.dev/v1alpha1", agent.GetAPIVersion())
+	assert.Equal(t, "Agent", agent.GetKind())
+	assert.Equal(t, "acme/bot", agent.Metadata.Name)
+	assert.Equal(t, "1.0.0", agent.Metadata.Version)
+	assert.Equal(t, "ghcr.io/acme/bot:latest", agent.Spec.Source.Image)
 }
 
-func TestDecodeBytes_MultiDoc(t *testing.T) {
-	reg := newTestRegistry()
+func TestDecodeBytesMultiDoc(t *testing.T) {
 	input := `
 apiVersion: ar.dev/v1alpha1
 kind: MCPServer
@@ -78,30 +106,52 @@ metadata:
   version: "1.0.0"
 spec:
   description: "A bot"
-  image: ghcr.io/acme/bot:latest
+  source:
+    image: ghcr.io/acme/bot:latest
 `
-	resources, err := scheme.DecodeBytes(reg, []byte(input))
+
+	objs, err := scheme.DecodeBytes([]byte(input))
 	require.NoError(t, err)
-	require.Len(t, resources, 2)
-	assert.Equal(t, "mcpserver", resources[0].Kind)
-	assert.Equal(t, "agent", resources[1].Kind)
+	require.Len(t, objs, 2)
+	assert.Equal(t, "MCPServer", objs[0].GetKind())
+	assert.Equal(t, "Agent", objs[1].GetKind())
 }
 
-func TestDecodeBytes_MissingKind(t *testing.T) {
-	reg := newTestRegistry()
+func TestDecodeBytesAllowsSchemeRegisteredExtensionKind(t *testing.T) {
+	const extensionKind = "SchemeTestExtension"
+	extensionRegisterOnce.Do(func() {
+		v1alpha1.Default.MustRegister(extensionKind, extensionSpec{}, func() any { return &extensionObject{} })
+	})
+
+	input := `
+apiVersion: ar.dev/v1alpha1
+kind: SchemeTestExtension
+metadata:
+  name: enterprise-only
+  version: "1"
+spec:
+  value: ok
+`
+	objs, err := scheme.DecodeBytes([]byte(input))
+	require.NoError(t, err)
+	require.Len(t, objs, 1)
+	assert.Equal(t, extensionKind, objs[0].GetKind())
+}
+
+func TestDecodeBytesMissingKind(t *testing.T) {
 	input := `
 apiVersion: ar.dev/v1alpha1
 metadata:
   name: acme/bot
 spec:
-  image: ghcr.io/acme/bot:latest
+  source:
+    image: ghcr.io/acme/bot:latest
 `
-	_, err := scheme.DecodeBytes(reg, []byte(input))
+	_, err := scheme.DecodeBytes([]byte(input))
 	assert.ErrorContains(t, err, "kind")
 }
 
-func TestDecodeBytes_UnknownKind(t *testing.T) {
-	reg := newTestRegistry()
+func TestDecodeBytesUnknownKind(t *testing.T) {
 	input := `
 apiVersion: ar.dev/v1alpha1
 kind: BogusKind
@@ -109,20 +159,21 @@ metadata:
   name: acme/bot
 spec: {}
 `
-	_, err := scheme.DecodeBytes(reg, []byte(input))
+	_, err := scheme.DecodeBytes([]byte(input))
 	require.Error(t, err)
-	assert.Error(t, err, "expected error for unknown kind")
+	assert.ErrorContains(t, err, "BogusKind")
 }
 
-func TestDecodeBytes_EmptyInput(t *testing.T) {
-	reg := newTestRegistry()
-	docs, err := scheme.DecodeBytes(reg, []byte(""))
+func TestDecodeBytesEmptyInput(t *testing.T) {
+	objs, err := scheme.DecodeBytes([]byte(""))
 	require.NoError(t, err)
-	assert.Empty(t, docs)
+	assert.Empty(t, objs)
 }
 
-func TestDecodeBytes_MetadataNamePreserved(t *testing.T) {
-	reg := newTestRegistry()
+// TestDecodeBytesDropsIncomingStatus pins the contract that the CLI
+// decoder zeroes Status on every doc so `arctl get -o yaml | apply -f -`
+// stays apply-safe even when the source carried server-managed status.
+func TestDecodeBytesDropsIncomingStatus(t *testing.T) {
 	input := `
 apiVersion: ar.dev/v1alpha1
 kind: Agent
@@ -130,11 +181,19 @@ metadata:
   name: acme/bot
   version: "1.0.0"
 spec:
-  image: ghcr.io/acme/bot:latest
+  source:
+    image: ghcr.io/acme/bot:latest
+status:
+  conditions:
+    - type: Ready
+      status: "True"
 `
-	resources, err := scheme.DecodeBytes(reg, []byte(input))
+
+	objs, err := scheme.DecodeBytes([]byte(input))
 	require.NoError(t, err)
-	require.Len(t, resources, 1)
-	assert.Equal(t, "acme/bot", resources[0].Metadata.Name)
-	assert.Equal(t, "1.0.0", resources[0].Metadata.Version)
+	require.Len(t, objs, 1)
+
+	agent, ok := objs[0].(*v1alpha1.Agent)
+	require.True(t, ok)
+	assert.Empty(t, agent.Status.Conditions)
 }

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 import { AgentCard } from "../agent-card"
-import type { AgentResponse } from "@/lib/api/types.gen"
+import type { AgentResponse } from "@/lib/admin-api"
 
 const mockAgent: AgentResponse = {
   agent: {
@@ -11,9 +11,11 @@ const mockAgent: AgentResponse = {
     version: "1.0.0",
     framework: "langchain",
     language: "python",
-    image: "registry.example.com/test-agent:latest",
     modelProvider: "openai",
     modelName: "gpt-4",
+    source: {
+      image: "registry.example.com/test-agent:latest",
+    },
   },
   _meta: {
     "io.modelcontextprotocol.registry/official": {
@@ -64,7 +66,6 @@ describe("AgentCard", () => {
         version: "0.1.0",
         framework: "custom",
         language: "go",
-        image: "",
         modelProvider: "",
         modelName: "",
       },

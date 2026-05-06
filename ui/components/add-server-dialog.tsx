@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { createServerV0, type ServerJson } from "@/lib/admin-api"
 import { Loader2, AlertCircle, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
@@ -26,13 +25,11 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [version, setVersion] = useState("")
-  const [websiteUrl, setWebsiteUrl] = useState("")
-  const [repositorySource, setRepositorySource] = useState<"github" | "gitlab" | "bitbucket">("github")
   const [repositoryUrl, setRepositoryUrl] = useState("")
 
-  // Dynamic fields
-  const [packages, setPackages] = useState<Array<{ identifier: string; version: string; registryType: string; transport: string }>>([])
-  const [remotes, setRemotes] = useState<Array<{ type: string; url: string }>>([])
+  // Schema collapsed to a single package per server.
+  type PackageDraft = { identifier: string; version: string; registryType: string; transport: string }
+  const [pkg, setPkg] = useState<PackageDraft | null>(null)
 
   const resetForm = () => {
     setSchema("2025-10-17")
@@ -40,10 +37,8 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
     setTitle("")
     setDescription("")
     setVersion("")
-    setWebsiteUrl("")
     setRepositoryUrl("")
-    setPackages([])
-    setRemotes([])
+    setPkg(null)
   }
 
   const handleSubmit = async () => {
@@ -80,35 +75,22 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
         server.title = title.trim()
       }
 
-      if (websiteUrl.trim()) {
-        server.websiteUrl = websiteUrl.trim()
-      }
-
+      const source: NonNullable<ServerJson['source']> = {}
       if (repositoryUrl.trim()) {
-        server.repository = {
-          source: repositorySource,
+        source.repository = {
           url: repositoryUrl.trim(),
         }
       }
-
-      if (packages.length > 0) {
-        server.packages = packages
-          .filter(p => p.identifier.trim() && p.version.trim())
-          .map(p => ({
-            identifier: p.identifier.trim(),
-            version: p.version.trim(),
-            registryType: p.registryType as 'npm' | 'pypi' | 'docker',
-            transport: { type: p.transport || 'stdio' },
-          }))
+      if (pkg && pkg.identifier.trim() && pkg.version.trim()) {
+        source.package = {
+          identifier: pkg.identifier.trim(),
+          version: pkg.version.trim(),
+          registryType: pkg.registryType as 'npm' | 'pypi' | 'docker',
+          transport: { type: pkg.transport || 'stdio' },
+        }
       }
-
-      if (remotes.length > 0) {
-        server.remotes = remotes
-          .filter(r => r.type.trim())
-          .map(r => ({
-            type: r.type.trim(),
-            url: r.url.trim() || undefined,
-          }))
+      if (source.repository || source.package) {
+        server.source = source
       }
 
       // Create server
@@ -130,31 +112,15 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
   }
 
   const addPackage = () => {
-    setPackages([...packages, { identifier: "", version: "", registryType: "npm", transport: "stdio" }])
+    setPkg({ identifier: "", version: "", registryType: "npm", transport: "stdio" })
   }
 
-  const removePackage = (index: number) => {
-    setPackages(packages.filter((_, i) => i !== index))
+  const removePackage = () => {
+    setPkg(null)
   }
 
-  const updatePackage = (index: number, field: string, value: string) => {
-    const updated = [...packages]
-    updated[index] = { ...updated[index], [field]: value }
-    setPackages(updated)
-  }
-
-  const addRemote = () => {
-    setRemotes([...remotes, { type: "sse", url: "" }])
-  }
-
-  const removeRemote = (index: number) => {
-    setRemotes(remotes.filter((_, i) => i !== index))
-  }
-
-  const updateRemote = (index: number, field: string, value: string) => {
-    const updated = [...remotes]
-    updated[index] = { ...updated[index], [field]: value }
-    setRemotes(updated)
+  const updatePackage = (field: keyof PackageDraft, value: string) => {
+    setPkg(prev => (prev ? { ...prev, [field]: value } : prev))
   }
 
   return (
@@ -221,31 +187,10 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="websiteUrl">Website URL</Label>
-              <Input
-                id="websiteUrl"
-                placeholder="https://example.com"
-                value={websiteUrl}
-                onChange={(e) => setWebsiteUrl(e.target.value)}
-                disabled={loading}
-              />
-            </div>
-
+          <div className="grid grid-cols-1 gap-4">
             <div className="space-y-2">
               <Label htmlFor="repositoryUrl">Repository URL</Label>
               <div className="flex gap-2">
-                <Select value={repositorySource} onValueChange={(v) => setRepositorySource(v as "github" | "gitlab" | "bitbucket")} disabled={loading}>
-                  <SelectTrigger className="w-[120px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="github">GitHub</SelectItem>
-                    <SelectItem value="gitlab">GitLab</SelectItem>
-                    <SelectItem value="bitbucket">Bitbucket</SelectItem>
-                  </SelectContent>
-                </Select>
                 <Input
                   id="repositoryUrl"
                   placeholder="https://github.com/user/repo"
@@ -258,42 +203,42 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
             </div>
           </div>
 
-          {/* Packages */}
+          {/* Package — only one is published per MCPServer. */}
           <div className="space-y-4 p-4 border rounded-lg">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Packages</h3>
+              <h3 className="font-semibold text-sm">Package</h3>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={addPackage}
-                disabled={loading}
+                disabled={loading || pkg !== null}
               >
                 <Plus className="h-4 w-4 mr-1" />
                 Add Package
               </Button>
             </div>
 
-            {packages.map((pkg, index) => (
-              <div key={index} className="space-y-2 p-3 border rounded-md">
+            {pkg ? (
+              <div className="space-y-2 p-3 border rounded-md">
                 <div className="flex gap-2 items-start">
                   <Input
                     placeholder="Package identifier"
                     value={pkg.identifier}
-                    onChange={(e) => updatePackage(index, "identifier", e.target.value)}
+                    onChange={(e) => updatePackage("identifier", e.target.value)}
                     disabled={loading}
                     className="flex-1"
                   />
                   <Input
                     placeholder="Version"
                     value={pkg.version}
-                    onChange={(e) => updatePackage(index, "version", e.target.value)}
+                    onChange={(e) => updatePackage("version", e.target.value)}
                     disabled={loading}
                     className="w-32"
                   />
                   <select
                     value={pkg.registryType}
-                    onChange={(e) => updatePackage(index, "registryType", e.target.value)}
+                    onChange={(e) => updatePackage("registryType", e.target.value)}
                     className="px-3 py-2 border rounded-md bg-background text-foreground border-input focus:outline-none focus:ring-2 focus:ring-ring"
                     disabled={loading}
                   >
@@ -305,7 +250,7 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
                     type="button"
                     variant="ghost"
                     size="icon"
-                    onClick={() => removePackage(index)}
+                    onClick={removePackage}
                     disabled={loading}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -317,9 +262,9 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
                     <label key={transport} className="flex items-center gap-1.5 cursor-pointer">
                       <input
                         type="radio"
-                        name={`transport-${index}`}
+                        name="package-transport"
                         checked={pkg.transport === transport}
-                        onChange={() => updatePackage(index, "transport", transport)}
+                        onChange={() => updatePackage("transport", transport)}
                         disabled={loading}
                         className="border-gray-300"
                       />
@@ -328,65 +273,13 @@ export function AddServerDialog({ open, onOpenChange, onServerAdded }: AddServer
                   ))}
                 </div>
               </div>
-            ))}
-
-            {packages.length === 0 && (
+            ) : (
               <p className="text-sm text-muted-foreground text-center py-2">
-                No packages added
+                No package added
               </p>
             )}
           </div>
 
-          {/* Remotes */}
-          <div className="space-y-4 p-4 border rounded-lg">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Remotes</h3>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addRemote}
-                disabled={loading}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Remote
-              </Button>
-            </div>
-
-            {remotes.map((remote, index) => (
-              <div key={index} className="flex gap-2 items-start">
-                <Input
-                  placeholder="Type (e.g., sse, stdio)"
-                  value={remote.type}
-                  onChange={(e) => updateRemote(index, "type", e.target.value)}
-                  disabled={loading}
-                  className="w-40"
-                />
-                <Input
-                  placeholder="URL (optional)"
-                  value={remote.url}
-                  onChange={(e) => updateRemote(index, "url", e.target.value)}
-                  disabled={loading}
-                  className="flex-1"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeRemote(index)}
-                  disabled={loading}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-
-            {remotes.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-2">
-                No remotes added
-              </p>
-            )}
-          </div>
         </div>
 
         <div className="flex justify-end gap-2">

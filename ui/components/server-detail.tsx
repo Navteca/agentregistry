@@ -24,8 +24,6 @@ import {
   Package,
   Calendar,
   ExternalLink,
-  GitBranch,
-  Globe,
   Code,
   Server,
   Link,
@@ -71,8 +69,6 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
   const identityData = publisherMetadata?.identity as Record<string, any> | undefined
   const securityScanning = publisherMetadata?.security_scanning as Record<string, any> | undefined
 
-  const icon = serverData.icons?.[0]
-
   const handleVersionChange = (version: string) => {
     const newVersion = allVersions.find(v => v.server.version === version)
     if (newVersion) setSelectedVersion(newVersion)
@@ -107,9 +103,6 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
       <div className="space-y-6">
           {/* Header */}
           <div className="flex items-start gap-4">
-            {icon && (
-              <img src={icon.src} alt="" className="w-12 h-12 rounded flex-shrink-0" />
-            )}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <h1 className="text-2xl font-bold truncate">{serverData.title || serverData.name}</h1>
@@ -169,18 +162,6 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
                 {formatDate(official.publishedAt)}
               </span>
             )}
-            {serverData.websiteUrl && (
-              <a
-                href={serverData.websiteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded text-sm hover:bg-muted/80 transition-colors text-primary"
-              >
-                <Globe className="h-3 w-3" />
-                Website
-                <ExternalLink className="h-2.5 w-2.5" />
-              </a>
-            )}
           </div>
 
           {/* Tabs */}
@@ -188,11 +169,8 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
             <TabsList className="mb-4">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="score">Score</TabsTrigger>
-              {serverData.packages && serverData.packages.length > 0 && (
-                <TabsTrigger value="packages">Packages</TabsTrigger>
-              )}
-              {serverData.remotes && serverData.remotes.length > 0 && (
-                <TabsTrigger value="remotes">Remotes</TabsTrigger>
+              {serverData.source?.package && (
+                <TabsTrigger value="packages">Package</TabsTrigger>
               )}
               <TabsTrigger value="raw">Raw</TabsTrigger>
             </TabsList>
@@ -203,30 +181,28 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
                 <p className="text-[15px] leading-relaxed">{serverData.description}</p>
               </section>
 
-              {serverData.repository?.url && (
-                <section>
-                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Repository</h3>
-                  <div className="space-y-2 text-sm">
-                    {serverData.repository.source && (
+              {(() => {
+                const repoUrl = serverData.source?.repository?.url
+                if (!repoUrl) return null
+                return (
+                  <section>
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Repository</h3>
+                    <div className="space-y-2 text-sm">
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Source</span>
-                        <Badge variant="outline" className="text-xs">{serverData.repository.source}</Badge>
+                        <span className="text-muted-foreground">URL</span>
+                        <a
+                          href={repoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary hover:underline flex items-center gap-1"
+                        >
+                          {repoUrl} <ExternalLink className="h-3 w-3" />
+                        </a>
                       </div>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">URL</span>
-                      <a
-                        href={serverData.repository.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline flex items-center gap-1"
-                      >
-                        {serverData.repository.url} <ExternalLink className="h-3 w-3" />
-                      </a>
                     </div>
-                  </div>
-                </section>
-              )}
+                  </section>
+                )
+              })()}
             </TabsContent>
 
             <TabsContent value="score" className="space-y-6">
@@ -300,17 +276,21 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
                       </div>
                     )}
                   </div>
-                  {serverData.repository?.url && (
-                    <a
-                      href={serverData.repository.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-xs text-primary hover:underline mt-3"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      View Repository
-                    </a>
-                  )}
+                  {(() => {
+                    const repoUrl = serverData.source?.repository?.url
+                    if (!repoUrl) return null
+                    return (
+                      <a
+                        href={repoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-xs text-primary hover:underline mt-3"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        View Repository
+                      </a>
+                    )
+                  })()}
                 </section>
               )}
 
@@ -420,10 +400,13 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
             </TabsContent>
 
             <TabsContent value="packages" className="space-y-4">
-              {serverData.packages && serverData.packages.length > 0 ? (
-                <div className="space-y-4">
-                  {serverData.packages.map((pkg, i) => (
-                    <div key={i} className="p-4 rounded-lg border">
+              {(() => {
+                const pkg = serverData.source?.package
+                if (!pkg) {
+                  return <p className="text-center text-sm text-muted-foreground py-8">No package defined</p>
+                }
+                return (
+                    <div className="p-4 rounded-lg border">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
                           <Package className="h-4 w-4 text-primary" />
@@ -452,44 +435,8 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
                       <RuntimeArgumentsTable arguments={(pkg as any).runtimeArguments} />
                       <EnvironmentVariablesTable variables={(pkg as any).environmentVariables} />
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-center text-sm text-muted-foreground py-8">No packages defined</p>
-              )}
-            </TabsContent>
-
-            <TabsContent value="remotes" className="space-y-3">
-              {serverData.remotes && serverData.remotes.length > 0 ? (
-                <div className="space-y-3">
-                  {serverData.remotes.map((remote, i) => (
-                    <div key={i} className="p-4 rounded-lg border">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Server className="h-4 w-4 text-primary" />
-                          <h4 className="text-sm font-semibold">Remote {i + 1}</h4>
-                        </div>
-                        <Badge variant="outline" className="text-xs">{remote.type}</Badge>
-                      </div>
-                      {remote.url && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <Link className="h-3.5 w-3.5 text-muted-foreground" />
-                          <a
-                            href={remote.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline break-all text-xs"
-                          >
-                            {remote.url}
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-center text-sm text-muted-foreground py-8">No remotes defined</p>
-              )}
+                )
+              })()}
             </TabsContent>
 
             <TabsContent value="raw">

@@ -7,11 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/agentregistry-dev/agentregistry/internal/cli/common"
 	"github.com/agentregistry-dev/agentregistry/internal/cli/common/docker"
 	mcpbuild "github.com/agentregistry-dev/agentregistry/internal/cli/mcp/build"
 	"github.com/agentregistry-dev/agentregistry/internal/cli/scheme"
-	"github.com/agentregistry-dev/agentregistry/internal/registry/kinds"
 	"github.com/agentregistry-dev/agentregistry/internal/version"
+	"github.com/agentregistry-dev/agentregistry/pkg/api/v1alpha1"
 	"github.com/spf13/cobra"
 )
 
@@ -60,64 +61,64 @@ Examples:
 				return fmt.Errorf("expected a project directory, not a file — try: arctl build ./my-project")
 			}
 
-			r, yamlFile, err := findDeclarativeResource(projectDir)
+			obj, yamlFile, err := findDeclarativeResource(projectDir)
 			if err != nil {
 				return err
 			}
 
-			// Validate the kind against the registry, then dispatch by canonical kind name.
-			// Build is intentionally kept as a CLI-side per-kind dispatch because the build
-			// logic depends on CLI packages (docker executor, mcp builder) that must not be
-			// imported by the server-side registry/kinds packages. The dispatch key is the
-			// canonical kind string from the registry — not a raw YAML field.
-			if defaultRegistry != nil {
-				if _, kerr := defaultRegistry.Lookup(r.Kind); kerr != nil {
-					return fmt.Errorf("unknown kind %q in %s", r.Kind, yamlFile)
-				}
+			kind := obj.GetKind()
+			// Validate the kind against the CLI dispatch table, then
+			// dispatch by canonical kind name. Build is intentionally
+			// kept as a CLI-side per-kind dispatch because the build
+			// logic depends on CLI packages (docker executor, mcp
+			// builder) that must not be imported by server-side
+			// kinds packages.
+			if _, kerr := scheme.Lookup(kind); kerr != nil {
+				return fmt.Errorf("unknown kind %q in %s", kind, yamlFile)
 			}
 
 			out := cmd.OutOrStdout()
-			switch r.Kind {
-			case "agent":
-				return buildAgent(out, projectDir, r, buildImage, buildPlatform, buildPush)
-			case "mcp":
-				return buildMCPServer(out, projectDir, r, buildImage, buildPlatform, buildPush)
-			case "skill":
-				return buildSkill(out, projectDir, r, buildImage, buildPlatform, buildPush)
-			case "prompt":
+			switch kind {
+			case v1alpha1.KindAgent:
+				return buildAgent(out, projectDir, obj, buildImage, buildPlatform, buildPush)
+			case v1alpha1.KindMCPServer:
+				return buildMCPServer(out, projectDir, obj, buildImage, buildPlatform, buildPush)
+			case v1alpha1.KindSkill:
+				return buildSkill(out, projectDir, obj, buildImage, buildPlatform, buildPush)
+			case v1alpha1.KindPrompt:
 				return fmt.Errorf("prompts have no build step — use 'arctl apply -f %s' directly", yamlFile)
 			default:
-				// Registry validated the kind above; reaching here means a kind that exists in
-				// the registry has no build action — skip silently (acceptable per task spec).
 				return nil
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&buildImage, "image", "", "Docker image tag override (default: from spec.image / spec.packages[0].identifier)")
+	cmd.Flags().StringVar(&buildImage, "image", "", "Docker image tag override (default: from spec.source.image / spec.packages[0].identifier)")
 	cmd.Flags().BoolVar(&buildPush, "push", false, "Push the image after building")
 	cmd.Flags().StringVar(&buildPlatform, "platform", "", "Target platform (e.g. linux/amd64, linux/arm64)")
 
+	// build is an offline command — hide inherited registry flags from --help output.
+	common.HideRegistryFlags(cmd)
 	return cmd
 }
 
 // findDeclarativeResource looks for a known declarative YAML file in the
-// project directory and returns the parsed resource and file name found.
-func findDeclarativeResource(projectDir string) (*scheme.Resource, string, error) {
+// project directory and returns the parsed object and file name found.
+func findDeclarativeResource(projectDir string) (v1alpha1.Object, string, error) {
 	candidates := []string{"agent.yaml", "mcp.yaml", "skill.yaml", "prompt.yaml"}
 	for _, name := range candidates {
 		path := filepath.Join(projectDir, name)
 		if _, err := os.Stat(path); err != nil {
 			continue
 		}
-		resources, err := scheme.DecodeFile(defaultRegistry, path)
+		objs, err := scheme.DecodeFile(path)
 		if err != nil {
 			return nil, name, fmt.Errorf("parsing %s: %w", name, err)
 		}
-		if len(resources) == 0 {
+		if len(objs) == 0 {
 			continue
 		}
-		return resources[0], name, nil
+		return objs[0], name, nil
 	}
 	return nil, "", fmt.Errorf(
 		"no declarative YAML found in %s (expected agent.yaml, mcp.yaml, skill.yaml, or prompt.yaml)",
@@ -136,7 +137,7 @@ func defaultImage(name string) string {
 
 // resolveImage returns the image to use, in priority order:
 //  1. --image flag
-//  2. specImage (from spec.image or spec.packages[0].identifier)
+//  2. specImage (from spec.source.image or spec.source.package.identifier)
 //  3. default registry/name:latest
 func resolveImage(flagImage, specImage, name string) string {
 	if flagImage != "" {
@@ -148,37 +149,29 @@ func resolveImage(flagImage, specImage, name string) string {
 	return defaultImage(name)
 }
 
-// agentSpecImage extracts spec.image for an Agent resource.
-func agentSpecImage(r *scheme.Resource) string {
-	if spec, ok := r.Spec.(*kinds.AgentSpec); ok {
-		return spec.Image
+// agentSpecImage extracts spec.source.image for an Agent resource.
+func agentSpecImage(obj v1alpha1.Object) string {
+	if a, ok := obj.(*v1alpha1.Agent); ok && a.Spec.Source != nil {
+		return a.Spec.Source.Image
 	}
 	return ""
 }
 
-// mcpSpecPackageIdentifier extracts spec.packages[0].identifier for an MCPServer resource.
-func mcpSpecPackageIdentifier(r *scheme.Resource) string {
-	if spec, ok := r.Spec.(*kinds.MCPSpec); ok && len(spec.Packages) > 0 {
-		return spec.Packages[0].Identifier
+// mcpSpecPackageIdentifier extracts spec.source.package.identifier for an MCPServer resource.
+func mcpSpecPackageIdentifier(obj v1alpha1.Object) string {
+	if s, ok := obj.(*v1alpha1.MCPServer); ok && s.Spec.Source != nil && s.Spec.Source.Package != nil {
+		return s.Spec.Source.Package.Identifier
 	}
 	return ""
 }
 
-// skillSpecPackageIdentifier extracts spec.packages[0].identifier for a Skill resource.
-func skillSpecPackageIdentifier(r *scheme.Resource) string {
-	if spec, ok := r.Spec.(*kinds.SkillSpec); ok && len(spec.Packages) > 0 {
-		return spec.Packages[0].Identifier
-	}
-	return ""
-}
-
-func buildAgent(out io.Writer, projectDir string, r *scheme.Resource, flagImage, platform string, push bool) error {
+func buildAgent(out io.Writer, projectDir string, obj v1alpha1.Object, flagImage, platform string, push bool) error {
 	dockerfilePath := filepath.Join(projectDir, "Dockerfile")
 	if _, err := os.Stat(dockerfilePath); err != nil {
 		return fmt.Errorf("dockerfile not found in %s", projectDir)
 	}
 
-	image := resolveImage(flagImage, agentSpecImage(r), r.Metadata.Name)
+	image := resolveImage(flagImage, agentSpecImage(obj), obj.GetMetadata().Name)
 
 	exec := docker.NewExecutor(false, projectDir)
 	if err := exec.CheckAvailability(); err != nil {
@@ -200,8 +193,8 @@ func buildAgent(out io.Writer, projectDir string, r *scheme.Resource, flagImage,
 	return nil
 }
 
-func buildMCPServer(out io.Writer, projectDir string, r *scheme.Resource, flagImage, platform string, push bool) error {
-	image := resolveImage(flagImage, mcpSpecPackageIdentifier(r), r.Metadata.Name)
+func buildMCPServer(out io.Writer, projectDir string, obj v1alpha1.Object, flagImage, platform string, push bool) error {
+	image := resolveImage(flagImage, mcpSpecPackageIdentifier(obj), obj.GetMetadata().Name)
 
 	fmt.Fprintf(out, "Building MCP server image: %s\n", image)
 	builder := mcpbuild.New()
@@ -230,8 +223,8 @@ func CheckDockerAvailable() error {
 // there is no entrypoint or shell, just the raw files copied in.
 const skillDockerfile = "FROM scratch\nCOPY . .\n"
 
-func buildSkill(out io.Writer, projectDir string, r *scheme.Resource, flagImage, platform string, push bool) error {
-	image := resolveImage(flagImage, skillSpecPackageIdentifier(r), r.Metadata.Name)
+func buildSkill(out io.Writer, projectDir string, obj v1alpha1.Object, flagImage, platform string, push bool) error {
+	image := resolveImage(flagImage, "", obj.GetMetadata().Name)
 
 	fmt.Fprintf(out, "Building skill image: %s\n", image)
 

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 import { ServerCard } from "../server-card"
-import type { ServerResponse } from "@/lib/api/types.gen"
+import type { ServerResponse } from "@/lib/admin-api"
 
 const mockServer: ServerResponse = {
   server: {
@@ -11,24 +11,16 @@ const mockServer: ServerResponse = {
     title: "Database Server",
     description: "MCP server for PostgreSQL with connection pooling.",
     version: "3.2.1",
-    repository: {
-      url: "https://github.com/acme/database-server",
-      source: "github",
-    },
-    websiteUrl: "https://acme.dev/database-server",
-    packages: [
-      {
+    source: {
+      repository: {
+        url: "https://github.com/acme/database-server",
+      },
+      package: {
         registryType: "npm",
         identifier: "@acme/database-server",
         transport: { type: "stdio" },
       },
-    ],
-    remotes: [
-      {
-        type: "streamable-http",
-        url: "https://mcp.acme.dev/database",
-      },
-    ],
+    },
   },
   _meta: {
     "io.modelcontextprotocol.registry/official": {
@@ -52,16 +44,10 @@ describe("ServerCard", () => {
     expect(screen.getByText("3.2.1")).toBeInTheDocument()
   })
 
-  it("renders package and remote counts", () => {
+  it("renders package count", () => {
     render(<ServerCard server={mockServer} />)
-    // counts are shown as numbers next to icons
-    const ones = screen.getAllByText("1")
-    expect(ones.length).toBeGreaterThanOrEqual(2)
-  })
-
-  it("renders repository source", () => {
-    render(<ServerCard server={mockServer} />)
-    expect(screen.getByText("github")).toBeInTheDocument()
+    // count is shown as a number next to the package icon
+    expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(1)
   })
 
   it("falls back to name when title is not set", () => {
@@ -88,7 +74,7 @@ describe("ServerCard", () => {
   it("shows deploy button when showDeploy is true and server has OCI package", () => {
     const onDeploy = vi.fn()
     const ociServer: ServerResponse = {
-      server: { ...mockServer.server, packages: [{ registryType: "oci", identifier: "ghcr.io/acme/db", transport: { type: "stdio" } }] },
+      server: { ...mockServer.server, source: { package: { registryType: "oci", identifier: "ghcr.io/acme/db", transport: { type: "stdio" } } } },
       _meta: mockServer._meta,
     }
     render(<ServerCard server={ociServer} showDeploy onDeploy={onDeploy} />)
@@ -100,7 +86,7 @@ describe("ServerCard", () => {
     const onDeploy = vi.fn()
     const onClick = vi.fn()
     const ociServer: ServerResponse = {
-      server: { ...mockServer.server, packages: [{ registryType: "oci", identifier: "ghcr.io/acme/db", transport: { type: "stdio" } }] },
+      server: { ...mockServer.server, source: { package: { registryType: "oci", identifier: "ghcr.io/acme/db", transport: { type: "stdio" } } } },
       _meta: mockServer._meta,
     }
     render(<ServerCard server={ociServer} showDeploy onDeploy={onDeploy} onClick={onClick} />)
