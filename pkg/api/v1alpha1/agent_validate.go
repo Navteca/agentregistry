@@ -27,8 +27,6 @@ func (a *Agent) ResolveRefs(ctx context.Context, resolver ResolverFunc) error {
 	}
 	var errs FieldErrors
 	for i, ref := range a.Spec.MCPServers {
-		// Default empty Kind to MCPServer; explicit Kind (e.g. RemoteMCPServer)
-		// is preserved so the resolver fetches the right kind.
 		if ref.Kind == "" {
 			ref.Kind = KindMCPServer
 		}
@@ -36,20 +34,6 @@ func (a *Agent) ResolveRefs(ctx context.Context, resolver ResolverFunc) error {
 			ref.Namespace = a.Metadata.Namespace
 		}
 		errs = append(errs, resolveRefWith(ctx, resolver, ref, fmt.Sprintf("spec.mcpServers[%d]", i))...)
-	}
-	for i, ref := range a.Spec.Skills {
-		ref.Kind = KindSkill
-		if ref.Namespace == "" {
-			ref.Namespace = a.Metadata.Namespace
-		}
-		errs = append(errs, resolveRefWith(ctx, resolver, ref, fmt.Sprintf("spec.skills[%d]", i))...)
-	}
-	for i, ref := range a.Spec.Prompts {
-		ref.Kind = KindPrompt
-		if ref.Namespace == "" {
-			ref.Namespace = a.Metadata.Namespace
-		}
-		errs = append(errs, resolveRefWith(ctx, resolver, ref, fmt.Sprintf("spec.prompts[%d]", i))...)
 	}
 	if len(errs) == 0 {
 		return nil
@@ -70,46 +54,20 @@ func validateAgentSpec(s *AgentSpec) FieldErrors {
 		}
 	}
 	for i, ref := range s.MCPServers {
-		// References within Agent.Spec default Kind=MCPServer; explicit
-		// Kind=RemoteMCPServer is also accepted (the agent points at an
-		// already-running endpoint instead of a bundled template).
+		// References within Agent.Spec default Kind=MCPServer. MCPServer
+		// covers both bundled (spec.source) and remote (spec.remote) servers
+		// under a single kind.
 		kind := ref.Kind
 		if kind == "" {
 			kind = KindMCPServer
 		}
-		if kind != KindMCPServer && kind != KindRemoteMCPServer {
+		if kind != KindMCPServer {
 			errs.Append(fmt.Sprintf("spec.mcpServers[%d].kind", i),
-				fmt.Errorf("%w: must be %q or %q, got %q",
-					ErrInvalidRef, KindMCPServer, KindRemoteMCPServer, ref.Kind))
+				fmt.Errorf("%w: must be %q, got %q",
+					ErrInvalidRef, KindMCPServer, ref.Kind))
 		}
 		for _, e := range validateRef(ref) {
 			errs.Append(fmt.Sprintf("spec.mcpServers[%d].%s", i, e.Path), e.Cause)
-		}
-	}
-	for i, ref := range s.Skills {
-		kind := ref.Kind
-		if kind == "" {
-			kind = KindSkill
-		}
-		if kind != KindSkill {
-			errs.Append(fmt.Sprintf("spec.skills[%d].kind", i),
-				fmt.Errorf("%w: must be %q, got %q", ErrInvalidRef, KindSkill, ref.Kind))
-		}
-		for _, e := range validateRef(ref) {
-			errs.Append(fmt.Sprintf("spec.skills[%d].%s", i, e.Path), e.Cause)
-		}
-	}
-	for i, ref := range s.Prompts {
-		kind := ref.Kind
-		if kind == "" {
-			kind = KindPrompt
-		}
-		if kind != KindPrompt {
-			errs.Append(fmt.Sprintf("spec.prompts[%d].kind", i),
-				fmt.Errorf("%w: must be %q, got %q", ErrInvalidRef, KindPrompt, ref.Kind))
-		}
-		for _, e := range validateRef(ref) {
-			errs.Append(fmt.Sprintf("spec.prompts[%d].%s", i, e.Path), e.Cause)
 		}
 	}
 

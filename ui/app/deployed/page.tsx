@@ -63,7 +63,7 @@ export default function DeployedPage() {
   const [copied, setCopied] = useState(false)
   const [copiedAgentId, setCopiedAgentId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filterProvider, setFilterProvider] = useState<string>("all")
+  const [filterRuntime, setFilterRuntime] = useState<string>("all")
   const [filterOrigin, setFilterOrigin] = useState<string>("all")
   const [filterStatus, setFilterStatus] = useState<string>("all")
 
@@ -120,7 +120,6 @@ export default function DeployedPage() {
       await deleteDeployment({
         path: {
           name: serverToRemove.name,
-          version: serverToRemove.version,
         },
         query: serverToRemove.namespace && serverToRemove.namespace !== "default"
           ? { namespace: serverToRemove.namespace }
@@ -137,22 +136,22 @@ export default function DeployedPage() {
     }
   }
 
-  const uniqueProviders = [...new Set(deployments.map(d => d.providerId || "local"))]
+  const uniqueRuntimes = [...new Set(deployments.map(d => d.runtimeId || "local"))]
   const uniqueOrigins = [...new Set(deployments.map(d => d.origin))]
   const uniqueStatuses = [...new Set(deployments.map(d => d.status))]
 
   const filtered = deployments.filter(d => {
-    if (filterProvider !== "all" && (d.providerId || "local") !== filterProvider) return false
+    if (filterRuntime !== "all" && (d.runtimeId || "local") !== filterRuntime) return false
     if (filterOrigin !== "all" && d.origin !== filterOrigin) return false
     if (filterStatus !== "all" && d.status !== filterStatus) return false
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
-      if (!d.serverName.toLowerCase().includes(q) && !d.version.toLowerCase().includes(q)) return false
+      if (!d.serverName.toLowerCase().includes(q) && !d.tag.toLowerCase().includes(q)) return false
     }
     return true
   })
 
-  const hasActiveFilters = filterProvider !== "all" || filterOrigin !== "all" || filterStatus !== "all"
+  const hasActiveFilters = filterRuntime !== "all" || filterOrigin !== "all" || filterStatus !== "all"
 
   const agents = filtered.filter(d => d.resourceType === 'agent')
   const mcpServers = filtered.filter(d => d.resourceType === 'mcp')
@@ -192,13 +191,13 @@ export default function DeployedPage() {
             </div>
 
             <div className="flex items-center gap-2 ml-auto">
-              <Select value={filterProvider} onValueChange={setFilterProvider}>
+              <Select value={filterRuntime} onValueChange={setFilterRuntime}>
                 <SelectTrigger className="w-[140px] h-8 text-sm">
-                  <SelectValue placeholder="Provider" />
+                  <SelectValue placeholder="Runtime" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All providers</SelectItem>
-                  {uniqueProviders.map(p => (
+                  <SelectItem value="all">All runtimes</SelectItem>
+                  {uniqueRuntimes.map(p => (
                     <SelectItem key={p} value={p}>{p}</SelectItem>
                   ))}
                 </SelectContent>
@@ -230,7 +229,7 @@ export default function DeployedPage() {
                   variant="ghost"
                   size="sm"
                   className="h-8 gap-1 text-xs text-muted-foreground"
-                  onClick={() => { setFilterProvider("all"); setFilterOrigin("all"); setFilterStatus("all") }}
+                  onClick={() => { setFilterRuntime("all"); setFilterOrigin("all"); setFilterStatus("all") }}
                 >
                   <X className="h-3 w-3" />
                   Clear
@@ -339,7 +338,7 @@ export default function DeployedPage() {
           <DialogHeader>
             <DialogTitle>Remove Deployment</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove <strong>{serverToRemove?.serverName}</strong> (version {serverToRemove?.version}) ({serverToRemove?.resourceType})?
+              Are you sure you want to remove <strong>{serverToRemove?.serverName}</strong> (tag {serverToRemove?.tag}) ({serverToRemove?.resourceType})?
               <br /><br />
               This will stop the server and remove it from your deployments. This action cannot be undone.
             </DialogDescription>
@@ -395,8 +394,8 @@ function DeploymentRow({ item, onRemove, removing, copiedAgentId, onCopyAgentUrl
           </div>
 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground mt-1">
-            <span className="font-mono">{item.version}</span>
-            <span>{item.providerId || "local"}</span>
+            <span className="font-mono">{item.tag}</span>
+            <span>{item.runtimeId || "local"}</span>
             <span>{item.origin}</span>
             <span className="flex items-center gap-1">
               <Calendar className="h-3 w-3" />
@@ -407,7 +406,7 @@ function DeploymentRow({ item, onRemove, removing, copiedAgentId, onCopyAgentUrl
             )}
           </div>
 
-          {isAgent && (!item.providerId || item.providerId === 'local') && (
+          {isAgent && (!item.runtimeId || item.runtimeId === 'local') && (
             <div className="flex items-center gap-2 mt-2.5 px-3 py-2 bg-muted/60 border rounded-md">
               <Link2 className="h-3.5 w-3.5 text-primary shrink-0" />
               <code className="text-sm font-mono text-foreground truncate flex-1">

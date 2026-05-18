@@ -19,13 +19,9 @@ export type AgentSource = {
 
 export type AgentSpec = {
     description?: string;
-    framework?: string;
-    language?: string;
-    mcpServers?: Array<ResourceRef>;
+    mcpServers?: Array<ResourceRef> | null;
     modelName?: string;
     modelProvider?: string;
-    prompts?: Array<ResourceRef>;
-    skills?: Array<ResourceRef>;
     source?: AgentSource;
     title?: string;
 };
@@ -37,11 +33,11 @@ export type ApplyResult = {
     name: string;
     namespace?: string;
     status: string;
-    version?: string;
+    tag?: string;
 };
 
 export type ApplyResultsResponse = {
-    results: Array<ApplyResult>;
+    results: Array<ApplyResult> | null;
 };
 
 export type Condition = {
@@ -60,15 +56,21 @@ export type Deployment = {
     status?: Status;
 };
 
+export type DeploymentRef = {
+    name: string;
+    namespace?: string;
+};
+
 export type DeploymentSpec = {
+    deploymentRefs?: Array<DeploymentRef> | null;
     desiredState?: string;
     env?: {
         [key: string]: string;
     };
-    providerConfig?: {
+    runtimeConfig?: {
         [key: string]: unknown;
     };
-    providerRef: ResourceRef;
+    runtimeRef: ResourceRef;
     targetRef: ResourceRef;
 };
 
@@ -95,7 +97,7 @@ export type ErrorModel = {
     /**
      * Optional list of individual error details
      */
-    errors?: Array<ErrorDetail>;
+    errors?: Array<ErrorDetail> | null;
     /**
      * A URI reference that identifies the specific occurrence of the problem.
      */
@@ -126,42 +128,37 @@ export type HealthBody = {
 };
 
 export type ListOutputAgentBody = {
-    items: Array<Agent>;
+    items: Array<Agent> | null;
     nextCursor?: string;
 };
 
 export type ListOutputDeploymentBody = {
-    items: Array<Deployment>;
+    items: Array<Deployment> | null;
     nextCursor?: string;
 };
 
 export type ListOutputMcpServerBody = {
-    items: Array<McpServer>;
+    items: Array<McpServer> | null;
     nextCursor?: string;
 };
 
 export type ListOutputPromptBody = {
-    items: Array<Prompt>;
+    items: Array<Prompt> | null;
     nextCursor?: string;
 };
 
-export type ListOutputProviderBody = {
-    items: Array<Provider>;
-    nextCursor?: string;
-};
-
-export type ListOutputRemoteMcpServerBody = {
-    items: Array<RemoteMcpServer>;
+export type ListOutputRuntimeBody = {
+    items: Array<Runtime> | null;
     nextCursor?: string;
 };
 
 export type ListOutputSkillBody = {
-    items: Array<Skill>;
+    items: Array<Skill> | null;
     nextCursor?: string;
 };
 
 export type McpArgument = {
-    choices?: Array<string>;
+    choices?: Array<string> | null;
     default?: string;
     description?: string;
     format?: string;
@@ -179,7 +176,7 @@ export type McpArgument = {
 };
 
 export type McpInputVariable = {
-    choices?: Array<string>;
+    choices?: Array<string> | null;
     default?: string;
     description?: string;
     format?: string;
@@ -190,7 +187,7 @@ export type McpInputVariable = {
 };
 
 export type McpKeyValueInput = {
-    choices?: Array<string>;
+    choices?: Array<string> | null;
     default?: string;
     description?: string;
     format?: string;
@@ -205,13 +202,13 @@ export type McpKeyValueInput = {
 };
 
 export type McpPackage = {
-    environmentVariables?: Array<McpKeyValueInput>;
+    environmentVariables?: Array<McpKeyValueInput> | null;
     fileSha256?: string;
     identifier: string;
-    packageArguments?: Array<McpArgument>;
+    packageArguments?: Array<McpArgument> | null;
     registryBaseUrl?: string;
     registryType: string;
-    runtimeArguments?: Array<McpArgument>;
+    runtimeArguments?: Array<McpArgument> | null;
     runtimeHint?: string;
     transport: McpTransport;
     version?: string;
@@ -232,12 +229,13 @@ export type McpServerSource = {
 
 export type McpServerSpec = {
     description?: string;
+    remote?: McpTransport;
     source?: McpServerSource;
     title?: string;
 };
 
 export type McpTransport = {
-    headers?: Array<McpKeyValueInput>;
+    headers?: Array<McpKeyValueInput> | null;
     type: string;
     url?: string;
 };
@@ -253,8 +251,9 @@ export type ObjectMeta = {
     };
     name: string;
     namespace?: string;
+    tag?: string;
+    uid?: string;
     updatedAt?: string;
-    version?: string;
 };
 
 export type PingBody = {
@@ -277,37 +276,9 @@ export type PromptSpec = {
     description?: string;
 };
 
-export type Provider = {
-    apiVersion: string;
-    kind: string;
-    metadata: ObjectMeta;
-    spec: ProviderSpec;
-    status?: Status;
-};
-
-export type ProviderSpec = {
-    config?: {
-        [key: string]: unknown;
-    };
-    platform: string;
-    telemetryEndpoint?: string;
-};
-
-export type RemoteMcpServer = {
-    apiVersion: string;
-    kind: string;
-    metadata: ObjectMeta;
-    spec: RemoteMcpServerSpec;
-    status?: Status;
-};
-
-export type RemoteMcpServerSpec = {
-    description?: string;
-    remote: McpTransport;
-    title?: string;
-};
-
 export type Repository = {
+    branch?: string;
+    commit?: string;
     subfolder?: string;
     url?: string;
 };
@@ -316,7 +287,23 @@ export type ResourceRef = {
     kind: string;
     name: string;
     namespace?: string;
-    version?: string;
+    tag?: string;
+};
+
+export type Runtime = {
+    apiVersion: string;
+    kind: string;
+    metadata: ObjectMeta;
+    spec: RuntimeSpec;
+    status?: Status;
+};
+
+export type RuntimeSpec = {
+    config?: {
+        [key: string]: unknown;
+    };
+    telemetryEndpoint?: string;
+    type: string;
 };
 
 export type Skill = {
@@ -338,7 +325,7 @@ export type SkillSpec = {
 };
 
 export type Status = {
-    conditions?: Array<Condition>;
+    conditions?: Array<Condition> | null;
 };
 
 export type VersionBody = {
@@ -377,7 +364,11 @@ export type ListAgentsData = {
          */
         labels?: string;
         /**
-         * Only return rows with is_latest_version=true.
+         * Restrict the result set to one tag value (tagged artifact kinds only).
+         */
+        tag?: string;
+        /**
+         * Only return the literal latest tag per (namespace, name). Equivalent to tag=latest for tagged kinds.
          */
         latestOnly?: boolean;
         /**
@@ -442,7 +433,7 @@ export type DeleteAgentData = {
     body?: never;
     path: {
         name: string;
-        version: string;
+        tag: string;
     };
     query?: {
         /**
@@ -454,7 +445,7 @@ export type DeleteAgentData = {
          */
         force?: boolean;
     };
-    url: '/v0/agents/{name}/{version}';
+    url: '/v0/agents/{name}/{tag}';
 };
 
 export type DeleteAgentErrors = {
@@ -479,7 +470,7 @@ export type GetAgentData = {
     body?: never;
     path: {
         name: string;
-        version: string;
+        tag: string;
     };
     query?: {
         /**
@@ -487,7 +478,7 @@ export type GetAgentData = {
          */
         namespace?: string;
     };
-    url: '/v0/agents/{name}/{version}';
+    url: '/v0/agents/{name}/{tag}';
 };
 
 export type GetAgentErrors = {
@@ -508,11 +499,10 @@ export type GetAgentResponses = {
 
 export type GetAgentResponse = GetAgentResponses[keyof GetAgentResponses];
 
-export type ApplyAgentData = {
-    body?: Agent;
+export type ListTagsAgentData = {
+    body?: never;
     path: {
         name: string;
-        version: string;
     };
     query?: {
         /**
@@ -520,26 +510,26 @@ export type ApplyAgentData = {
          */
         namespace?: string;
     };
-    url: '/v0/agents/{name}/{version}';
+    url: '/v0/agents/{name}/tags';
 };
 
-export type ApplyAgentErrors = {
+export type ListTagsAgentErrors = {
     /**
      * Error
      */
     default: ErrorModel;
 };
 
-export type ApplyAgentError = ApplyAgentErrors[keyof ApplyAgentErrors];
+export type ListTagsAgentError = ListTagsAgentErrors[keyof ListTagsAgentErrors];
 
-export type ApplyAgentResponses = {
+export type ListTagsAgentResponses = {
     /**
      * OK
      */
-    200: Agent;
+    200: ListOutputAgentBody;
 };
 
-export type ApplyAgentResponse = ApplyAgentResponses[keyof ApplyAgentResponses];
+export type ListTagsAgentResponse = ListTagsAgentResponses[keyof ListTagsAgentResponses];
 
 export type DeleteBatchData = {
     body: Blob | File;
@@ -622,7 +612,11 @@ export type ListDeploymentsData = {
          */
         labels?: string;
         /**
-         * Only return rows with is_latest_version=true.
+         * Restrict the result set to one tag value (tagged artifact kinds only).
+         */
+        tag?: string;
+        /**
+         * Only return the literal latest tag per (namespace, name). Equivalent to tag=latest for tagged kinds.
          */
         latestOnly?: boolean;
         /**
@@ -650,6 +644,42 @@ export type ListDeploymentsResponses = {
 };
 
 export type ListDeploymentsResponse = ListDeploymentsResponses[keyof ListDeploymentsResponses];
+
+export type DeleteDeploymentData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: {
+        /**
+         * Namespace (internal; defaults to 'default').
+         */
+        namespace?: string;
+        /**
+         * Skip provider-specific teardown and only remove the registry record.
+         */
+        force?: boolean;
+    };
+    url: '/v0/deployments/{name}';
+};
+
+export type DeleteDeploymentErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteDeploymentError = DeleteDeploymentErrors[keyof DeleteDeploymentErrors];
+
+export type DeleteDeploymentResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteDeploymentResponse = DeleteDeploymentResponses[keyof DeleteDeploymentResponses];
 
 export type GetLatestDeploymentData = {
     body?: never;
@@ -683,81 +713,10 @@ export type GetLatestDeploymentResponses = {
 
 export type GetLatestDeploymentResponse = GetLatestDeploymentResponses[keyof GetLatestDeploymentResponses];
 
-export type DeleteDeploymentData = {
-    body?: never;
-    path: {
-        name: string;
-        version: string;
-    };
-    query?: {
-        /**
-         * Namespace (internal; defaults to 'default').
-         */
-        namespace?: string;
-        /**
-         * Skip provider-specific teardown and only remove the registry record.
-         */
-        force?: boolean;
-    };
-    url: '/v0/deployments/{name}/{version}';
-};
-
-export type DeleteDeploymentErrors = {
-    /**
-     * Error
-     */
-    default: ErrorModel;
-};
-
-export type DeleteDeploymentError = DeleteDeploymentErrors[keyof DeleteDeploymentErrors];
-
-export type DeleteDeploymentResponses = {
-    /**
-     * No Content
-     */
-    204: void;
-};
-
-export type DeleteDeploymentResponse = DeleteDeploymentResponses[keyof DeleteDeploymentResponses];
-
-export type GetDeploymentData = {
-    body?: never;
-    path: {
-        name: string;
-        version: string;
-    };
-    query?: {
-        /**
-         * Namespace (internal; defaults to 'default').
-         */
-        namespace?: string;
-    };
-    url: '/v0/deployments/{name}/{version}';
-};
-
-export type GetDeploymentErrors = {
-    /**
-     * Error
-     */
-    default: ErrorModel;
-};
-
-export type GetDeploymentError = GetDeploymentErrors[keyof GetDeploymentErrors];
-
-export type GetDeploymentResponses = {
-    /**
-     * OK
-     */
-    200: Deployment;
-};
-
-export type GetDeploymentResponse = GetDeploymentResponses[keyof GetDeploymentResponses];
-
 export type ApplyDeploymentData = {
     body?: Deployment;
     path: {
         name: string;
-        version: string;
     };
     query?: {
         /**
@@ -765,7 +724,7 @@ export type ApplyDeploymentData = {
          */
         namespace?: string;
     };
-    url: '/v0/deployments/{name}/{version}';
+    url: '/v0/deployments/{name}';
 };
 
 export type ApplyDeploymentErrors = {
@@ -832,7 +791,11 @@ export type ListMcpserversData = {
          */
         labels?: string;
         /**
-         * Only return rows with is_latest_version=true.
+         * Restrict the result set to one tag value (tagged artifact kinds only).
+         */
+        tag?: string;
+        /**
+         * Only return the literal latest tag per (namespace, name). Equivalent to tag=latest for tagged kinds.
          */
         latestOnly?: boolean;
         /**
@@ -897,7 +860,7 @@ export type DeleteMcpserverData = {
     body?: never;
     path: {
         name: string;
-        version: string;
+        tag: string;
     };
     query?: {
         /**
@@ -909,7 +872,7 @@ export type DeleteMcpserverData = {
          */
         force?: boolean;
     };
-    url: '/v0/mcpservers/{name}/{version}';
+    url: '/v0/mcpservers/{name}/{tag}';
 };
 
 export type DeleteMcpserverErrors = {
@@ -934,7 +897,7 @@ export type GetMcpserverData = {
     body?: never;
     path: {
         name: string;
-        version: string;
+        tag: string;
     };
     query?: {
         /**
@@ -942,7 +905,7 @@ export type GetMcpserverData = {
          */
         namespace?: string;
     };
-    url: '/v0/mcpservers/{name}/{version}';
+    url: '/v0/mcpservers/{name}/{tag}';
 };
 
 export type GetMcpserverErrors = {
@@ -963,11 +926,10 @@ export type GetMcpserverResponses = {
 
 export type GetMcpserverResponse = GetMcpserverResponses[keyof GetMcpserverResponses];
 
-export type ApplyMcpserverData = {
-    body?: McpServer;
+export type ListTagsMcpserverData = {
+    body?: never;
     path: {
         name: string;
-        version: string;
     };
     query?: {
         /**
@@ -975,26 +937,26 @@ export type ApplyMcpserverData = {
          */
         namespace?: string;
     };
-    url: '/v0/mcpservers/{name}/{version}';
+    url: '/v0/mcpservers/{name}/tags';
 };
 
-export type ApplyMcpserverErrors = {
+export type ListTagsMcpserverErrors = {
     /**
      * Error
      */
     default: ErrorModel;
 };
 
-export type ApplyMcpserverError = ApplyMcpserverErrors[keyof ApplyMcpserverErrors];
+export type ListTagsMcpserverError = ListTagsMcpserverErrors[keyof ListTagsMcpserverErrors];
 
-export type ApplyMcpserverResponses = {
+export type ListTagsMcpserverResponses = {
     /**
      * OK
      */
-    200: McpServer;
+    200: ListOutputMcpServerBody;
 };
 
-export type ApplyMcpserverResponse = ApplyMcpserverResponses[keyof ApplyMcpserverResponses];
+export type ListTagsMcpserverResponse = ListTagsMcpserverResponses[keyof ListTagsMcpserverResponses];
 
 export type PingV0Data = {
     body?: never;
@@ -1042,7 +1004,11 @@ export type ListPromptsData = {
          */
         labels?: string;
         /**
-         * Only return rows with is_latest_version=true.
+         * Restrict the result set to one tag value (tagged artifact kinds only).
+         */
+        tag?: string;
+        /**
+         * Only return the literal latest tag per (namespace, name). Equivalent to tag=latest for tagged kinds.
          */
         latestOnly?: boolean;
         /**
@@ -1107,7 +1073,7 @@ export type DeletePromptData = {
     body?: never;
     path: {
         name: string;
-        version: string;
+        tag: string;
     };
     query?: {
         /**
@@ -1119,7 +1085,7 @@ export type DeletePromptData = {
          */
         force?: boolean;
     };
-    url: '/v0/prompts/{name}/{version}';
+    url: '/v0/prompts/{name}/{tag}';
 };
 
 export type DeletePromptErrors = {
@@ -1144,7 +1110,7 @@ export type GetPromptData = {
     body?: never;
     path: {
         name: string;
-        version: string;
+        tag: string;
     };
     query?: {
         /**
@@ -1152,7 +1118,7 @@ export type GetPromptData = {
          */
         namespace?: string;
     };
-    url: '/v0/prompts/{name}/{version}';
+    url: '/v0/prompts/{name}/{tag}';
 };
 
 export type GetPromptErrors = {
@@ -1173,11 +1139,10 @@ export type GetPromptResponses = {
 
 export type GetPromptResponse = GetPromptResponses[keyof GetPromptResponses];
 
-export type ApplyPromptData = {
-    body?: Prompt;
+export type ListTagsPromptData = {
+    body?: never;
     path: {
         name: string;
-        version: string;
     };
     query?: {
         /**
@@ -1185,28 +1150,28 @@ export type ApplyPromptData = {
          */
         namespace?: string;
     };
-    url: '/v0/prompts/{name}/{version}';
+    url: '/v0/prompts/{name}/tags';
 };
 
-export type ApplyPromptErrors = {
+export type ListTagsPromptErrors = {
     /**
      * Error
      */
     default: ErrorModel;
 };
 
-export type ApplyPromptError = ApplyPromptErrors[keyof ApplyPromptErrors];
+export type ListTagsPromptError = ListTagsPromptErrors[keyof ListTagsPromptErrors];
 
-export type ApplyPromptResponses = {
+export type ListTagsPromptResponses = {
     /**
      * OK
      */
-    200: Prompt;
+    200: ListOutputPromptBody;
 };
 
-export type ApplyPromptResponse = ApplyPromptResponses[keyof ApplyPromptResponses];
+export type ListTagsPromptResponse = ListTagsPromptResponses[keyof ListTagsPromptResponses];
 
-export type ListProvidersData = {
+export type ListRuntimesData = {
     body?: never;
     path?: never;
     query?: {
@@ -1227,7 +1192,11 @@ export type ListProvidersData = {
          */
         labels?: string;
         /**
-         * Only return rows with is_latest_version=true.
+         * Restrict the result set to one tag value (tagged artifact kinds only).
+         */
+        tag?: string;
+        /**
+         * Only return the literal latest tag per (namespace, name). Equivalent to tag=latest for tagged kinds.
          */
         latestOnly?: boolean;
         /**
@@ -1235,64 +1204,31 @@ export type ListProvidersData = {
          */
         includeTerminating?: boolean;
     };
-    url: '/v0/providers';
+    url: '/v0/runtimes';
 };
 
-export type ListProvidersErrors = {
+export type ListRuntimesErrors = {
     /**
      * Error
      */
     default: ErrorModel;
 };
 
-export type ListProvidersError = ListProvidersErrors[keyof ListProvidersErrors];
+export type ListRuntimesError = ListRuntimesErrors[keyof ListRuntimesErrors];
 
-export type ListProvidersResponses = {
+export type ListRuntimesResponses = {
     /**
      * OK
      */
-    200: ListOutputProviderBody;
+    200: ListOutputRuntimeBody;
 };
 
-export type ListProvidersResponse = ListProvidersResponses[keyof ListProvidersResponses];
+export type ListRuntimesResponse = ListRuntimesResponses[keyof ListRuntimesResponses];
 
-export type GetLatestProviderData = {
+export type DeleteRuntimeData = {
     body?: never;
     path: {
         name: string;
-    };
-    query?: {
-        /**
-         * Namespace (internal; defaults to 'default').
-         */
-        namespace?: string;
-    };
-    url: '/v0/providers/{name}';
-};
-
-export type GetLatestProviderErrors = {
-    /**
-     * Error
-     */
-    default: ErrorModel;
-};
-
-export type GetLatestProviderError = GetLatestProviderErrors[keyof GetLatestProviderErrors];
-
-export type GetLatestProviderResponses = {
-    /**
-     * OK
-     */
-    200: Provider;
-};
-
-export type GetLatestProviderResponse = GetLatestProviderResponses[keyof GetLatestProviderResponses];
-
-export type DeleteProviderData = {
-    body?: never;
-    path: {
-        name: string;
-        version: string;
     };
     query?: {
         /**
@@ -1304,144 +1240,28 @@ export type DeleteProviderData = {
          */
         force?: boolean;
     };
-    url: '/v0/providers/{name}/{version}';
+    url: '/v0/runtimes/{name}';
 };
 
-export type DeleteProviderErrors = {
+export type DeleteRuntimeErrors = {
     /**
      * Error
      */
     default: ErrorModel;
 };
 
-export type DeleteProviderError = DeleteProviderErrors[keyof DeleteProviderErrors];
+export type DeleteRuntimeError = DeleteRuntimeErrors[keyof DeleteRuntimeErrors];
 
-export type DeleteProviderResponses = {
+export type DeleteRuntimeResponses = {
     /**
      * No Content
      */
     204: void;
 };
 
-export type DeleteProviderResponse = DeleteProviderResponses[keyof DeleteProviderResponses];
+export type DeleteRuntimeResponse = DeleteRuntimeResponses[keyof DeleteRuntimeResponses];
 
-export type GetProviderData = {
-    body?: never;
-    path: {
-        name: string;
-        version: string;
-    };
-    query?: {
-        /**
-         * Namespace (internal; defaults to 'default').
-         */
-        namespace?: string;
-    };
-    url: '/v0/providers/{name}/{version}';
-};
-
-export type GetProviderErrors = {
-    /**
-     * Error
-     */
-    default: ErrorModel;
-};
-
-export type GetProviderError = GetProviderErrors[keyof GetProviderErrors];
-
-export type GetProviderResponses = {
-    /**
-     * OK
-     */
-    200: Provider;
-};
-
-export type GetProviderResponse = GetProviderResponses[keyof GetProviderResponses];
-
-export type ApplyProviderData = {
-    body?: Provider;
-    path: {
-        name: string;
-        version: string;
-    };
-    query?: {
-        /**
-         * Namespace (internal; defaults to 'default').
-         */
-        namespace?: string;
-    };
-    url: '/v0/providers/{name}/{version}';
-};
-
-export type ApplyProviderErrors = {
-    /**
-     * Error
-     */
-    default: ErrorModel;
-};
-
-export type ApplyProviderError = ApplyProviderErrors[keyof ApplyProviderErrors];
-
-export type ApplyProviderResponses = {
-    /**
-     * OK
-     */
-    200: Provider;
-};
-
-export type ApplyProviderResponse = ApplyProviderResponses[keyof ApplyProviderResponses];
-
-export type ListRemotemcpserversData = {
-    body?: never;
-    path?: never;
-    query?: {
-        /**
-         * Namespace (defaults to 'default'; 'all' lists across all namespaces).
-         */
-        namespace?: string;
-        /**
-         * Max items to return (default 50).
-         */
-        limit?: number;
-        /**
-         * Opaque pagination cursor.
-         */
-        cursor?: string;
-        /**
-         * Label selector: key=value,key2=value2.
-         */
-        labels?: string;
-        /**
-         * Only return rows with is_latest_version=true.
-         */
-        latestOnly?: boolean;
-        /**
-         * Include rows with a deletionTimestamp.
-         */
-        includeTerminating?: boolean;
-    };
-    url: '/v0/remotemcpservers';
-};
-
-export type ListRemotemcpserversErrors = {
-    /**
-     * Error
-     */
-    default: ErrorModel;
-};
-
-export type ListRemotemcpserversError = ListRemotemcpserversErrors[keyof ListRemotemcpserversErrors];
-
-export type ListRemotemcpserversResponses = {
-    /**
-     * OK
-     */
-    200: ListOutputRemoteMcpServerBody;
-};
-
-export type ListRemotemcpserversResponse = ListRemotemcpserversResponses[keyof ListRemotemcpserversResponses];
-
-export type GetLatestRemotemcpserverData = {
+export type GetLatestRuntimeData = {
     body?: never;
     path: {
         name: string;
@@ -1452,69 +1272,31 @@ export type GetLatestRemotemcpserverData = {
          */
         namespace?: string;
     };
-    url: '/v0/remotemcpservers/{name}';
+    url: '/v0/runtimes/{name}';
 };
 
-export type GetLatestRemotemcpserverErrors = {
+export type GetLatestRuntimeErrors = {
     /**
      * Error
      */
     default: ErrorModel;
 };
 
-export type GetLatestRemotemcpserverError = GetLatestRemotemcpserverErrors[keyof GetLatestRemotemcpserverErrors];
+export type GetLatestRuntimeError = GetLatestRuntimeErrors[keyof GetLatestRuntimeErrors];
 
-export type GetLatestRemotemcpserverResponses = {
+export type GetLatestRuntimeResponses = {
     /**
      * OK
      */
-    200: RemoteMcpServer;
+    200: Runtime;
 };
 
-export type GetLatestRemotemcpserverResponse = GetLatestRemotemcpserverResponses[keyof GetLatestRemotemcpserverResponses];
+export type GetLatestRuntimeResponse = GetLatestRuntimeResponses[keyof GetLatestRuntimeResponses];
 
-export type DeleteRemotemcpserverData = {
-    body?: never;
+export type ApplyRuntimeData = {
+    body?: Runtime;
     path: {
         name: string;
-        version: string;
-    };
-    query?: {
-        /**
-         * Namespace (internal; defaults to 'default').
-         */
-        namespace?: string;
-        /**
-         * Skip provider-specific teardown and only remove the registry record.
-         */
-        force?: boolean;
-    };
-    url: '/v0/remotemcpservers/{name}/{version}';
-};
-
-export type DeleteRemotemcpserverErrors = {
-    /**
-     * Error
-     */
-    default: ErrorModel;
-};
-
-export type DeleteRemotemcpserverError = DeleteRemotemcpserverErrors[keyof DeleteRemotemcpserverErrors];
-
-export type DeleteRemotemcpserverResponses = {
-    /**
-     * No Content
-     */
-    204: void;
-};
-
-export type DeleteRemotemcpserverResponse = DeleteRemotemcpserverResponses[keyof DeleteRemotemcpserverResponses];
-
-export type GetRemotemcpserverData = {
-    body?: never;
-    path: {
-        name: string;
-        version: string;
     };
     query?: {
         /**
@@ -1522,59 +1304,26 @@ export type GetRemotemcpserverData = {
          */
         namespace?: string;
     };
-    url: '/v0/remotemcpservers/{name}/{version}';
+    url: '/v0/runtimes/{name}';
 };
 
-export type GetRemotemcpserverErrors = {
+export type ApplyRuntimeErrors = {
     /**
      * Error
      */
     default: ErrorModel;
 };
 
-export type GetRemotemcpserverError = GetRemotemcpserverErrors[keyof GetRemotemcpserverErrors];
+export type ApplyRuntimeError = ApplyRuntimeErrors[keyof ApplyRuntimeErrors];
 
-export type GetRemotemcpserverResponses = {
+export type ApplyRuntimeResponses = {
     /**
      * OK
      */
-    200: RemoteMcpServer;
+    200: Runtime;
 };
 
-export type GetRemotemcpserverResponse = GetRemotemcpserverResponses[keyof GetRemotemcpserverResponses];
-
-export type ApplyRemotemcpserverData = {
-    body?: RemoteMcpServer;
-    path: {
-        name: string;
-        version: string;
-    };
-    query?: {
-        /**
-         * Namespace (internal; defaults to 'default').
-         */
-        namespace?: string;
-    };
-    url: '/v0/remotemcpservers/{name}/{version}';
-};
-
-export type ApplyRemotemcpserverErrors = {
-    /**
-     * Error
-     */
-    default: ErrorModel;
-};
-
-export type ApplyRemotemcpserverError = ApplyRemotemcpserverErrors[keyof ApplyRemotemcpserverErrors];
-
-export type ApplyRemotemcpserverResponses = {
-    /**
-     * OK
-     */
-    200: RemoteMcpServer;
-};
-
-export type ApplyRemotemcpserverResponse = ApplyRemotemcpserverResponses[keyof ApplyRemotemcpserverResponses];
+export type ApplyRuntimeResponse = ApplyRuntimeResponses[keyof ApplyRuntimeResponses];
 
 export type ListSkillsData = {
     body?: never;
@@ -1597,7 +1346,11 @@ export type ListSkillsData = {
          */
         labels?: string;
         /**
-         * Only return rows with is_latest_version=true.
+         * Restrict the result set to one tag value (tagged artifact kinds only).
+         */
+        tag?: string;
+        /**
+         * Only return the literal latest tag per (namespace, name). Equivalent to tag=latest for tagged kinds.
          */
         latestOnly?: boolean;
         /**
@@ -1662,7 +1415,7 @@ export type DeleteSkillData = {
     body?: never;
     path: {
         name: string;
-        version: string;
+        tag: string;
     };
     query?: {
         /**
@@ -1674,7 +1427,7 @@ export type DeleteSkillData = {
          */
         force?: boolean;
     };
-    url: '/v0/skills/{name}/{version}';
+    url: '/v0/skills/{name}/{tag}';
 };
 
 export type DeleteSkillErrors = {
@@ -1699,7 +1452,7 @@ export type GetSkillData = {
     body?: never;
     path: {
         name: string;
-        version: string;
+        tag: string;
     };
     query?: {
         /**
@@ -1707,7 +1460,7 @@ export type GetSkillData = {
          */
         namespace?: string;
     };
-    url: '/v0/skills/{name}/{version}';
+    url: '/v0/skills/{name}/{tag}';
 };
 
 export type GetSkillErrors = {
@@ -1728,11 +1481,10 @@ export type GetSkillResponses = {
 
 export type GetSkillResponse = GetSkillResponses[keyof GetSkillResponses];
 
-export type ApplySkillData = {
-    body?: Skill;
+export type ListTagsSkillData = {
+    body?: never;
     path: {
         name: string;
-        version: string;
     };
     query?: {
         /**
@@ -1740,26 +1492,26 @@ export type ApplySkillData = {
          */
         namespace?: string;
     };
-    url: '/v0/skills/{name}/{version}';
+    url: '/v0/skills/{name}/tags';
 };
 
-export type ApplySkillErrors = {
+export type ListTagsSkillErrors = {
     /**
      * Error
      */
     default: ErrorModel;
 };
 
-export type ApplySkillError = ApplySkillErrors[keyof ApplySkillErrors];
+export type ListTagsSkillError = ListTagsSkillErrors[keyof ListTagsSkillErrors];
 
-export type ApplySkillResponses = {
+export type ListTagsSkillResponses = {
     /**
      * OK
      */
-    200: Skill;
+    200: ListOutputSkillBody;
 };
 
-export type ApplySkillResponse = ApplySkillResponses[keyof ApplySkillResponses];
+export type ListTagsSkillResponse = ListTagsSkillResponses[keyof ListTagsSkillResponses];
 
 export type GetVersionV0Data = {
     body?: never;

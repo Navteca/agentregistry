@@ -37,19 +37,17 @@ func NewScheme() *Scheme {
 }
 
 // Default is the package-level Scheme pre-registered with every kind defined
-// in this package. Extensions (e.g. enterprise-added kinds) may register onto
-// it at init.
+// in this package. Extension kinds may register onto it at init.
 var Default = newDefaultScheme()
 
 func newDefaultScheme() *Scheme {
 	s := NewScheme()
 	s.MustRegister(KindAgent, AgentSpec{}, func() any { return &Agent{} })
 	s.MustRegister(KindMCPServer, MCPServerSpec{}, func() any { return &MCPServer{} })
-	s.MustRegister(KindRemoteMCPServer, RemoteMCPServerSpec{}, func() any { return &RemoteMCPServer{} })
 	s.MustRegister(KindSkill, SkillSpec{}, func() any { return &Skill{} })
 	s.MustRegister(KindPrompt, PromptSpec{}, func() any { return &Prompt{} })
 	s.MustRegister(KindDeployment, DeploymentSpec{}, func() any { return &Deployment{} })
-	s.MustRegister(KindProvider, ProviderSpec{}, func() any { return &Provider{} })
+	s.MustRegister(KindRuntime, RuntimeSpec{}, func() any { return &Runtime{} })
 	return s
 }
 
@@ -138,6 +136,23 @@ func (s *Scheme) Decode(data []byte) (any, error) {
 		return nil, fmt.Errorf("v1alpha1: decode %s: %w", raw.Kind, err)
 	}
 	return obj, nil
+}
+
+// IsContentRegistryKind reports whether a kind belongs to the tagged
+// content-registry bucket.
+func IsContentRegistryKind(kind string) bool {
+	return IsTaggedArtifactKind(kind)
+}
+
+// IsTaggedArtifactKind reports whether refs to kind may use tag pinning and
+// whether the private store behavior keys rows by namespace/name/tag.
+func IsTaggedArtifactKind(kind string) bool {
+	switch kind {
+	case KindAgent, KindMCPServer, KindSkill, KindPrompt:
+		return true
+	default:
+		return false
+	}
 }
 
 // DecodeMulti parses a YAML stream (possibly containing multiple `---`-

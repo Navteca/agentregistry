@@ -11,7 +11,7 @@ import (
 
 func TestScheme_RegisterAllBuiltins(t *testing.T) {
 	got := Default.Kinds()
-	want := []string{"agent", "deployment", "mcpserver", "prompt", "provider", "remotemcpserver", "skill"}
+	want := []string{"agent", "deployment", "mcpserver", "prompt", "runtime", "skill"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("built-in kinds = %v, want %v", got, want)
 	}
@@ -33,23 +33,18 @@ apiVersion: ar.dev/v1alpha1
 kind: Agent
 metadata:
   name: summarizer
-  version: "1.0.0"
   labels:
     owner: core
 spec:
   title: Summarizer
   source:
     image: ghcr.io/example/summarizer:1.0.0
-  language: go
   modelProvider: openai
   modelName: gpt-4o
   mcpServers:
     - kind: MCPServer
       name: github-tools
-      version: "0.2"
-  skills:
-    - kind: Skill
-      name: code-review
+      tag: "0.2"
 `)
 	obj, err := Default.Decode(doc)
 	if err != nil {
@@ -62,7 +57,7 @@ spec:
 	if agent.APIVersion != GroupVersion || agent.Kind != KindAgent {
 		t.Fatalf("envelope mismatch: %+v", agent.TypeMeta)
 	}
-	if agent.Metadata.Name != "summarizer" || agent.Metadata.Version != "1.0.0" {
+	if agent.Metadata.Name != "summarizer" {
 		t.Fatalf("metadata mismatch: %+v", agent.Metadata)
 	}
 	if agent.Metadata.Labels["owner"] != "core" {
@@ -74,11 +69,8 @@ spec:
 	if len(agent.Spec.MCPServers) != 1 ||
 		agent.Spec.MCPServers[0].Kind != KindMCPServer ||
 		agent.Spec.MCPServers[0].Name != "github-tools" ||
-		agent.Spec.MCPServers[0].Version != "0.2" {
+		agent.Spec.MCPServers[0].Tag != "0.2" {
 		t.Fatalf("mcpServers ref mismatch: %+v", agent.Spec.MCPServers)
-	}
-	if len(agent.Spec.Skills) != 1 || agent.Spec.Skills[0].Name != "code-review" {
-		t.Fatalf("skills ref mismatch: %+v", agent.Spec.Skills)
 	}
 }
 
@@ -88,7 +80,6 @@ apiVersion: ar.dev/v1alpha1
 kind: MCPServer
 metadata:
   name: github-tools
-  version: "0.2"
 spec:
   title: GitHub Tools
   source:
@@ -125,9 +116,9 @@ spec:
   targetRef:
     kind: Agent
     name: summarizer
-    version: "1.0.0"
-  providerRef:
-    kind: Provider
+    tag: "1.0.0"
+  runtimeRef:
+    kind: Runtime
     name: local
   desiredState: deployed
   env:
@@ -197,11 +188,11 @@ spec:
   content: hi
 ---
 apiVersion: ar.dev/v1alpha1
-kind: Provider
+kind: Runtime
 metadata:
   name: local
 spec:
-  platform: local
+  type: Local
 `)
 	objs, err := Default.DecodeMulti(doc)
 	if err != nil {
@@ -216,8 +207,8 @@ spec:
 	if _, ok := objs[1].(*Prompt); !ok {
 		t.Fatalf("doc 1: want *Prompt, got %T", objs[1])
 	}
-	if _, ok := objs[2].(*Provider); !ok {
-		t.Fatalf("doc 2: want *Provider, got %T", objs[2])
+	if _, ok := objs[2].(*Runtime); !ok {
+		t.Fatalf("doc 2: want *Runtime, got %T", objs[2])
 	}
 }
 
@@ -255,7 +246,6 @@ apiVersion: ar.dev/v1alpha1
 kind: Agent
 metadata:
   name: summarizer
-  version: "1.0.0"
 spec:
   title: Summarizer
 `)
@@ -288,13 +278,14 @@ func TestEncode_RoundTrip_YAML(t *testing.T) {
 	// Empty Namespace survives a round trip — MarshalJSON strips "default"
 	// but UnmarshalJSON intentionally does NOT re-stamp it, so callers
 	// like the importer can layer their own default on top.
+	//
 	original := &Agent{
 		TypeMeta: TypeMeta{APIVersion: GroupVersion, Kind: KindAgent},
-		Metadata: ObjectMeta{Name: "rt", Version: "v1", Labels: map[string]string{"k": "v"}},
+		Metadata: ObjectMeta{Name: "rt", Labels: map[string]string{"k": "v"}},
 		Spec: AgentSpec{
 			Title:      "Round Trip",
 			Source:     &AgentSource{Image: "img:tag"},
-			MCPServers: []ResourceRef{{Kind: KindMCPServer, Name: "mcp1", Version: "1"}},
+			MCPServers: []ResourceRef{{Kind: KindMCPServer, Name: "mcp1", Tag: "1"}},
 		},
 	}
 
@@ -319,12 +310,13 @@ func TestEncode_RoundTrip_YAML(t *testing.T) {
 }
 
 func TestEncode_RoundTrip_JSON(t *testing.T) {
+	// Deployment identity is namespace/name. The decoder must not introduce hidden identity fields during a JSON round trip.
 	original := &Deployment{
 		TypeMeta: TypeMeta{APIVersion: GroupVersion, Kind: KindDeployment},
-		Metadata: ObjectMeta{Name: "prod", Version: "1"},
+		Metadata: ObjectMeta{Name: "prod"},
 		Spec: DeploymentSpec{
-			TargetRef:    ResourceRef{Kind: KindAgent, Name: "x", Version: "1"},
-			ProviderRef:  ResourceRef{Kind: KindProvider, Name: "local"},
+			TargetRef:    ResourceRef{Kind: KindAgent, Name: "x", Tag: "1"},
+			RuntimeRef:   ResourceRef{Kind: KindRuntime, Name: "local"},
 			DesiredState: DesiredStateDeployed,
 			Env:          map[string]string{"FOO": "bar"},
 		},
@@ -343,21 +335,21 @@ func TestEncode_RoundTrip_JSON(t *testing.T) {
 }
 
 // Sanity: ensure we can point sigs.k8s.io/yaml at typed envelopes too.
-func TestYAMLDirect_EncodeDecodeProvider(t *testing.T) {
-	p := &Provider{
-		TypeMeta: TypeMeta{APIVersion: GroupVersion, Kind: KindProvider},
+func TestYAMLDirect_EncodeDecodeRuntime(t *testing.T) {
+	r := &Runtime{
+		TypeMeta: TypeMeta{APIVersion: GroupVersion, Kind: KindRuntime},
 		Metadata: ObjectMeta{Name: "k8s"},
-		Spec:     ProviderSpec{Platform: PlatformKubernetes, Config: map[string]any{"namespace": "agentregistry"}},
+		Spec:     RuntimeSpec{Type: TypeKubernetes, Config: map[string]any{"namespace": "agentregistry"}},
 	}
-	y, err := yaml.Marshal(p)
+	y, err := yaml.Marshal(r)
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
-	var got Provider
+	var got Runtime
 	if err := yaml.Unmarshal(y, &got); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if got.Spec.Platform != PlatformKubernetes ||
+	if got.Spec.Type != TypeKubernetes ||
 		got.Spec.Config["namespace"] != "agentregistry" {
 		t.Fatalf("yaml round-trip mismatch: %+v", got)
 	}

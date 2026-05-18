@@ -22,8 +22,8 @@ import (
 	"github.com/agentregistry-dev/agentregistry/internal/registry/api/router"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/config"
 	internaldb "github.com/agentregistry-dev/agentregistry/internal/registry/database"
-	"github.com/agentregistry-dev/agentregistry/internal/registry/platforms/kubernetes"
-	"github.com/agentregistry-dev/agentregistry/internal/registry/platforms/local"
+	"github.com/agentregistry-dev/agentregistry/internal/registry/runtimes/kubernetes"
+	"github.com/agentregistry-dev/agentregistry/internal/registry/runtimes/local"
 	deploymentsvc "github.com/agentregistry-dev/agentregistry/internal/registry/service/deployment"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/telemetry"
 	"github.com/agentregistry-dev/agentregistry/internal/version"
@@ -94,10 +94,12 @@ func App(ctx context.Context, opts ...types.AppOptions) error {
 
 	// v1alpha1 DeploymentAdapter map consumed by the coordinator below.
 	// Built OSS-side from the local + kubernetes ports; enterprise extends
-	// via AppOptions.DeploymentAdapters.
+	// via AppOptions.DeploymentAdapters. Keys are the canonical CamelCase
+	// Spec.Type values; Runtime.Validate canonicalizes user-supplied case
+	// at admission so the coordinator's lookup can use exact-match.
 	deploymentAdapters := map[string]types.DeploymentAdapter{
-		"local":      local.NewLocalDeploymentAdapter(cfg.RuntimeDir, cfg.AgentGatewayPort),
-		"kubernetes": kubernetes.NewKubernetesDeploymentAdapter(),
+		v1alpha1.TypeLocal:      local.NewLocalDeploymentAdapter(cfg.RuntimeDir, cfg.AgentGatewayPort),
+		v1alpha1.TypeKubernetes: kubernetes.NewKubernetesDeploymentAdapter(),
 	}
 	maps.Copy(deploymentAdapters, options.DeploymentAdapters)
 	pool := db.Pool()
@@ -105,7 +107,7 @@ func App(ctx context.Context, opts ...types.AppOptions) error {
 	if registryValidator == nil {
 		registryValidator = registries.Dispatcher
 	}
-	stores, importer := buildStoresAndImporter(pool, registryValidator, options.V1Alpha1StoreTables)
+	stores, importer := buildStoresAndImporter(pool, registryValidator, options.V1Alpha1StoreTables, options.V1Alpha1MutableStoreKinds, options.Auditor)
 
 	slog.Info("starting agentregistry", "version", version.Version, "commit", version.GitCommit)
 
@@ -181,14 +183,22 @@ func App(ctx context.Context, opts ...types.AppOptions) error {
 	return nil
 }
 
-func buildStoresAndImporter(pool *pgxpool.Pool, registryValidator v1alpha1.RegistryValidatorFunc, extraStoreTables map[string]string) (map[string]*v1alpha1store.Store, *pkgimporter.Importer) {
-	stores := v1alpha1store.NewStores(pool)
+func buildStoresAndImporter(pool *pgxpool.Pool, registryValidator v1alpha1.RegistryValidatorFunc, extraStoreTables map[string]string, mutableExtraKinds map[string]bool, auditor types.Auditor) (map[string]*v1alpha1store.Store, *pkgimporter.Importer) {
+	if auditor == nil {
+		auditor = types.NoopAuditor
+	}
+	stores := v1alpha1store.NewStores(pool, v1alpha1store.WithAuditor(auditor))
 	for kind, table := range extraStoreTables {
 		if kind == "" || table == "" {
 			slog.Warn("skipping v1alpha1 extra store with empty kind or table", "kind", kind, "table", table)
 			continue
 		}
-		stores[kind] = v1alpha1store.NewStore(pool, table)
+		opts := []v1alpha1store.StoreOption{v1alpha1store.WithKind(kind), v1alpha1store.WithAuditor(auditor)}
+		if mutableExtraKinds[kind] {
+			stores[kind] = v1alpha1store.NewMutableObjectStore(pool, table, opts...)
+			continue
+		}
+		stores[kind] = v1alpha1store.NewStore(pool, table, opts...)
 	}
 
 	// pool == nil is the noop/DatabaseFactory path used by gen-openapi
@@ -265,7 +275,7 @@ func crudPerKindHooks(options types.AppOptions) crud.PerKindHooks {
 			hooks.Authorizers[kind] = func(ctx context.Context, in resource.AuthorizeInput) error {
 				return f(ctx, types.AuthorizeInput{
 					Verb: in.Verb, Kind: in.Kind, Namespace: in.Namespace,
-					Name: in.Name, Version: in.Version,
+					Name: in.Name, Tag: in.Tag,
 				})
 			}
 		}
@@ -277,7 +287,7 @@ func crudPerKindHooks(options types.AppOptions) crud.PerKindHooks {
 			hooks.ListFilters[kind] = func(ctx context.Context, in resource.AuthorizeInput) (string, []any, error) {
 				return f(ctx, types.AuthorizeInput{
 					Verb: in.Verb, Kind: in.Kind, Namespace: in.Namespace,
-					Name: in.Name, Version: in.Version,
+					Name: in.Name, Tag: in.Tag,
 				})
 			}
 		}
@@ -296,46 +306,52 @@ func crudPerKindHooks(options types.AppOptions) crud.PerKindHooks {
 			hooks.PostDeletes[kind] = fn
 		}
 	}
-	// ProviderPlatforms map dispatches the KindProvider PostUpsert /
-	// PostDelete by Spec.Platform → adapter. A Provider whose platform
-	// has no registered adapter is a no-op (matches the OSS default
-	// where AppOptions.ProviderPlatforms is empty). When both an
-	// explicit PostUpserts[KindProvider] and ProviderPlatforms
-	// are present, the dispatcher chains: caller hook first, then the
-	// platform adapter.
-	if len(options.ProviderPlatforms) > 0 {
-		adapters := make(map[string]types.ProviderPlatformAdapter, len(options.ProviderPlatforms))
-		maps.Copy(adapters, options.ProviderPlatforms)
+	if len(options.InitialFinalizers) > 0 {
+		hooks.InitialFinalizers = make(map[string]func(obj v1alpha1.Object) []string, len(options.InitialFinalizers))
+		maps.Copy(hooks.InitialFinalizers, options.InitialFinalizers)
+	}
+	// RuntimeAdapters map dispatches the KindRuntime PostUpsert /
+	// PostDelete by Spec.Type → adapter. A Runtime whose type has
+	// no registered adapter is a no-op (matches the OSS default
+	// where AppOptions.RuntimeAdapters is empty). When both an
+	// explicit PostUpserts[KindRuntime] and RuntimeAdapters are
+	// present, the dispatcher chains: caller hook first, then the
+	// runtime adapter.
+	if len(options.RuntimeAdapters) > 0 {
+		adapters := make(map[string]types.RuntimeAdapter, len(options.RuntimeAdapters))
+		maps.Copy(adapters, options.RuntimeAdapters)
 		if hooks.PostUpserts == nil {
 			hooks.PostUpserts = map[string]func(ctx context.Context, obj v1alpha1.Object) error{}
 		}
 		if hooks.PostDeletes == nil {
 			hooks.PostDeletes = map[string]func(ctx context.Context, obj v1alpha1.Object) error{}
 		}
-		hooks.PostUpserts[v1alpha1.KindProvider] = providerPlatformDispatcher(
-			hooks.PostUpserts[v1alpha1.KindProvider], adapters,
-			func(ctx context.Context, p *v1alpha1.Provider, a types.ProviderPlatformAdapter) error {
-				return a.ApplyProvider(ctx, p)
+		hooks.PostUpserts[v1alpha1.KindRuntime] = runtimeAdapterDispatcher(
+			hooks.PostUpserts[v1alpha1.KindRuntime], adapters,
+			func(ctx context.Context, r *v1alpha1.Runtime, a types.RuntimeAdapter) error {
+				return a.ApplyRuntime(ctx, r)
 			},
 		)
-		hooks.PostDeletes[v1alpha1.KindProvider] = providerPlatformDispatcher(
-			hooks.PostDeletes[v1alpha1.KindProvider], adapters,
-			func(ctx context.Context, p *v1alpha1.Provider, a types.ProviderPlatformAdapter) error {
-				return a.RemoveProvider(ctx, p.Metadata.Name)
+		hooks.PostDeletes[v1alpha1.KindRuntime] = runtimeAdapterDispatcher(
+			hooks.PostDeletes[v1alpha1.KindRuntime], adapters,
+			func(ctx context.Context, r *v1alpha1.Runtime, a types.RuntimeAdapter) error {
+				return a.RemoveRuntime(ctx, r.Metadata.Name)
 			},
 		)
 	}
 	return hooks
 }
 
-// providerPlatformDispatcher wraps a (kind=Provider) hook so the caller
-// hook (if any) runs first, then dispatches to the per-platform adapter
-// matching provider.Spec.Platform. A Provider with no registered
-// adapter is a no-op so the hook stays safe for partial wiring.
-func providerPlatformDispatcher(
+// runtimeAdapterDispatcher wraps a (kind=Runtime) hook so the caller
+// hook (if any) runs first, then dispatches to the per-type adapter
+// matching runtime.Spec.Type. Spec.Type is canonicalized at admission
+// time (Runtime.Validate), so the lookup is exact-match against
+// adapter.Type(). A Runtime with no registered adapter is a no-op so
+// the hook stays safe for partial wiring.
+func runtimeAdapterDispatcher(
 	caller func(ctx context.Context, obj v1alpha1.Object) error,
-	adapters map[string]types.ProviderPlatformAdapter,
-	dispatch func(ctx context.Context, p *v1alpha1.Provider, a types.ProviderPlatformAdapter) error,
+	adapters map[string]types.RuntimeAdapter,
+	dispatch func(ctx context.Context, r *v1alpha1.Runtime, a types.RuntimeAdapter) error,
 ) func(ctx context.Context, obj v1alpha1.Object) error {
 	return func(ctx context.Context, obj v1alpha1.Object) error {
 		if caller != nil {
@@ -343,15 +359,15 @@ func providerPlatformDispatcher(
 				return err
 			}
 		}
-		provider, ok := obj.(*v1alpha1.Provider)
-		if !ok || provider == nil {
+		runtime, ok := obj.(*v1alpha1.Runtime)
+		if !ok || runtime == nil {
 			return nil
 		}
-		adapter, ok := adapters[provider.Spec.Platform]
+		adapter, ok := adapters[runtime.Spec.Type]
 		if !ok {
 			return nil
 		}
-		return dispatch(ctx, provider, adapter)
+		return dispatch(ctx, runtime, adapter)
 	}
 }
 
@@ -442,7 +458,7 @@ func startMCPServer(
 // request context on successful authentication. On auth error or missing
 // session, the request continues with an unauthenticated context — the
 // AuthzProvider downstream decides whether the request is allowed (the
-// OSS default `PublicAuthzProvider` permits read-only access; enterprise
+// OSS default `PublicAuthzProvider` permits read-only access; downstream
 // authz can reject). Failing-open here is intentional so the MCP bridge
 // works for anonymous `list_servers` / `get_server` traffic while still
 // letting authenticated callers pick up privileged operations.

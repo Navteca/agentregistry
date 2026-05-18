@@ -23,7 +23,7 @@ DOCKER_BUILD_REGISTRY ?= kind-registry:5000
 DOCKER_BUILD_ARGS ?= --push --platform linux/$(LOCALARCH)
 BUILD_DATE ?= $(shell date -u '+%Y-%m-%d')
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD || echo "unknown")
-VERSION ?= $(shell git describe --tags --always 2>/dev/null | grep v || echo "v0.0.0-$(GIT_COMMIT)")
+VERSION ?= $(shell git describe --tags --always 2>/dev/null | grep v || echo "v0.0.0-g$(GIT_COMMIT)")
 KAGENT_VERSION ?= v0.8.0-beta6
 KAGENT_HELM_VERSION ?= $(shell echo $(KAGENT_VERSION) | sed 's/^v//')
 KAGENT_NAMESPACE ?= kagent
@@ -517,8 +517,13 @@ lint: ## Run golangci-lint linter
 lint-ui: install-ui ## Run eslint on UI code
 	cd ui && npm run lint
 
+.PHONY: fmt
+fmt: ## Run the Go formatter
+	$(GOLANGCI_LINT) fmt
+	git diff --name-only --cached --diff-filter=ACMR -- '**/*.go' | sed 's|^go/||' | xargs -r go tool gci write --skip-generated -s standard -s default -s localmodule
+
 .PHONY: verify
-verify: mod-tidy gen-client ## Run all verification checks
+verify: fmt mod-tidy gen-client ## Run all verification checks
 	git diff --exit-code
 
 .PHONY: mod-tidy

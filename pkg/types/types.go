@@ -1,13 +1,13 @@
 // Package types holds extension-point surfaces that cross the
 // pkg/registry <-> internal/registry boundary. Anything a downstream
-// build (enterprise wrapper, custom CLI) needs to implement to plug
+// build (out-of-tree wrapper, custom CLI) needs to implement to plug
 // into the registry app lives here.
 //
 // The types are split by domain across files:
 //   - types.go     — AppOptions, Server, HTTPServerFactory,
 //     Response/EmptyResponse wrappers
-//   - adapter.go   — deployment + provider adapter surfaces
-//     (DeploymentAdapter, ProviderPlatformAdapter)
+//   - adapter.go   — deployment + runtime adapter surfaces
+//     (DeploymentAdapter, RuntimeAdapter)
 //   - daemon.go    — CLI-side daemon + token provider hooks
 package types
 
@@ -15,10 +15,11 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/danielgtaylor/huma/v2"
+
 	"github.com/agentregistry-dev/agentregistry/pkg/api/v1alpha1"
 	"github.com/agentregistry-dev/agentregistry/pkg/registry/auth"
 	"github.com/agentregistry-dev/agentregistry/pkg/registry/database"
-	"github.com/danielgtaylor/huma/v2"
 )
 
 // DatabaseFactory is a function type that creates a store implementation.
@@ -39,8 +40,8 @@ type AuthorizeInput struct {
 	Namespace string
 	// Name is the resource name; "" for list verbs.
 	Name string
-	// Version is the resource version; "" for list and get-latest.
-	Version string
+	// Tag is the resource tag for content kinds; "" for list/get-latest.
+	Tag string
 }
 
 // Authorizer gates a single resource handler invocation. Return
@@ -66,6 +67,29 @@ type PostUpsert func(ctx context.Context, obj v1alpha1.Object) error
 // batch's per-doc delete hook.
 type PostDelete func(ctx context.Context, obj v1alpha1.Object) error
 
+// Auditor receives audit events for state changes that the OSS layer
+// considers significant. The default OSS implementation is a no-op;
+// downstream builds plug in a real audit sink via NewStore options.
+//
+// Audit completeness is enforced at the source: every code path that
+// produces a recordable state change calls into Auditor directly,
+// rather than relying on observers (PostUpsert hooks, etc.) to remember
+// to log.
+type Auditor interface {
+	// ResourceTagCreated is invoked when Store.Upsert creates a new tag row
+	// for a content-registry kind. Mutable-object kinds do not produce this
+	// event.
+	ResourceTagCreated(ctx context.Context, kind, namespace, name, tag string)
+}
+
+type noopAuditor struct{}
+
+func (noopAuditor) ResourceTagCreated(ctx context.Context, kind, namespace, name, tag string) {
+}
+
+// NoopAuditor is the default Auditor used when none is plugged in.
+var NoopAuditor Auditor = noopAuditor{}
+
 // AppOptions contains configuration for the registry app.
 // All fields are optional and allow external developers to extend
 // functionality.
@@ -82,28 +106,27 @@ type AppOptions struct {
 	// database.
 	DatabaseFactory DatabaseFactory
 
-	// ProviderPlatforms registers per-platform PostUpsert/PostDelete
-	// hooks for the KindProvider resource handler, keyed by
-	// Provider.Spec.Platform ("aws", "gcp", "kagent", ...). Used by
-	// enterprise builds to mirror Provider apply/delete into a
-	// platform-specific sidecar table (aws_connections,
-	// gcp_connections, kagent_connections, etc.). Missing platforms =
-	// no sidecar reconciliation for that platform — the v1alpha1
-	// Provider row still persists.
-	ProviderPlatforms map[string]ProviderPlatformAdapter
+	// RuntimeAdapters registers per-type PostUpsert/PostDelete
+	// hooks for the KindRuntime resource handler, keyed by the
+	// lowercase canonical Runtime.Spec.Type ("bedrockagentcore",
+	// "geminiagentruntime", "kagent", ...). Used by downstream builds
+	// to mirror Runtime apply/delete into a type-specific sidecar
+	// table. Missing types = no sidecar reconciliation for that type
+	// — the v1alpha1 Runtime row still persists.
+	RuntimeAdapters map[string]RuntimeAdapter
 
 	// DeploymentAdapters registers v1alpha1 DeploymentAdapter
-	// implementations keyed by Provider.Spec.Platform ("local",
-	// "kubernetes", ...). The reconciler/coordinator looks up by platform
-	// string; enterprise builds inject additional adapters here.
+	// implementations keyed by lowercase Runtime.Spec.Type ("local",
+	// "kubernetes", ...). The reconciler/coordinator looks up by the
+	// type string; downstream builds inject additional adapters here.
 	DeploymentAdapters map[string]DeploymentAdapter
 
 	// Authorizers gates every read + write operation on the
 	// generic v1alpha1 resource handler, keyed by canonical Kind name
-	// (v1alpha1.KindAgent, v1alpha1.KindMCPServer, etc.). Enterprise
+	// (v1alpha1.KindAgent, v1alpha1.KindMCPServer, etc.). Downstream
 	// builds wire their RBAC engine here so reader / publisher / admin
 	// gates fire on the OSS-registered Agent / MCPServer / Skill /
-	// Prompt / Provider / Deployment endpoints. Missing keys behave
+	// Prompt / Runtime / Deployment endpoints. Missing keys behave
 	// like "no per-kind gate" — the resource handler's default permits
 	// the call, with API-level authn middleware still applying.
 	Authorizers map[string]Authorizer
@@ -118,8 +141,8 @@ type AppOptions struct {
 
 	// PostUpserts run after the generic resource handler PUTs a
 	// row, per kind. Enterprise builds wire this for kinds that need
-	// platform side-effects on apply — Provider apply mirroring spec
-	// into a per-platform sidecar table, for example. Missing keys =
+	// runtime side-effects on apply — Runtime apply mirroring spec
+	// into a per-type sidecar table, for example. Missing keys =
 	// no post-upsert hook for that kind.
 	//
 	// Hook errors fail the request with 500 (the row is already
@@ -136,6 +159,12 @@ type AppOptions struct {
 	// store map as any ExtraRoutes they register.
 	V1Alpha1StoreTables map[string]string
 
+	// V1Alpha1MutableStoreKinds marks extra v1alpha1 kinds that use mutable
+	// namespace/name object behavior instead of tagged artifact semantics.
+	// Downstream control-plane/config kinds are v1alpha1-shaped but are not
+	// content artifacts.
+	V1Alpha1MutableStoreKinds map[string]bool
+
 	// RegistryValidator overrides the per-package registry
 	// validator (the dispatcher consulted on apply / import to confirm
 	// each declared package — npm / pypi / oci / nuget / mcpb — exists
@@ -147,7 +176,7 @@ type AppOptions struct {
 	// per-registry validator and matches the public-catalogue contract
 	// the upstream modelcontextprotocol/registry project ships. That's
 	// the right behavior for the OSS public catalogue but not for
-	// private enterprise deployments where:
+	// private deployments where:
 	//
 	//   - images live in private ECR / GCR / ACR that anonymous fetch
 	//     can't reach;
@@ -188,6 +217,16 @@ type AppOptions struct {
 
 	// AuthzProvider is an optional authorization provider.
 	AuthzProvider auth.AuthzProvider
+
+	// Auditor receives audit events from the v1alpha1 store layer
+	// (e.g. ResourceTagCreated on Upsert creates). The default OSS
+	// behavior is a no-op; downstream builds plug in a real audit sink.
+	// If nil, NoopAuditor is used.
+	Auditor Auditor
+
+	// InitialFinalizers seeds finalizers atomically on create for kinds
+	// whose external teardown must be protected from a concurrent delete.
+	InitialFinalizers map[string]func(v1alpha1.Object) []string
 }
 
 // Server represents the HTTP server and provides access to the Huma API

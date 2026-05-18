@@ -1,7 +1,7 @@
 //go:build e2e
 
-// Tests for the new RemoteMCPServer kind plus the ResourceRef.Kind
-// discriminator on AgentSpec.MCPServers.
+// Tests for remote MCP servers (MCPServer with Spec.Remote set) and how
+// Agents reference them via spec.mcpServers.
 
 package e2e
 
@@ -11,80 +11,78 @@ import (
 	"testing"
 )
 
-// verifyRemoteMCPServerExists checks that the RemoteMCPServer exists in the registry via HTTP GET.
-func verifyRemoteMCPServerExists(t *testing.T, regURL, name, version string) {
+// verifyMCPServerExists checks that the MCPServer exists in the registry via HTTP GET.
+func verifyMCPServerExists(t *testing.T, regURL, name, tag string) {
 	t.Helper()
-	resp := RegistryGet(t, resourceURL(regURL, "remotemcpservers", name, version))
+	resp := RegistryGet(t, resourceURL(regURL, "mcpservers", name, tag))
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("Expected RemoteMCPServer %s@%s to exist (HTTP 200) but got %d", name, version, resp.StatusCode)
+		t.Fatalf("Expected MCPServer %s@%s to exist (HTTP 200) but got %d", name, tag, resp.StatusCode)
 	}
 }
 
-// TestDeclarativeApply_RemoteMCPServer covers apply → get → delete for the
-// RemoteMCPServer kind. Verifies the row is created and is reachable under
-// the canonical /v0/remotemcpservers/{name}/{version} path.
+// TestDeclarativeApply_RemoteMCPServer covers apply → get → delete for a
+// remote MCPServer (Spec.Remote set). Verifies the row is created and is
+// reachable under the canonical /v0/mcpservers/{name}/{tag} path.
 func TestDeclarativeApply_RemoteMCPServer(t *testing.T) {
 	regURL := RegistryURL(t)
 	tmpDir := t.TempDir()
 
 	name := "e2e-test/" + UniqueNameWithPrefix("decl-remote-mcp")
-	version := "0.0.1-e2e"
+	tag := "latest"
 
-	RunArctl(t, tmpDir, "delete", "remote-mcp", name, "--version", version, "--registry-url", regURL)
+	RunArctl(t, tmpDir, "delete", "mcpserver", name, "--tag", tag, "--registry-url", regURL)
 	t.Cleanup(func() {
-		RunArctl(t, tmpDir, "delete", "remote-mcp", name, "--version", version, "--registry-url", regURL)
+		RunArctl(t, tmpDir, "delete", "mcpserver", name, "--tag", tag, "--registry-url", regURL)
 	})
 
 	yaml := fmt.Sprintf(`
 apiVersion: ar.dev/v1alpha1
-kind: RemoteMCPServer
+kind: MCPServer
 metadata:
   name: %s
-  version: "%s"
 spec:
   title: E2E Remote MCP Server
   description: Hosted MCP endpoint for the declarative-apply E2E test
   remote:
     type: streamable-http
     url: https://example.test/mcp
-`, name, version)
+`, name)
 
 	yamlPath := writeDeclarativeYAML(t, tmpDir, "remote-mcp.yaml", yaml)
 
 	result := RunArctl(t, tmpDir, "apply", "-f", yamlPath, "--registry-url", regURL)
 	RequireSuccess(t, result)
-	RequireOutputContains(t, result, "RemoteMCPServer/"+name)
+	RequireOutputContains(t, result, "MCPServer/"+name)
 
-	verifyRemoteMCPServerExists(t, regURL, name, version)
+	verifyMCPServerExists(t, regURL, name, tag)
 }
 
-// TestDeclarativeApply_AgentReferencesRemoteMCPServer covers the
-// ResourceRef.Kind discriminator: an Agent references a RemoteMCPServer
-// from its spec.mcpServers list. Apply must accept the explicit
-// Kind=RemoteMCPServer ref (the validator default-falls-back to
-// MCPServer when Kind is empty).
+// TestDeclarativeApply_AgentReferencesRemoteMCPServer covers an Agent
+// that references a remote MCPServer from its spec.mcpServers list.
+// Apply must accept the ref with Kind=MCPServer (or empty, which
+// defaults to MCPServer); the server distinguishes bundled vs remote by
+// whether Spec.Source or Spec.Remote is set.
 func TestDeclarativeApply_AgentReferencesRemoteMCPServer(t *testing.T) {
 	regURL := RegistryURL(t)
 	tmpDir := t.TempDir()
 
 	remoteName := "e2e-test/" + UniqueNameWithPrefix("decl-remote-mcp-ref")
 	agentName := UniqueAgentName("decl-agent-ref-remote")
-	version := "0.0.1-e2e"
+	tag := "latest"
 
-	RunArctl(t, tmpDir, "delete", "remote-mcp", remoteName, "--version", version, "--registry-url", regURL)
-	RunArctl(t, tmpDir, "delete", "agent", agentName, "--version", version, "--registry-url", regURL)
+	RunArctl(t, tmpDir, "delete", "mcpserver", remoteName, "--tag", tag, "--registry-url", regURL)
+	RunArctl(t, tmpDir, "delete", "agent", agentName, "--tag", tag, "--registry-url", regURL)
 	t.Cleanup(func() {
-		RunArctl(t, tmpDir, "delete", "agent", agentName, "--version", version, "--registry-url", regURL)
-		RunArctl(t, tmpDir, "delete", "remote-mcp", remoteName, "--version", version, "--registry-url", regURL)
+		RunArctl(t, tmpDir, "delete", "agent", agentName, "--tag", tag, "--registry-url", regURL)
+		RunArctl(t, tmpDir, "delete", "mcpserver", remoteName, "--tag", tag, "--registry-url", regURL)
 	})
 
 	yaml := fmt.Sprintf(`
 apiVersion: ar.dev/v1alpha1
-kind: RemoteMCPServer
+kind: MCPServer
 metadata:
   name: %s
-  version: "%s"
 spec:
   remote:
     type: streamable-http
@@ -94,27 +92,26 @@ apiVersion: ar.dev/v1alpha1
 kind: Agent
 metadata:
   name: %s
-  version: "%s"
 spec:
   image: ghcr.io/e2e-test/agent-ref-remote:latest
-  description: Agent that wires in a RemoteMCPServer via Kind discrimination
+  description: Agent that wires in a remote MCPServer
   language: python
   framework: adk
   modelProvider: gemini
   modelName: gemini-2.0-flash
   mcpServers:
-    - kind: RemoteMCPServer
+    - kind: MCPServer
       name: %s
-      version: "%s"
-`, remoteName, version, agentName, version, remoteName, version)
+      tag: %s
+`, remoteName, agentName, remoteName, tag)
 
 	yamlPath := writeDeclarativeYAML(t, tmpDir, "stack.yaml", yaml)
 
 	result := RunArctl(t, tmpDir, "apply", "-f", yamlPath, "--registry-url", regURL)
 	RequireSuccess(t, result)
-	RequireOutputContains(t, result, "RemoteMCPServer/"+remoteName)
+	RequireOutputContains(t, result, "MCPServer/"+remoteName)
 	RequireOutputContains(t, result, "Agent/"+agentName)
 
-	verifyRemoteMCPServerExists(t, regURL, remoteName, version)
-	verifyAgentExists(t, regURL, agentName, version)
+	verifyMCPServerExists(t, regURL, remoteName, tag)
+	verifyAgentExists(t, regURL, agentName, tag)
 }

@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/spf13/cobra"
+	"sigs.k8s.io/yaml"
+
 	"github.com/agentregistry-dev/agentregistry/internal/cli/scheme"
 	"github.com/agentregistry-dev/agentregistry/pkg/printer"
-	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 // GetCmd is the cobra command for "get".
@@ -27,28 +28,60 @@ func newGetCmd() *cobra.Command {
 		Short: "List or retrieve registry resources",
 		Long: `List or retrieve registry resources by type.
 
-Supported types: agents, mcps, skills, prompts, providers, deployments
+Supported types: agents, mcps, skills, prompts, runtimes, deployments
 (singular and uppercase forms also accepted, e.g. Agent, agent, agents)
 
 Examples:
   arctl get all
   arctl get agents
+  arctl get agents --tag stable          # list rows with a specific tag
+  arctl get agents --latest              # list rows pinned to the "latest" tag
   arctl get mcps
   arctl get agent acme/summarizer
   arctl get agent acme/summarizer -o yaml
+  arctl get agent acme/summarizer --tag stable
+  arctl get agent acme/summarizer --all-tags
   arctl get skills -o json`,
 		Args:         cobra.RangeArgs(1, 2),
 		SilenceUsage: true,
 		RunE:         runGet,
 	}
 	cmd.Flags().StringP("output", "o", "table", "Output format: table, yaml, json")
+	cmd.Flags().String("tag", "", "Tagged kinds only. With NAME: fetch one tag (defaults to latest). Without NAME: filter the list to this tag.")
+	cmd.Flags().Bool("latest", false, "List mode only: restrict to rows pinned to the literal 'latest' tag (equivalent to --tag latest).")
+	cmd.Flags().Bool("all-tags", false, "List every tag of NAME (tagged content kinds only)")
 	return cmd
 }
 
 func runGet(cmd *cobra.Command, args []string) error {
 	outputFormat, _ := cmd.Flags().GetString("output")
+	allTags, _ := cmd.Flags().GetBool("all-tags")
+	latest, _ := cmd.Flags().GetBool("latest")
+	tag, _ := cmd.Flags().GetString("tag")
+	allTagsFlag := "--all-tags"
+	tagFlag := "--tag"
+	latestFlag := "--latest"
+
+	if allTags && tag != "" {
+		return fmt.Errorf("%s and %s are mutually exclusive", tagFlag, allTagsFlag)
+	}
+	if allTags && latest {
+		return fmt.Errorf("%s and %s are mutually exclusive", latestFlag, allTagsFlag)
+	}
+	if latest && tag != "" {
+		return fmt.Errorf("%s and %s are mutually exclusive", tagFlag, latestFlag)
+	}
 
 	if args[0] == "all" {
+		if allTags {
+			return fmt.Errorf("%s cannot be used with `get all`", allTagsFlag)
+		}
+		if tag != "" {
+			return fmt.Errorf("%s cannot be used with `get all`", tagFlag)
+		}
+		if latest {
+			return fmt.Errorf("%s cannot be used with `get all`", latestFlag)
+		}
 		return runGetAll(cmd, outputFormat)
 	}
 
@@ -63,9 +96,35 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("API client not initialized")
 	}
 
+	if allTags {
+		if len(args) != 2 {
+			return fmt.Errorf("%s requires NAME", allTagsFlag)
+		}
+		name := args[1]
+		items, err := listTags(k, name)
+		if err != nil {
+			return fmt.Errorf("listing tags of %s %q: %w", k.Kind, name, err)
+		}
+		if len(items) == 0 {
+			fmt.Fprintf(cmd.OutOrStdout(), "No tags of %s %q found.\n", k.Kind, name)
+			return nil
+		}
+		return printItems(cmd, k, items, outputFormat)
+	}
+
+	// --tag / --latest are only meaningful for tagged content-registry kinds.
+	// ListTags is set exclusively on those kinds via typedKind, so it's a
+	// stable proxy without coupling get.go to v1alpha1's kind table.
+	if tag != "" && k.ListTags == nil {
+		return fmt.Errorf("%s not supported for kind %q (resource is not tagged)", tagFlag, k.Kind)
+	}
+	if latest && k.ListTags == nil {
+		return fmt.Errorf("%s not supported for kind %q (resource is not tagged)", latestFlag, k.Kind)
+	}
+
 	if len(args) == 2 {
 		name := args[1]
-		item, err := getItem(k, name)
+		item, err := getItem(k, name, tag)
 		if err != nil {
 			return fmt.Errorf("getting %s %q: %w", k.Kind, name, err)
 		}
@@ -76,7 +135,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return printItem(cmd, k, item, outputFormat)
 	}
 
-	items, err := listItems(k)
+	listOpts := scheme.ListOpts{Tag: tag, LatestOnly: latest}
+	items, err := listItems(k, listOpts)
 	if err != nil {
 		return fmt.Errorf("listing %s: %w", kindPlural(k), err)
 	}
@@ -95,7 +155,7 @@ func runGetAll(cmd *cobra.Command, outputFormat string) error {
 	allKinds := scheme.All()
 	first := true
 	for _, k := range allKinds {
-		items, err := listItems(k)
+		items, err := listItems(k, scheme.ListOpts{})
 		if errors.Is(err, errNotListable) {
 			continue
 		}

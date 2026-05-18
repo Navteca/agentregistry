@@ -8,14 +8,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/agentregistry-dev/agentregistry/internal/cli/declarative"
 	"github.com/agentregistry-dev/agentregistry/internal/cli/scheme"
 	"github.com/agentregistry-dev/agentregistry/pkg/api/v1alpha1"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func deploymentFixture(metaName, targetName, version, providerID, resourceType, phase string) v1alpha1.Deployment {
+func deploymentFixture(metaName, targetName, targetTag, runtimeID, resourceType, phase string) v1alpha1.Deployment {
 	targetKind := v1alpha1.KindAgent
 	if resourceType == "mcp" {
 		targetKind = v1alpha1.KindMCPServer
@@ -29,19 +30,18 @@ func deploymentFixture(metaName, targetName, version, providerID, resourceType, 
 		Metadata: v1alpha1.ObjectMeta{
 			Namespace: v1alpha1.DefaultNamespace,
 			Name:      metaName,
-			Version:   version,
 		},
 		Spec: v1alpha1.DeploymentSpec{
 			TargetRef: v1alpha1.ResourceRef{
 				Kind:      targetKind,
 				Namespace: v1alpha1.DefaultNamespace,
 				Name:      targetName,
-				Version:   version,
+				Tag:       targetTag,
 			},
-			ProviderRef: v1alpha1.ResourceRef{
-				Kind:      v1alpha1.KindProvider,
+			RuntimeRef: v1alpha1.ResourceRef{
+				Kind:      v1alpha1.KindRuntime,
 				Namespace: v1alpha1.DefaultNamespace,
-				Name:      providerID,
+				Name:      runtimeID,
 			},
 			DesiredState: v1alpha1.DesiredStateDeployed,
 		},
@@ -112,12 +112,12 @@ func TestDeploymentGet_ReturnsFirstWhenMultipleShareName(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 
 	// First match by list order is aws-v1; output should include its ID, not the others.
-	assert.Contains(t, out.String(), "default/aws-v1/1.0.0",
+	assert.Contains(t, out.String(), "default/aws-v1",
 		"first deployment for the name should be returned")
-	assert.NotContains(t, out.String(), "default/gcp-v1/1.0.0",
+	assert.NotContains(t, out.String(), "default/gcp-v1",
 		"only the first match is surfaced; subsequent matches are filtered out")
-	assert.NotContains(t, out.String(), "default/aws-v2/2.0.0",
-		"other versions must not be surfaced when get returns first match")
+	assert.NotContains(t, out.String(), "default/aws-v2",
+		"other deployments must not be surfaced when get returns first match")
 }
 
 // (3) Get surfaces the registry's not-found sentinel when no deployment matches.
@@ -168,7 +168,7 @@ func TestDeploymentGet_YAMLOutputIncludesStatus(t *testing.T) {
 	deployment := deploymentFixture("aws-v1", "summarizer", "1.0.0", "my-aws", "agent", "deployed")
 	deployment.Spec.Env = map[string]string{"GOOGLE_API_KEY": "xxx"}
 	deployment.Metadata.Annotations = map[string]string{
-		"platforms.agentregistry.solo.io/remoteId": "runtime-abc",
+		"runtimes.agentregistry.solo.io/remoteId": "runtime-abc",
 	}
 	srv := deploymentTestServerV1Alpha1(t, []v1alpha1.Deployment{deployment})
 	setupClientForServer(t, srv)
@@ -185,11 +185,11 @@ func TestDeploymentGet_YAMLOutputIncludesStatus(t *testing.T) {
 	assert.Contains(t, got, "apiVersion: ar.dev/v1alpha1")
 	assert.Contains(t, got, "kind: Deployment")
 	assert.Contains(t, got, "name: summarizer")
-	assert.Contains(t, got, "version: 1.0.0")
+	assert.Contains(t, got, "tag: 1.0.0")
 
 	// Spec block — declarative fields only.
-	assert.Contains(t, got, "providerRef:")
-	assert.Contains(t, got, "kind: Provider")
+	assert.Contains(t, got, "runtimeRef:")
+	assert.Contains(t, got, "kind: Runtime")
 	assert.Contains(t, got, "name: my-aws")
 	assert.Contains(t, got, "targetRef:")
 	assert.Contains(t, got, "kind: Agent")
@@ -197,11 +197,11 @@ func TestDeploymentGet_YAMLOutputIncludesStatus(t *testing.T) {
 
 	// Status block — server-managed runtime state, available for debugging.
 	assert.Contains(t, got, "status:")
-	assert.Contains(t, got, "id: default/aws-v1/1.0.0")
+	assert.Contains(t, got, "id: default/aws-v1")
 	assert.Contains(t, got, "phase: deployed")
 	assert.Contains(t, got, "origin: managed")
 	assert.Contains(t, got, "remoteId: runtime-abc",
-		"providerMetadata nested map should be emitted under .status")
+		"runtimeMetadata nested map should be emitted under .status")
 
 	// Spec block still must NOT contain status fields (structural check:
 	// the line immediately following `spec:` must not be the status keys).
@@ -229,7 +229,6 @@ func TestDeploymentApply_IgnoresIncomingStatus(t *testing.T) {
 kind: Agent
 metadata:
   name: myagent
-  version: "1.0.0"
 spec:
   image: ghcr.io/example/myagent:1.0.0
   language: python

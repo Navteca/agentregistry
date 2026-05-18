@@ -17,16 +17,15 @@ func (m *ObjectMeta) SetMetadata(meta ObjectMeta) {
 }
 
 // Object is the minimal interface satisfied by every typed v1alpha1 envelope
-// (Agent, MCPServer, Skill, Prompt, Provider, Deployment; enterprise kinds
+// (Agent, MCPServer, Skill, Prompt, Runtime, Deployment; extension kinds
 // opt in too). It lets generic code operate on any resource without
 // reflection.
 //
 // Status is intentionally exchanged as json.RawMessage on this interface.
 // The envelope itself stays agnostic to per-kind status schemas:
 //   - OSS kinds currently bind Status to the typed v1alpha1.Status
-//     (observed-generation + K8s-style Conditions) via the accessor
-//     methods below.
-//   - Enterprise kinds can use any shape they like without conforming to
+//     (K8s-style Conditions) via the accessor methods below.
+//   - Extension kinds can use any shape they like without conforming to
 //     meta.v1 conditions.
 //
 // MarshalStatus / UnmarshalStatus are the codec hooks the generic Store and
@@ -52,25 +51,6 @@ type Object interface {
 // StructuralValidator runs zero-I/O validation on an envelope.
 type StructuralValidator interface {
 	Validate() error
-}
-
-// MetadataVersionDefaulter is an optional capability for kinds where
-// metadata.version carries no semantic meaning — Provider (a
-// connection handle to one execution target) and Deployment (a
-// runtime binding). The shared apply pipeline calls
-// DefaultMetadataVersion when the request body's metadata.version is
-// empty, so YAML manifests for these kinds don't have to carry a
-// fabricated placeholder version. Other kinds — Agent, MCPServer,
-// Skill, Prompt — don't implement this interface; their version is
-// real and required.
-//
-// Returning a non-empty constant ("1" by convention) is what gets
-// stored in the (namespace, name, version) PK. Returning "" defers
-// to the standard "version required" validator.
-//
-// Pair with ValidateObjectMetaUnversioned in the kind's Validate.
-type MetadataVersionDefaulter interface {
-	DefaultMetadataVersion() string
 }
 
 // RefResolver validates cross-resource references for an envelope.
@@ -175,19 +155,19 @@ func (p *Prompt) UnmarshalStatus(data json.RawMessage) error {
 	return UnmarshalStatusFromStorage(data, &p.Status)
 }
 
-func (p *Provider) GetMetadata() *ObjectMeta { return &p.Metadata }
-func (p *Provider) SetMetadata(meta ObjectMeta) {
-	p.Metadata = meta
+func (r *Runtime) GetMetadata() *ObjectMeta { return &r.Metadata }
+func (r *Runtime) SetMetadata(meta ObjectMeta) {
+	r.Metadata = meta
 }
-func (p *Provider) MarshalSpec() (json.RawMessage, error) { return json.Marshal(p.Spec) }
-func (p *Provider) UnmarshalSpec(data json.RawMessage) error {
-	return json.Unmarshal(data, &p.Spec)
+func (r *Runtime) MarshalSpec() (json.RawMessage, error) { return json.Marshal(r.Spec) }
+func (r *Runtime) UnmarshalSpec(data json.RawMessage) error {
+	return json.Unmarshal(data, &r.Spec)
 }
-func (p *Provider) MarshalStatus() (json.RawMessage, error) {
-	return MarshalStatusForStorage(p.Status)
+func (r *Runtime) MarshalStatus() (json.RawMessage, error) {
+	return MarshalStatusForStorage(r.Status)
 }
-func (p *Provider) UnmarshalStatus(data json.RawMessage) error {
-	return UnmarshalStatusFromStorage(data, &p.Status)
+func (r *Runtime) UnmarshalStatus(data json.RawMessage) error {
+	return UnmarshalStatusFromStorage(data, &r.Status)
 }
 
 func (d *Deployment) GetMetadata() *ObjectMeta { return &d.Metadata }
@@ -203,19 +183,4 @@ func (d *Deployment) MarshalStatus() (json.RawMessage, error) {
 }
 func (d *Deployment) UnmarshalStatus(data json.RawMessage) error {
 	return UnmarshalStatusFromStorage(data, &d.Status)
-}
-
-func (r *RemoteMCPServer) GetMetadata() *ObjectMeta { return &r.Metadata }
-func (r *RemoteMCPServer) SetMetadata(meta ObjectMeta) {
-	r.Metadata = meta
-}
-func (r *RemoteMCPServer) MarshalSpec() (json.RawMessage, error) { return json.Marshal(r.Spec) }
-func (r *RemoteMCPServer) UnmarshalSpec(data json.RawMessage) error {
-	return json.Unmarshal(data, &r.Spec)
-}
-func (r *RemoteMCPServer) MarshalStatus() (json.RawMessage, error) {
-	return MarshalStatusForStorage(r.Status)
-}
-func (r *RemoteMCPServer) UnmarshalStatus(data json.RawMessage) error {
-	return UnmarshalStatusFromStorage(data, &r.Status)
 }
