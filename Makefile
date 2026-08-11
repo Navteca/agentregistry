@@ -21,6 +21,10 @@ ifdef IS_PODMAN
   DOCKER_BUILDER = podman
   DOCKER_BUILD_ARGS = --platform linux/$(LOCALARCH)
 endif
+
+# Only skip TLS verification for local/loopback registries used in local dev
+# (e.g. localhost:5001, 127.0.0.1:5001). Never bypass TLS for remote registries.
+PODMAN_TLS_VERIFY_FLAG := $(if $(filter localhost% 127.0.0.1%,$(DOCKER_REGISTRY)),--tls-verify=false,)
 BUILD_DATE ?= $(shell date -u '+%Y-%m-%d')
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD || echo "unknown")
 VERSION ?= $(shell git describe --tags --always 2>/dev/null | grep v || echo "v0.0.0-$(GIT_COMMIT)")
@@ -267,7 +271,7 @@ dev-build: build-ui ## Build quickly for local development
 docker-agentgateway: ## Build the custom agent gateway image
 	@echo "Building custom agent gateway image..."
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) -f docker/agentgateway.Dockerfile -t $(DOCKER_REGISTRY)/$(DOCKER_REPO)/arctl-agentgateway:$(VERSION) .
-	$(if $(IS_PODMAN),podman push --tls-verify=false $(DOCKER_REGISTRY)/$(DOCKER_REPO)/arctl-agentgateway:$(VERSION),)
+	$(if $(IS_PODMAN),podman push $(PODMAN_TLS_VERIFY_FLAG) $(DOCKER_REGISTRY)/$(DOCKER_REPO)/arctl-agentgateway:$(VERSION),)
 	echo "✓ Agent gateway image built successfully";
 
 .PHONY: docker-server
@@ -279,7 +283,7 @@ docker-server: .env ## Build the server Docker image
 		--build-arg AGENT_REGISTRY_KEYCLOAK_REALM="$(AGENT_REGISTRY_KEYCLOAK_REALM)" \
 		--build-arg AGENT_REGISTRY_KEYCLOAK_CLIENT_ID="$(AGENT_REGISTRY_KEYCLOAK_CLIENT_ID)" \
 		.
-	$(if $(IS_PODMAN),podman push --tls-verify=false $(DOCKER_REGISTRY)/$(DOCKER_REPO)/server:$(VERSION),)
+	$(if $(IS_PODMAN),podman push $(PODMAN_TLS_VERIFY_FLAG) $(DOCKER_REGISTRY)/$(DOCKER_REPO)/server:$(VERSION),)
 		@echo "✓ Docker image built successfully"
 .PHONY: local-registry
 local-registry: ## Ensure the local registry (kind-registry) is running on port 5001
