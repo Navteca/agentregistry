@@ -15,7 +15,7 @@ kubectl --context ${KIND_CLUSTER_CONTEXT} rollout status -n metallb-system deplo
 kubectl --context ${KIND_CLUSTER_CONTEXT} rollout status -n metallb-system daemonset/speaker --timeout 5m
 kubectl --context ${KIND_CLUSTER_CONTEXT} wait -n metallb-system  pod -l app=metallb --for=condition=Ready --timeout=10s
 
-SUBNET=$(docker network inspect kind | jq -r '.[].IPAM.Config[].Subnet | select(contains(":") | not)' | cut -d '.' -f1,2)
+SUBNET=$(docker network inspect kind | jq -r '.[0] | (.IPAM.Config[]?.Subnet // .subnets[]?.subnet) | select(. != null) | select(contains(":") | not)' | head -1 | cut -d '.' -f1,2)
 MIN=${SUBNET}.255.0
 MAX=${SUBNET}.255.231
 
