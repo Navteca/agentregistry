@@ -16,6 +16,7 @@ type FrontendConfigBody struct {
 	KeycloakClientID string `json:"keycloak_client_id"`
 	APIBaseURL       string `json:"api_base_url,omitempty"`
 	GatewayBaseURL   string `json:"gateway_base_url,omitempty"`
+	AnonymousAuth    bool   `json:"anonymous_auth_enabled"`
 }
 
 // frontendConfigOutput wraps FrontendConfigBody and adds a Cache-Control response header
@@ -46,6 +47,7 @@ func RegisterFrontendConfigEndpoint(api huma.API, pathPrefix string, cfg *config
 				KeycloakClientID: cfg.KeycloakClientID,
 				APIBaseURL:       cfg.FrontendAPIURL,
 				GatewayBaseURL:   cfg.FrontendGatewayURL,
+				AnonymousAuth:    cfg.EnableAnonymousAuth,
 			},
 		}, nil
 	})
