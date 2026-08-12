@@ -397,3 +397,68 @@ func TestJWTManager_BlockedNamespaces(t *testing.T) {
 		assert.NotEmpty(t, tokenResponse.RegistryToken)
 	})
 }
+
+func TestJWTManager_PrincipalExposesIdentity(t *testing.T) {
+	testSeed := make([]byte, ed25519.SeedSize)
+	_, err := rand.Read(testSeed)
+	require.NoError(t, err)
+
+	cfg := &config.Config{JWTPrivateKey: hex.EncodeToString(testSeed)}
+	jwtManager := auth.NewJWTManager(cfg)
+	ctx := context.Background()
+
+	resp, err := jwtManager.GenerateTokenResponse(ctx, auth.JWTClaims{
+		AuthMethod:            auth.MethodOIDC,
+		AuthMethodSubject:     "keycloak-sub-123",
+		AuthMethodDisplayName: "Ada Lovelace",
+		Permissions: []auth.Permission{
+			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+		},
+	})
+	require.NoError(t, err)
+
+	headers := func(name string) string {
+		if name == "Authorization" {
+			return "Bearer " + resp.RegistryToken
+		}
+		return ""
+	}
+
+	session, err := jwtManager.Authenticate(ctx, headers, nil)
+	require.NoError(t, err)
+	require.NotNil(t, session)
+
+	user := session.Principal().User
+	assert.Equal(t, "keycloak-sub-123", user.Subject, "Subject must be surfaced from AuthMethodSubject")
+	assert.Equal(t, "Ada Lovelace", user.DisplayName, "DisplayName must be surfaced from AuthMethodDisplayName")
+}
+
+func TestJWTManager_PrincipalIdentityEmptyWhenAbsent(t *testing.T) {
+	testSeed := make([]byte, ed25519.SeedSize)
+	_, err := rand.Read(testSeed)
+	require.NoError(t, err)
+
+	cfg := &config.Config{JWTPrivateKey: hex.EncodeToString(testSeed)}
+	jwtManager := auth.NewJWTManager(cfg)
+	ctx := context.Background()
+
+	resp, err := jwtManager.GenerateTokenResponse(ctx, auth.JWTClaims{
+		AuthMethod:        auth.MethodOIDC,
+		AuthMethodSubject: "only-sub",
+		Permissions:       []auth.Permission{{Action: auth.PermissionActionRead, ResourcePattern: "*"}},
+	})
+	require.NoError(t, err)
+
+	headers := func(name string) string {
+		if name == "Authorization" {
+			return "Bearer " + resp.RegistryToken
+		}
+		return ""
+	}
+
+	session, err := jwtManager.Authenticate(ctx, headers, nil)
+	require.NoError(t, err)
+	user := session.Principal().User
+	assert.Equal(t, "only-sub", user.Subject)
+	assert.Empty(t, user.DisplayName, "DisplayName defaults to empty when not minted into the token")
+}

@@ -17,6 +17,12 @@ type Resource struct {
 
 type User struct {
 	Permissions []Permission
+	// Subject is the authenticated caller's stable identifier (from JWTClaims.AuthMethodSubject).
+	// It is read-only identity for ownership/display and is never used for permission matching.
+	Subject string
+	// DisplayName is a presentation-only snapshot of the caller's name
+	// (from JWTClaims.AuthMethodDisplayName). It must never be authorized against.
+	DisplayName string
 }
 
 // Authn

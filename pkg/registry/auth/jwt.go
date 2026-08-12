@@ -44,9 +44,10 @@ type Permission struct {
 type JWTClaims struct {
 	jwt.RegisteredClaims
 	// Authentication method used to obtain this token
-	AuthMethod        Method       `json:"auth_method"`
-	AuthMethodSubject string       `json:"auth_method_sub"`
-	Permissions       []Permission `json:"permissions"`
+	AuthMethod            Method       `json:"auth_method"`
+	AuthMethodSubject     string       `json:"auth_method_sub"`
+	AuthMethodDisplayName string       `json:"auth_method_name,omitempty"`
+	Permissions           []Permission `json:"permissions"`
 }
 
 type TokenResponse struct {
@@ -147,6 +148,8 @@ func (s *jwtSession) Principal() Principal {
 	return Principal{
 		User: User{
 			Permissions: s.claims.Permissions,
+			Subject:     s.claims.AuthMethodSubject,
+			DisplayName: s.claims.AuthMethodDisplayName,
 		},
 	}
 }
