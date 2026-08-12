@@ -1,6 +1,8 @@
 package auth_test
 
 import (
+	"bytes"
+	"log/slog"
 	"testing"
 
 	v0auth "github.com/agentregistry-dev/agentregistry/internal/registry/api/handlers/v0/auth"
@@ -157,12 +159,18 @@ func TestResolveRolePermissions(t *testing.T) {
 	})
 
 	t.Run("unrecognized external role falls through unmatched", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		prevLogger := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+		defer slog.SetDefault(prevLogger)
+
 		claims := map[string]any{
 			"realm_access": map[string]any{"roles": []any{"some-other-role"}},
 		}
 		perms, _, matched := v0auth.ResolveRolePermissions(claims, baseCfg())
 		assert.False(t, matched)
 		assert.Nil(t, perms)
+		assert.Empty(t, logBuf.String(), "an ordinary unrecognized-role caller (e.g. a caller with no registry role at all) must not log a warning - only a matched-but-unconfigured role is a misconfiguration")
 	})
 
 	t.Run("missing role claim falls through unmatched", func(t *testing.T) {
@@ -189,7 +197,12 @@ func TestResolveRolePermissions(t *testing.T) {
 		assert.Nil(t, perms)
 	})
 
-	t.Run("matched role with no configured patterns falls back unmatched", func(t *testing.T) {
+	t.Run("matched role with no configured patterns falls back unmatched and logs a warning", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		prevLogger := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+		defer slog.SetDefault(prevLogger)
+
 		cfg, err := v0auth.NewRoleMappingConfigFromStrings(
 			"realm_access.roles", "", `{"registry-admin":"admin"}`,
 			"", "", "", // no patterns configured for any role
@@ -201,6 +214,11 @@ func TestResolveRolePermissions(t *testing.T) {
 		perms, _, matched := v0auth.ResolveRolePermissions(claims, cfg)
 		assert.False(t, matched, "a matched role with an empty pattern list must not silently grant zero permissions as a match")
 		assert.Nil(t, perms)
+
+		logged := logBuf.String()
+		assert.Contains(t, logged, "level=WARN", "misconfiguration (matched role, no patterns) must be logged, not silent")
+		assert.Contains(t, logged, "no configured resource patterns")
+		assert.Contains(t, logged, "role=admin")
 	})
 
 	t.Run("display name resolved independently of role match", func(t *testing.T) {

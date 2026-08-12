@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/agentregistry-dev/agentregistry/pkg/registry/auth"
@@ -238,7 +239,10 @@ func buildRoleBundle(role InternalRole, patterns []string) []auth.Permission {
 // role was recognized, or the matched role has no resource patterns
 // configured - in every such case the caller should fall back to its
 // existing default (static) permission bundle rather than receiving no
-// permissions at all.
+// permissions at all. The last case (a role matched but left unconfigured)
+// is logged as a warning: it is a misconfiguration, not an absence of role
+// mapping, and would otherwise silently downgrade the caller to the default
+// bundle with no operator-visible signal.
 func ResolveRolePermissions(claims map[string]any, cfg *RoleMappingConfig) (permissions []auth.Permission, displayName string, matched bool) {
 	displayName = resolveDisplayName(claims, cfg)
 
@@ -249,6 +253,8 @@ func ResolveRolePermissions(claims map[string]any, cfg *RoleMappingConfig) (perm
 
 	bundle := buildRoleBundle(role, cfg.Patterns[role])
 	if len(bundle) == 0 {
+		slog.Warn("OIDC role matched but has no configured resource patterns; falling back to default permission bundle",
+			"role", string(role))
 		return nil, displayName, false
 	}
 
