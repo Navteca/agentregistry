@@ -1,0 +1,91 @@
+{
+  "realm": "agentregistry",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "roles": {
+    "realm": [
+      { "name": "registry-user", "description": "Local dev: read + publish permissions" },
+      { "name": "registry-curator", "description": "Local dev: read + publish + edit + delete permissions" },
+      { "name": "registry-admin", "description": "Local dev: read + publish + edit + delete + deploy permissions" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "agentregistry-api",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:12121/*",
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:12121",
+        "http://localhost:3000"
+      ],
+      "protocolMappers": [
+        {
+          "name": "realm-roles-id-token",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice-user",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "alice-user@example.test",
+      "firstName": "Alice",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["registry-user"]
+    },
+    {
+      "username": "bob-curator",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "bob-curator@example.test",
+      "firstName": "Bob",
+      "lastName": "Curator",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["registry-curator"]
+    },
+    {
+      "username": "carol-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "carol-admin@example.test",
+      "firstName": "Carol",
+      "lastName": "Admin",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["registry-admin"]
+    },
+    {
+      "username": "dave-none",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "dave-none@example.test",
+      "firstName": "Dave",
+      "lastName": "NoRole",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": []
+    }
+  ]
+}

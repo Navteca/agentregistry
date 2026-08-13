@@ -426,6 +426,30 @@ install-kagent-controller: ## Deploy kagent controller (minimal, no agents/tools
 	  --wait \
 	  --timeout=5m
 
+KEYCLOAK_NAMESPACE ?= keycloak
+
+# Local dev Keycloak for exercising OIDC role-based permissions in the browser.
+# Not part of setup-kind-cluster/run by default -- opt in when testing OIDC.
+# See scripts/kind/README.md for the full walkthrough (test users, redirect URIs,
+# and how to apply scripts/kind/values-oidc.yaml on top of install-agentregistry).
+.PHONY: install-keycloak
+install-keycloak: ## Deploy local dev Keycloak (pre-imported realm/roles/users) for OIDC testing (run `make create-kind-cluster` first)
+	kubectl --context $(KIND_CLUSTER_CONTEXT) apply -f scripts/kind/keycloak/keycloak.yaml
+	kubectl --context $(KIND_CLUSTER_CONTEXT) -n $(KEYCLOAK_NAMESPACE) create configmap keycloak-realm \
+	  --from-file=agentregistry-realm.json=scripts/kind/keycloak/realm-export.json \
+	  --dry-run=client -o yaml | kubectl --context $(KIND_CLUSTER_CONTEXT) apply -f -
+	kubectl --context $(KIND_CLUSTER_CONTEXT) -n $(KEYCLOAK_NAMESPACE) rollout restart deployment/keycloak
+	kubectl --context $(KIND_CLUSTER_CONTEXT) -n $(KEYCLOAK_NAMESPACE) rollout status deployment/keycloak --timeout=3m
+
+.PHONY: keycloak-reset
+keycloak-reset: ## Reset local dev Keycloak to a fresh realm import (fast: no PVC, just restarts the pod)
+	kubectl --context $(KIND_CLUSTER_CONTEXT) -n $(KEYCLOAK_NAMESPACE) rollout restart deployment/keycloak
+	kubectl --context $(KIND_CLUSTER_CONTEXT) -n $(KEYCLOAK_NAMESPACE) rollout status deployment/keycloak --timeout=3m
+
+.PHONY: delete-keycloak
+delete-keycloak: ## Remove local dev Keycloak from the Kind cluster
+	kubectl --context $(KIND_CLUSTER_CONTEXT) delete namespace $(KEYCLOAK_NAMESPACE) --ignore-not-found
+
 ## Set up a full local K8s dev environment (Kind + AgentRegistry with bundled PostgreSQL + kagent).
 .PHONY: setup-kind-cluster
 setup-kind-cluster: create-kind-cluster install-kagent install-agentregistry ## Set up the full local Kind development environment
