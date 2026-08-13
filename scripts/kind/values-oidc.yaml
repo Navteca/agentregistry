@@ -18,7 +18,7 @@
 # pod validates tokens against the in-cluster DNS name it can reach directly.
 # See https://www.keycloak.org/server/hostname.
 hostAliases:
-    - ip: "10.96.96.198"
+  - ip: "10.96.96.198"
     hostnames:
       - "keycloak.agentregistry.local"
 config:
@@ -37,24 +37,20 @@ config:
   oidcIssuer: "http://keycloak.agentregistry.local:8080/realms/agentregistry"
   oidcClientID: "agentregistry-api"
 
+  oidcRoleClaimPath: "realm_access.roles"
+  oidcDisplayNameClaimPath: "preferred_username"
+  oidcRoleMap: '{"registry-user":"user","registry-curator":"curator","registry-admin":"admin"}'
+  oidcUserPatterns: "*"
+  oidcCuratorPatterns: "*"
+  oidcAdminPatterns: "*"
+  # These are the default permissions for a user with no roles (should be read only basically)
+  oidcReadPermissions: "*"
+  oidcPushPermissions: ""
+  oidcPublishPermissions: ""
+  oidcEditPermissions: ""
+  oidcDeletePermissions: ""
+  oidcDeployPermissions: ""
+
   # Keep empty while validating connectivity. Set a claim rule once mapper is configured.
   # Example: '[{"ar_role":"publisher"}]'
   oidcExtraClaims: ""
-
-  # NOTE: these are STATIC bundles applied to every authenticated OIDC user,
-  # regardless of their Keycloak realm role (registry-user/registry-curator/
-  # registry-admin from scripts/kind/keycloak/realm-export.json). The role-aware
-  # mapping in internal/registry/api/handlers/v0/auth/oidc_roles.go
-  # (OIDC_ROLE_CLAIM_PATH/OIDC_ROLE_MAP/OIDC_*_PATTERNS) is not currently wired
-  # into OIDCHandler.buildPermissions (internal/registry/api/handlers/v0/auth/oidc.go)
-  # -- it's exercised only by its own unit tests today. Logging in as any of the
-  # four realm-export test users will get this same static bundle until that's
-  # fixed. The Helm chart also doesn't yet template the role-mapping env vars
-  # (only these static *Permissions keys are in configmap.yaml) -- moot until
-  # buildPermissions is wired up, since it ignores them either way.
-  oidcReadPermissions: "*"
-  oidcPushPermissions: "*"
-  oidcPublishPermissions: "*"
-  oidcEditPermissions: "*"
-  oidcDeletePermissions: "*"
-  oidcDeployPermissions: "*"

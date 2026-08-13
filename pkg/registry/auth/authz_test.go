@@ -70,3 +70,31 @@ func TestPublicAuthzProvider_IsRegistryAdmin(t *testing.T) {
 		assert.False(t, provider.IsRegistryAdmin(ctx, s))
 	})
 }
+
+func TestPublicActions_RemainsEmpty(t *testing.T) {
+	// PublicActions is an exported mutable package-level variable; its empty
+	// default is load-bearing authorization behavior.
+	assert.Empty(t, auth.PublicActions,
+		"PublicActions must remain empty: upstream 0.4.0 shipped it populated with read/push/publish/delete/deploy, and commit 0f6e5d2c0f65369d9b7a31eb15e014b4d7b84583 emptied it so authentication is mandatory; a non-empty map lets unauthenticated callers perform those actions")
+}
+
+func TestPublicAuthzProvider_Check_NilSessionRequiresAuthenticationForEveryAction(t *testing.T) {
+	provider := auth.NewPublicAuthzProvider(nil)
+	ctx := context.Background()
+	actions := []auth.PermissionAction{
+		auth.PermissionActionRead,
+		auth.PermissionActionPublish,
+		auth.PermissionActionEdit,
+		auth.PermissionActionDelete,
+		auth.PermissionActionDeploy,
+		auth.PermissionActionAdmin,
+	}
+
+	for _, action := range actions {
+		t.Run(string(action), func(t *testing.T) {
+			err := provider.Check(ctx, nil, action, auth.Resource{})
+			assert.ErrorIs(t, err, auth.ErrUnauthenticated,
+				"nil sessions must be unauthenticated for every action; allowing one action would let unauthenticated callers bypass mandatory authentication")
+		})
+	}
+}

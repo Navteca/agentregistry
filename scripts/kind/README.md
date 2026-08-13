@@ -203,25 +203,6 @@ with password `password`:
 
 Realm roles are emitted at the standard Keycloak claim path `realm_access.roles`.
 
-### ⚠️ Known gap: role-based permissions aren't wired up yet
-
-Logging in as any of the four users above currently grants the **same static
-permission bundle** (from `oidc*Permissions` in `values-oidc.yaml`), regardless
-of which realm role they hold. `ResolveRolePermissions` /
-`RoleMappingConfig` in
-[`internal/registry/api/handlers/v0/auth/oidc_roles.go`](../../internal/registry/api/handlers/v0/auth/oidc_roles.go)
-implements the `realm_access.roles` → `user`/`curator`/`admin` mapping, but
-`OIDCHandler.buildPermissions` in
-[`internal/registry/api/handlers/v0/auth/oidc.go`](../../internal/registry/api/handlers/v0/auth/oidc.go)
-never calls it — it's exercised only by its own unit tests today. The Helm
-chart also doesn't template `OIDC_ROLE_CLAIM_PATH`/`OIDC_ROLE_MAP`/
-`OIDC_{USER,CURATOR,ADMIN}_PATTERNS` (only the static `*_PERMISSIONS` keys are
-in `configmap.yaml`) — moot until `buildPermissions` is fixed to use them.
-
-This Keycloak setup is ready for that fix to land (realm roles are correctly
-emitted into the ID token — see below), but the fix itself is out of scope
-here.
-
 ### Resetting Keycloak
 
 Keycloak runs with no `PersistentVolumeClaim` — its realm state lives only in

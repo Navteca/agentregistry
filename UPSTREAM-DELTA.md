@@ -61,10 +61,6 @@ Conventions:
 - **Reapply after bump:** Re-add the six role-mapping values and corresponding
   `AGENT_REGISTRY_OIDC_*` ConfigMap entries.
 
----
-
-## AR-2 — Action-aware IsRegistryAdmin bypass
-
 ### `pkg/registry/auth/jwt.go`
 - **Change:** Added a new `PermissionActionAdmin PermissionAction = "admin"`
   sentinel action. `GenerateTokenResponse`'s namespace-denylist bypass check
@@ -101,12 +97,6 @@ Conventions:
 - **Reapply after bump:** Re-apply the same two-part predicate
   (`Action == PermissionActionAdmin && ResourcePattern == "*"`) to
   `IsRegistryAdmin`.
-
-### Known related issue, explicitly NOT changed here
-`pkg/registry/auth/jwt.go`'s `Check` still has no denylist enforcement at
-request time (only at token-mint time, in `GenerateTokenResponse`). This is
-unrelated to the `IsRegistryAdmin` bypass fixed above and is out of scope -
-noted here so it isn't mistaken for having been addressed.
 
 ### `internal/registry/database/testutil.go`
 - **Change:** The test-only `testSession.Principal()` fixture now grants
