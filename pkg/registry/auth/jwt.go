@@ -33,6 +33,14 @@ const (
 	PermissionActionEdit    PermissionAction = "edit"
 	PermissionActionDelete  PermissionAction = "delete"
 	PermissionActionDeploy  PermissionAction = "deploy"
+
+	// PermissionActionAdmin is a sentinel action that, only when paired with
+	// ResourcePattern "*", grants an unbounded registry-admin bypass (see
+	// IsRegistryAdmin and GenerateTokenResponse's denylist check). It is never
+	// checked against an individual resource/action by HasPermission in normal
+	// request handling - Check()/IsRegistryAdmin() special-case it before
+	// reaching per-action matching.
+	PermissionActionAdmin PermissionAction = "admin"
 )
 
 type Permission struct {
@@ -89,7 +97,7 @@ func (j *JWTManager) GenerateTokenResponse(_ context.Context, claims JWTClaims) 
 	// Check whether they have global permissions (used by admins)
 	hasGlobalPermissions := false
 	for _, perm := range claims.Permissions {
-		if perm.ResourcePattern == "*" {
+		if perm.Action == PermissionActionAdmin && perm.ResourcePattern == "*" {
 			hasGlobalPermissions = true
 			break
 		}

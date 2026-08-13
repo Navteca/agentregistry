@@ -113,9 +113,10 @@ func (v *StandardOIDCValidator) ValidateToken(ctx context.Context, tokenString s
 
 // OIDCHandler handles configurable OIDC authentication
 type OIDCHandler struct {
-	config     *config.Config
-	jwtManager *auth.JWTManager
-	validator  GenericOIDCValidator
+	config            *config.Config
+	roleMappingConfig *RoleMappingConfig
+	jwtManager        *auth.JWTManager
+	validator         GenericOIDCValidator
 }
 
 // NewOIDCHandler creates a new OIDC handler
@@ -127,15 +128,28 @@ func NewOIDCHandler(cfg *config.Config) *OIDCHandler {
 		panic("OIDC issuer is required when OIDC is enabled")
 	}
 
+	roleMappingConfig, err := NewRoleMappingConfigFromStrings(
+		cfg.OIDCRoleClaimPath,
+		cfg.OIDCDisplayNameClaimPath,
+		cfg.OIDCRoleMap,
+		cfg.OIDCUserPatterns,
+		cfg.OIDCCuratorPatterns,
+		cfg.OIDCAdminPatterns,
+	)
+	if err != nil {
+		panic(fmt.Sprintf("failed to initialize OIDC role mapping: %v", err))
+	}
+
 	validator, err := NewStandardOIDCValidator(cfg.OIDCIssuer, cfg.OIDCClientID)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to initialize OIDC validator: %v", err))
 	}
 
 	return &OIDCHandler{
-		config:     cfg,
-		jwtManager: auth.NewJWTManager(cfg),
-		validator:  validator,
+		config:            cfg,
+		roleMappingConfig: roleMappingConfig,
+		jwtManager:        auth.NewJWTManager(cfg),
+		validator:         validator,
 	}
 }
 
@@ -234,7 +248,15 @@ func (h *OIDCHandler) validateExtraClaims(claims *OIDCClaims) error {
 }
 
 // buildPermissions builds permissions based on OIDC claims and configuration
-func (h *OIDCHandler) buildPermissions(_ *OIDCClaims) []auth.Permission {
+func (h *OIDCHandler) buildPermissions(claims *OIDCClaims) []auth.Permission {
+	var extraClaims map[string]any
+	if claims != nil {
+		extraClaims = claims.ExtraClaims
+	}
+	if permissions, _, matched := ResolveRolePermissions(extraClaims, h.roleMappingConfig); matched {
+		return permissions
+	}
+
 	var permissions []auth.Permission
 
 	if h.config.OIDCReadPerms != "" {

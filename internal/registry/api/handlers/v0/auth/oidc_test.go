@@ -7,6 +7,7 @@ import (
 
 	"github.com/agentregistry-dev/agentregistry/internal/registry/api/handlers/v0/auth"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/config"
+	registryauth "github.com/agentregistry-dev/agentregistry/pkg/registry/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -103,5 +104,89 @@ func TestOIDCHandler_ExchangeToken(t *testing.T) {
 				assert.Positive(t, response.ExpiresAt)
 			}
 		})
+	}
+}
+
+func TestOIDCHandler_ExchangeTokenRolePermissions(t *testing.T) {
+	cfg := &config.Config{
+		OIDCEnabled:       true,
+		OIDCIssuer:        "https://accounts.google.com",
+		OIDCClientID:      "test-client-id",
+		OIDCRoleClaimPath: "realm_access.roles",
+		OIDCRoleMap:       `{"registry-user":"user"}`,
+		OIDCUserPatterns:  "io.example.*",
+		OIDCReadPerms:     "static-read",
+		OIDCPublishPerms:  "static-publish",
+		OIDCPushPerms:     "static-push",
+		OIDCDeployPerms:   "static-deploy",
+		OIDCEditPerms:     "static-edit",
+		OIDCDeletePerms:   "static-delete",
+		JWTPrivateKey:     "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+	}
+	handler := auth.NewOIDCHandler(cfg)
+	jwtManager := registryauth.NewJWTManager(cfg)
+
+	tests := []struct {
+		name         string
+		extraClaims  map[string]any
+		expectedPerm []registryauth.Permission
+	}{
+		{
+			name: "mapped role gets role bundle",
+			extraClaims: map[string]any{
+				"realm_access": map[string]any{"roles": []any{"registry-user"}},
+			},
+			expectedPerm: []registryauth.Permission{
+				{Action: registryauth.PermissionActionRead, ResourcePattern: "io.example.*"},
+				{Action: registryauth.PermissionActionPublish, ResourcePattern: "io.example.*"},
+			},
+		},
+		{
+			name: "unknown role gets static fallback",
+			extraClaims: map[string]any{
+				"realm_access": map[string]any{"roles": []any{"unrecognized"}},
+			},
+			expectedPerm: staticOIDCPermissions(),
+		},
+		{
+			name:         "missing role claim gets static fallback",
+			extraClaims:  map[string]any{"email": "user@example.com"},
+			expectedPerm: staticOIDCPermissions(),
+		},
+		{
+			name: "malformed claims get static fallback",
+			extraClaims: map[string]any{
+				"realm_access": "not-a-map",
+			},
+			expectedPerm: staticOIDCPermissions(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler.SetValidator(&MockGenericOIDCValidator{
+				validateFunc: func(_ context.Context, _ string) (*auth.OIDCClaims, error) {
+					return &auth.OIDCClaims{ExtraClaims: tt.extraClaims}, nil
+				},
+			})
+
+			response, err := handler.ExchangeToken(context.Background(), "valid-oidc-token")
+			require.NoError(t, err)
+
+			claims, err := jwtManager.ValidateToken(context.Background(), response.RegistryToken)
+			require.NoError(t, err)
+			assert.ElementsMatch(t, tt.expectedPerm, claims.Permissions)
+		})
+	}
+}
+
+func staticOIDCPermissions() []registryauth.Permission {
+	return []registryauth.Permission{
+		{Action: registryauth.PermissionActionRead, ResourcePattern: "static-read"},
+		{Action: registryauth.PermissionActionPublish, ResourcePattern: "static-push"},
+		{Action: registryauth.PermissionActionDeploy, ResourcePattern: "static-deploy"},
+		{Action: registryauth.PermissionActionPublish, ResourcePattern: "static-publish"},
+		{Action: registryauth.PermissionActionEdit, ResourcePattern: "static-edit"},
+		{Action: registryauth.PermissionActionDelete, ResourcePattern: "static-delete"},
 	}
 }

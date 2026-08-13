@@ -386,8 +386,11 @@ func TestJWTManager_BlockedNamespaces(t *testing.T) {
 			AuthMethodSubject: "admin",
 			Permissions: []auth.Permission{
 				{
-					Action:          auth.PermissionActionPublish,
-					ResourcePattern: "*", // global permission should bypass blocking
+					// Only the admin sentinel action bypasses the denylist now;
+					// see "bare wildcard publish permission no longer bypasses
+					// denylist" below for the (changed) non-admin case.
+					Action:          auth.PermissionActionAdmin,
+					ResourcePattern: "*",
 				},
 			},
 		}
@@ -395,6 +398,37 @@ func TestJWTManager_BlockedNamespaces(t *testing.T) {
 		tokenResponse, err := jwtManager.GenerateTokenResponse(ctx, claims)
 		require.NoError(t, err)
 		assert.NotEmpty(t, tokenResponse.RegistryToken)
+	})
+
+	t.Run("bare wildcard publish permission no longer bypasses denylist", func(t *testing.T) {
+		// Prior to the action-aware admin predicate, {Action: publish,
+		// ResourcePattern: "*"} tripped the same bare-"*" bypass as true admin
+		// permissions, silently granting unbounded publish rights (and
+		// skipping the denylist) for any action-agnostic wildcard grant. Now
+		// only PermissionActionAdmin + "*" bypasses; a wildcard publish grant
+		// is checked like any other publish permission and is correctly
+		// blocked for a denylisted namespace.
+		originalBlocked := auth.BlockedNamespaces
+		auth.BlockedNamespaces = []string{"io.github.spammer"}
+		defer func() { auth.BlockedNamespaces = originalBlocked }()
+
+		jwtManager := auth.NewJWTManager(cfg)
+
+		claims := auth.JWTClaims{
+			AuthMethod:        auth.MethodNone,
+			AuthMethodSubject: "wildcard-publisher",
+			Permissions: []auth.Permission{
+				{
+					Action:          auth.PermissionActionPublish,
+					ResourcePattern: "*",
+				},
+			},
+		}
+
+		tokenResponse, err := jwtManager.GenerateTokenResponse(ctx, claims)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "your namespace is blocked")
+		assert.Nil(t, tokenResponse)
 	})
 }
 
