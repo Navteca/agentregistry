@@ -2021,7 +2021,8 @@ func (db *PostgreSQL) ListSkills(ctx context.Context, tx pgx.Tx, filter *databas
 	}
 
 	query := fmt.Sprintf(`
-        SELECT skill_name, version, status, published_at, updated_at, is_latest, value
+        SELECT skill_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM skills
         %s
         ORDER BY skill_name, version
@@ -2041,8 +2042,9 @@ func (db *PostgreSQL) ListSkills(ctx context.Context, tx pgx.Tx, filter *databas
 		var publishedAt, updatedAt time.Time
 		var isLatest bool
 		var valueJSON []byte
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
 
-		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 			return nil, "", fmt.Errorf("failed to scan skill row: %w", err)
 		}
 
@@ -2060,6 +2062,7 @@ func (db *PostgreSQL) ListSkills(ctx context.Context, tx pgx.Tx, filter *databas
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		}
 		results = append(results, resp)
@@ -2089,7 +2092,8 @@ func (db *PostgreSQL) GetSkillByName(ctx context.Context, tx pgx.Tx, skillName s
 	}
 
 	query := `
-        SELECT skill_name, version, status, published_at, updated_at, is_latest, value
+        SELECT skill_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM skills
         WHERE skill_name = $1 AND is_latest = true
         ORDER BY published_at DESC
@@ -2099,7 +2103,8 @@ func (db *PostgreSQL) GetSkillByName(ctx context.Context, tx pgx.Tx, skillName s
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
-	if err := db.getExecutor(tx).QueryRow(ctx, query, skillName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := db.getExecutor(tx).QueryRow(ctx, query, skillName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -2118,6 +2123,7 @@ func (db *PostgreSQL) GetSkillByName(ctx context.Context, tx pgx.Tx, skillName s
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -2135,7 +2141,8 @@ func (db *PostgreSQL) GetSkillByNameAndVersion(ctx context.Context, tx pgx.Tx, s
 	}
 
 	query := `
-        SELECT skill_name, version, status, published_at, updated_at, is_latest, value
+        SELECT skill_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM skills
         WHERE skill_name = $1 AND version = $2
         LIMIT 1
@@ -2144,7 +2151,8 @@ func (db *PostgreSQL) GetSkillByNameAndVersion(ctx context.Context, tx pgx.Tx, s
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
-	if err := db.getExecutor(tx).QueryRow(ctx, query, skillName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := db.getExecutor(tx).QueryRow(ctx, query, skillName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -2163,6 +2171,7 @@ func (db *PostgreSQL) GetSkillByNameAndVersion(ctx context.Context, tx pgx.Tx, s
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -2180,7 +2189,8 @@ func (db *PostgreSQL) GetAllVersionsBySkillName(ctx context.Context, tx pgx.Tx, 
 	}
 
 	query := `
-        SELECT skill_name, version, status, published_at, updated_at, is_latest, value
+        SELECT skill_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM skills
         WHERE skill_name = $1
         ORDER BY published_at DESC
@@ -2196,7 +2206,8 @@ func (db *PostgreSQL) GetAllVersionsBySkillName(ctx context.Context, tx pgx.Tx, 
 		var publishedAt, updatedAt time.Time
 		var isLatest bool
 		var valueJSON []byte
-		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 			return nil, fmt.Errorf("failed to scan skill row: %w", err)
 		}
 		var skillJSON models.SkillJSON
@@ -2212,6 +2223,7 @@ func (db *PostgreSQL) GetAllVersionsBySkillName(ctx context.Context, tx pgx.Tx, 
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		})
 	}
@@ -2224,7 +2236,7 @@ func (db *PostgreSQL) GetAllVersionsBySkillName(ctx context.Context, tx pgx.Tx, 
 	return results, nil
 }
 
-func (db *PostgreSQL) CreateSkill(ctx context.Context, tx pgx.Tx, skillJSON *models.SkillJSON, officialMeta *models.SkillRegistryExtensions) (*models.SkillResponse, error) {
+func (db *PostgreSQL) CreateSkill(ctx context.Context, tx pgx.Tx, skillJSON *models.SkillJSON, officialMeta *models.SkillRegistryExtensions, ownership models.OwnershipInput) (*models.SkillResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -2247,9 +2259,22 @@ func (db *PostgreSQL) CreateSkill(ctx context.Context, tx pgx.Tx, skillJSON *mod
 		return nil, fmt.Errorf("failed to marshal skill JSON: %w", err)
 	}
 	insert := `
-        INSERT INTO skills (skill_name, version, status, published_at, updated_at, is_latest, value)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO skills (
+            skill_name, version, status, published_at, updated_at, is_latest, value,
+            created_by_subject, created_by_display_name, created_by_auth_method
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `
+	var createdBySubject, createdByDisplayName, createdByAuthMethod any
+	if ownership.Subject != "" {
+		createdBySubject = ownership.Subject
+		if ownership.DisplayName != "" {
+			createdByDisplayName = ownership.DisplayName
+		}
+		if ownership.AuthMethod != "" {
+			createdByAuthMethod = ownership.AuthMethod
+		}
+	}
 	if _, err := db.getExecutor(tx).Exec(ctx, insert,
 		skillJSON.Name,
 		skillJSON.Version,
@@ -2258,13 +2283,17 @@ func (db *PostgreSQL) CreateSkill(ctx context.Context, tx pgx.Tx, skillJSON *mod
 		officialMeta.UpdatedAt,
 		officialMeta.IsLatest,
 		valueJSON,
+		createdBySubject,
+		createdByDisplayName,
+		createdByAuthMethod,
 	); err != nil {
 		return nil, fmt.Errorf("failed to insert skill: %w", err)
 	}
 	return &models.SkillResponse{
 		Skill: *skillJSON,
 		Meta: models.SkillResponseMeta{
-			Official: officialMeta,
+			Official:  officialMeta,
+			Ownership: ownershipMetaFromInput(ownership),
 		},
 	}, nil
 }
@@ -2378,7 +2407,8 @@ func (db *PostgreSQL) GetCurrentLatestSkillVersion(ctx context.Context, tx pgx.T
 
 	executor := db.getExecutor(tx)
 	query := `
-        SELECT skill_name, version, status, value, published_at, updated_at, is_latest
+        SELECT skill_name, version, status, value, published_at, updated_at, is_latest,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM skills
         WHERE skill_name = $1 AND is_latest = true
     `
@@ -2387,7 +2417,8 @@ func (db *PostgreSQL) GetCurrentLatestSkillVersion(ctx context.Context, tx pgx.T
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var jsonValue []byte
-	if err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -2406,6 +2437,7 @@ func (db *PostgreSQL) GetCurrentLatestSkillVersion(ctx context.Context, tx pgx.T
 				IsLatest:    isLatest,
 				Status:      status,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }

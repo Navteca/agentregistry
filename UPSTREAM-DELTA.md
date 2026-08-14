@@ -247,3 +247,30 @@ Conventions:
 - **Change:** Added agent database coverage for ownership surviving update/status-update operations, all five read paths, and omission of the ownership JSON key for NULL ownership columns.
 - **Reason:** Verifies persistence, read-path consistency, update safety, and JSON omission semantics.
 - **Reapply after bump:** Reapply the focused agent ownership database tests.
+
+### Skill ownership capture
+
+### `internal/registry/service/registry_service.go`
+- **Change:** Resolves ownership once per skill create operation and passes `models.OwnershipInput` through the transaction to the database create method.
+- **Reason:** Keeps authentication resolution in the service layer and prevents request payload metadata from overriding the authenticated creator.
+- **Reapply after bump:** Resolve ownership before opening the transaction, pass it through `createSkillInTransaction`, and append it to `Database.CreateSkill`.
+
+### `pkg/registry/database/database.go`
+- **Change:** Added `models.OwnershipInput` to the `CreateSkill` database interface method.
+- **Reason:** Makes skill ownership data flow explicit at the persistence boundary.
+- **Reapply after bump:** Add the ownership value object as the final `CreateSkill` parameter.
+
+### `internal/registry/database/postgres.go`
+- **Change:** Skill inserts persist nullable subject, display-name, and auth-method columns. All five skill read paths scan nullable ownership columns and populate `SkillResponseMeta.Ownership`; named-column-only update and status-update statements remain unchanged.
+- **Reason:** Captures authenticated ownership without trusting request payload data, preserves ownership through updates, and omits ownership for legacy/unowned rows.
+- **Reapply after bump:** Add the three nullable columns and unconditional `sql.NullString` scan destinations to each skill read query, pass `OwnershipInput` to the insert, and use `ownershipMetaFromInput` for the create response.
+
+### `internal/registry/service/ownership_test.go`
+- **Change:** Added skill service coverage for authenticated ownership capture, ignoring ownership-shaped request data, anonymous omission, and distinct subjects sharing a display name.
+- **Reason:** Verifies skill ownership is resolved from the authenticated principal rather than the request body and remains subject-based.
+- **Reapply after bump:** Reapply the focused skill ownership service tests.
+
+### `internal/registry/database/ownership_test.go`
+- **Change:** Added skill database coverage for ownership surviving update/status-update operations, all five read paths, and omission of the ownership JSON key for NULL ownership columns.
+- **Reason:** Verifies persistence, read-path consistency, update safety, and JSON omission semantics.
+- **Reapply after bump:** Reapply the focused skill ownership database tests.

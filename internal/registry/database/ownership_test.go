@@ -118,6 +118,24 @@ func ownershipTestAgentMeta() *models.AgentRegistryExtensions {
 	}
 }
 
+func ownershipTestSkill(name string) *models.SkillJSON {
+	return &models.SkillJSON{
+		Name:        name,
+		Description: "Ownership test skill",
+		Version:     "1.0.0",
+	}
+}
+
+func ownershipTestSkillMeta() *models.SkillRegistryExtensions {
+	now := time.Now()
+	return &models.SkillRegistryExtensions{
+		Status:      "active",
+		PublishedAt: now,
+		UpdatedAt:   now,
+		IsLatest:    true,
+	}
+}
+
 func assertAgentOwnership(t *testing.T, response *models.AgentResponse, ownership models.OwnershipInput) {
 	t.Helper()
 	require.NotNil(t, response.Meta.Ownership)
@@ -179,6 +197,75 @@ func TestAgentWithoutOwnershipOmitsOwnershipJSON(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := db.GetAgentByName(ctx, nil, agent.Name)
+	require.NoError(t, err)
+	assert.Nil(t, result.Meta.Ownership)
+
+	serialized, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.NotContains(t, string(serialized), `"aregistry.ai/ownership"`)
+}
+
+func assertSkillOwnership(t *testing.T, response *models.SkillResponse, ownership models.OwnershipInput) {
+	t.Helper()
+	require.NotNil(t, response.Meta.Ownership)
+	assert.Equal(t, ownership.Subject, response.Meta.Ownership.Subject)
+	assert.Equal(t, ownership.DisplayName, response.Meta.Ownership.DisplayName)
+	assert.Equal(t, ownership.AuthMethod, response.Meta.Ownership.AuthMethod)
+}
+
+func TestSkillOwnershipSurvivesUpdatesAndAllReads(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	ctx := internaldb.WithTestSession(context.Background())
+	skill := ownershipTestSkill("ownership-skill-update")
+	ownership := models.OwnershipInput{
+		Subject:     "skill-creator-subject",
+		DisplayName: "Skill Creator",
+		AuthMethod:  "oidc",
+	}
+
+	_, err := db.CreateSkill(ctx, nil, skill, ownershipTestSkillMeta(), ownership)
+	require.NoError(t, err)
+
+	updated := *skill
+	updated.Description = "Updated description"
+	_, err = db.UpdateSkill(ctx, nil, skill.Name, skill.Version, &updated)
+	require.NoError(t, err)
+
+	_, err = db.SetSkillStatus(ctx, nil, skill.Name, skill.Version, "deprecated")
+	require.NoError(t, err)
+
+	latest, err := db.GetSkillByName(ctx, nil, skill.Name)
+	require.NoError(t, err)
+	assertSkillOwnership(t, latest, ownership)
+
+	byVersion, err := db.GetSkillByNameAndVersion(ctx, nil, skill.Name, skill.Version)
+	require.NoError(t, err)
+	assertSkillOwnership(t, byVersion, ownership)
+
+	versions, err := db.GetAllVersionsBySkillName(ctx, nil, skill.Name)
+	require.NoError(t, err)
+	require.Len(t, versions, 1)
+	assertSkillOwnership(t, versions[0], ownership)
+
+	listed, _, err := db.ListSkills(ctx, nil, &database.SkillFilter{Name: &skill.Name}, "", 10)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assertSkillOwnership(t, listed[0], ownership)
+
+	current, err := db.GetCurrentLatestSkillVersion(ctx, nil, skill.Name)
+	require.NoError(t, err)
+	assertSkillOwnership(t, current, ownership)
+}
+
+func TestSkillWithoutOwnershipOmitsOwnershipJSON(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	ctx := internaldb.WithTestSession(context.Background())
+	skill := ownershipTestSkill("ownership-skill-unowned")
+
+	_, err := db.CreateSkill(ctx, nil, skill, ownershipTestSkillMeta(), models.OwnershipInput{})
+	require.NoError(t, err)
+
+	result, err := db.GetSkillByName(ctx, nil, skill.Name)
 	require.NoError(t, err)
 	assert.Nil(t, result.Meta.Ownership)
 

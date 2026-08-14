@@ -329,12 +329,14 @@ func (s *registryServiceImpl) GetAllVersionsBySkillName(ctx context.Context, ski
 
 // CreateSkill creates a new skill version
 func (s *registryServiceImpl) CreateSkill(ctx context.Context, req *models.SkillJSON) (*models.SkillResponse, error) {
+	ownership := resolveOwnership(ctx)
+
 	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*models.SkillResponse, error) {
-		return s.createSkillInTransaction(ctx, tx, req)
+		return s.createSkillInTransaction(ctx, tx, req, ownership)
 	})
 }
 
-func (s *registryServiceImpl) createSkillInTransaction(ctx context.Context, tx pgx.Tx, req *models.SkillJSON) (*models.SkillResponse, error) {
+func (s *registryServiceImpl) createSkillInTransaction(ctx context.Context, tx pgx.Tx, req *models.SkillJSON, ownership models.OwnershipInput) (*models.SkillResponse, error) {
 	// Basic validation: ensure required fields present
 	if req == nil || req.Name == "" || req.Version == "" {
 		return nil, fmt.Errorf("invalid skill payload: name and version are required")
@@ -406,7 +408,7 @@ func (s *registryServiceImpl) createSkillInTransaction(ctx context.Context, tx p
 		IsLatest:    isNewLatest,
 	}
 
-	return s.db.CreateSkill(ctx, tx, &skillJSON, officialMeta)
+	return s.db.CreateSkill(ctx, tx, &skillJSON, officialMeta, ownership)
 }
 
 // DeleteSkill permanently removes a skill version from the registry

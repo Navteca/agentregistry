@@ -69,6 +69,14 @@ func newOwnershipTestAgent(name string) *models.AgentJSON {
 	}
 }
 
+func newOwnershipTestSkill(name string) *models.SkillJSON {
+	return &models.SkillJSON{
+		Name:        name,
+		Description: "Ownership test skill",
+		Version:     "1.0.0",
+	}
+}
+
 func TestCreateServerResolvesAndPersistsOwnership(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
@@ -204,5 +212,81 @@ func TestCreateAgentSubjectsRemainDistinctWithSameDisplayName(t *testing.T) {
 	require.NotNil(t, second.Meta.Ownership)
 	assert.Equal(t, "agent-subject-one", first.Meta.Ownership.Subject)
 	assert.Equal(t, "agent-subject-two", second.Meta.Ownership.Subject)
+	assert.Equal(t, first.Meta.Ownership.DisplayName, second.Meta.Ownership.DisplayName)
+}
+
+func TestCreateSkillResolvesAndPersistsOwnership(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	ctx := ownershipTestContext("skill-oidc-subject", "Ada Lovelace", auth.MethodOIDC)
+
+	created, err := registry.CreateSkill(ctx, newOwnershipTestSkill("ownership-skill-create"))
+	require.NoError(t, err)
+	require.NotNil(t, created.Meta.Ownership)
+	assert.Equal(t, "skill-oidc-subject", created.Meta.Ownership.Subject)
+	assert.Equal(t, "Ada Lovelace", created.Meta.Ownership.DisplayName)
+	assert.Equal(t, "oidc", created.Meta.Ownership.AuthMethod)
+
+	fetched, err := registry.GetSkillByName(ctx, "ownership-skill-create")
+	require.NoError(t, err)
+	require.NotNil(t, fetched.Meta.Ownership)
+	assert.Equal(t, "skill-oidc-subject", fetched.Meta.Ownership.Subject)
+}
+
+func TestCreateSkillIgnoresOwnershipShapedRequestData(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	ctx := ownershipTestContext("authenticated-subject", "Authenticated User", auth.MethodOIDC)
+
+	var skill models.SkillJSON
+	err := json.Unmarshal([]byte(`{
+		"name": "ownership-skill-request",
+		"description": "Request fixture",
+		"version": "1.0.0",
+		"_meta": {
+			"aregistry.ai/ownership": {
+				"subject": "request-subject",
+				"displayName": "Request Display Name",
+				"authMethod": "request-method"
+			}
+		}
+	}`), &skill)
+	require.NoError(t, err)
+
+	created, err := registry.CreateSkill(ctx, &skill)
+	require.NoError(t, err)
+	require.NotNil(t, created.Meta.Ownership)
+	assert.Equal(t, "authenticated-subject", created.Meta.Ownership.Subject)
+	assert.NotEqual(t, "request-subject", created.Meta.Ownership.Subject)
+}
+
+func TestCreateSkillAnonymousHasNoOwnership(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	ctx := ownershipTestContext("anonymous", "Anonymous", auth.MethodNone)
+
+	created, err := registry.CreateSkill(ctx, newOwnershipTestSkill("ownership-skill-anonymous"))
+	require.NoError(t, err)
+	assert.Nil(t, created.Meta.Ownership)
+}
+
+func TestCreateSkillSubjectsRemainDistinctWithSameDisplayName(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+
+	for _, subject := range []string{"skill-subject-one", "skill-subject-two"} {
+		ctx := ownershipTestContext(subject, "Shared Display Name", auth.MethodOIDC)
+		_, err := registry.CreateSkill(ctx, newOwnershipTestSkill("ownership-"+subject))
+		require.NoError(t, err)
+	}
+
+	first, err := registry.GetSkillByName(ownershipTestContext("skill-subject-one", "Shared Display Name", auth.MethodOIDC), "ownership-skill-subject-one")
+	require.NoError(t, err)
+	second, err := registry.GetSkillByName(ownershipTestContext("skill-subject-two", "Shared Display Name", auth.MethodOIDC), "ownership-skill-subject-two")
+	require.NoError(t, err)
+	require.NotNil(t, first.Meta.Ownership)
+	require.NotNil(t, second.Meta.Ownership)
+	assert.Equal(t, "skill-subject-one", first.Meta.Ownership.Subject)
+	assert.Equal(t, "skill-subject-two", second.Meta.Ownership.Subject)
 	assert.Equal(t, first.Meta.Ownership.DisplayName, second.Meta.Ownership.DisplayName)
 }
