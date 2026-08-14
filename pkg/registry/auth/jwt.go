@@ -156,6 +156,7 @@ func (s *jwtSession) Principal() Principal {
 	return Principal{
 		User: User{
 			Permissions: s.claims.Permissions,
+			AuthMethod:  s.claims.AuthMethod,
 			Subject:     s.claims.AuthMethodSubject,
 			DisplayName: s.claims.AuthMethodDisplayName,
 		},

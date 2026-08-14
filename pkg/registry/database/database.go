@@ -112,7 +112,7 @@ type Database interface {
 	// DeleteServer permanently removes a server version from the database
 	DeleteServer(ctx context.Context, tx pgx.Tx, serverName, version string) error
 	// CreateServer inserts a new server version with official metadata
-	CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *apiv0.ServerJSON, officialMeta *apiv0.RegistryExtensions) (*models.ServerResponse, error)
+	CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *apiv0.ServerJSON, officialMeta *apiv0.RegistryExtensions, ownership models.OwnershipInput) (*models.ServerResponse, error)
 	// UpdateServer updates an existing server record
 	UpdateServer(ctx context.Context, tx pgx.Tx, serverName, version string, serverJSON *apiv0.ServerJSON) (*models.ServerResponse, error)
 	// SetServerStatus updates the status of a specific server version

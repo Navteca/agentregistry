@@ -17,6 +17,8 @@ type Resource struct {
 
 type User struct {
 	Permissions []Permission
+	// AuthMethod identifies the authentication method that established this user.
+	AuthMethod Method
 	// Subject is the authenticated caller's stable identifier (from JWTClaims.AuthMethodSubject).
 	// It is read-only identity for ownership/display and is never used for permission matching.
 	Subject string

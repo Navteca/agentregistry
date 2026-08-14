@@ -163,14 +163,16 @@ func (s *registryServiceImpl) GetAllVersionsByServerName(ctx context.Context, se
 
 // CreateServer creates a new server version
 func (s *registryServiceImpl) CreateServer(ctx context.Context, req *apiv0.ServerJSON) (*models.ServerResponse, error) {
+	ownership := resolveOwnership(ctx)
+
 	// Wrap the entire operation in a transaction
 	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*models.ServerResponse, error) {
-		return s.createServerInTransaction(ctx, tx, req)
+		return s.createServerInTransaction(ctx, tx, req, ownership)
 	})
 }
 
 // createServerInTransaction contains the actual CreateServer logic within a transaction
-func (s *registryServiceImpl) createServerInTransaction(ctx context.Context, tx pgx.Tx, req *apiv0.ServerJSON) (*models.ServerResponse, error) {
+func (s *registryServiceImpl) createServerInTransaction(ctx context.Context, tx pgx.Tx, req *apiv0.ServerJSON, ownership models.OwnershipInput) (*models.ServerResponse, error) {
 	// Validate the request
 	if err := validators.ValidatePublishRequest(ctx, *req, s.cfg); err != nil {
 		return nil, err
@@ -244,7 +246,7 @@ func (s *registryServiceImpl) createServerInTransaction(ctx context.Context, tx 
 	}
 
 	// Insert new server version
-	result, err := s.db.CreateServer(ctx, tx, &serverJSON, officialMeta)
+	result, err := s.db.CreateServer(ctx, tx, &serverJSON, officialMeta, ownership)
 	if err != nil {
 		return nil, err
 	}

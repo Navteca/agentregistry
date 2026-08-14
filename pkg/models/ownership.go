@@ -10,4 +10,12 @@ package models
 type OwnershipMeta struct {
 	Subject     string `json:"subject"`
 	DisplayName string `json:"displayName,omitempty"`
+	AuthMethod  string `json:"authMethod,omitempty"`
+}
+
+// OwnershipInput carries the authenticated creator identity into persistence.
+type OwnershipInput struct {
+	Subject     string
+	DisplayName string
+	AuthMethod  string
 }

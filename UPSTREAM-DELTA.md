@@ -178,3 +178,45 @@ Conventions:
 - **Change:** Explicitly converts the migrated database response to the upstream response shape used by the importer fixture.
 - **Reason:** The importer fixture tests the upstream export payload and does not consume fork-local response metadata.
 - **Reapply after bump:** Preserve the explicit `Server`/official-meta conversion at the upstream fixture boundary.
+
+### Server ownership capture
+
+### `pkg/registry/auth/auth.go`
+- **Change:** Added `User.AuthMethod` alongside the existing subject and display-name identity fields.
+- **Reason:** The service must explicitly distinguish anonymous authentication from other methods without inspecting request context in the database layer.
+- **Reapply after bump:** Re-add the typed `AuthMethod Method` field to `User`.
+
+### `pkg/registry/auth/jwt.go`
+- **Change:** `jwtSession.Principal()` now copies `JWTClaims.AuthMethod` into `User.AuthMethod`.
+- **Reason:** Ownership resolution needs the authenticated method to omit anonymous ownership and persist the method string for non-anonymous creators.
+- **Reapply after bump:** Re-add the `AuthMethod` assignment in `Principal()`.
+
+### `internal/registry/service/registry_service.go`
+- **Change:** Resolves ownership once per server create operation and passes `models.OwnershipInput` explicitly to the database create method.
+- **Reason:** Keeps authentication resolution in the service layer while leaving the database context-free; request metadata cannot override the authenticated identity.
+- **Reapply after bump:** Resolve ownership before opening the transaction, pass it through `createServerInTransaction`, and append it to `Database.CreateServer`.
+
+### `pkg/registry/database/database.go`
+- **Change:** Added `models.OwnershipInput` to the `CreateServer` database interface method.
+- **Reason:** Makes ownership data flow explicit at the persistence boundary.
+- **Reapply after bump:** Add the ownership value object as the final `CreateServer` parameter.
+
+### `internal/registry/database/postgres.go`
+- **Change:** Server inserts persist nullable subject, display-name, and auth-method columns. The four server read paths scan nullable ownership columns and populate `ServerResponseMeta.Ownership`; anonymous and empty-subject inputs write all three columns as `NULL`.
+- **Reason:** Captures authenticated ownership without allowing request payload metadata or display names to influence identity, and omits ownership for legacy/unowned rows.
+- **Reapply after bump:** Add the three nullable columns and `sql.NullString` scan destinations to each server read query, pass `OwnershipInput` to the insert, and preserve named-column-only update statements.
+
+### `internal/registry/database/ownership.go`
+- **Change:** Added fork-local helpers for constructing ownership metadata from nullable database columns or create input.
+- **Reason:** Keeps repeated null handling and omission semantics consistent across server response constructors.
+- **Reapply after bump:** Re-add the two ownership metadata conversion helpers.
+
+### `internal/registry/database/postgres_test.go`
+- **Change:** Updated direct database create calls for the explicit ownership argument.
+- **Reason:** Keeps the upstream database tests aligned with the new interface.
+- **Reapply after bump:** Supply an empty `models.OwnershipInput` in existing ownership-neutral fixtures.
+
+### `pkg/models/ownership.go`
+- **Change:** Added `OwnershipInput{Subject, DisplayName, AuthMethod}` for explicit service-to-database ownership flow.
+- **Reason:** Gives tasks 9–11 one stable value-object parameter to copy without adding bare string arguments.
+- **Reapply after bump:** Re-add the three plain string fields to the ownership input type.

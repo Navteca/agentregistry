@@ -67,11 +67,11 @@ func TestPostgreSQL_CreateServer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create the first server to test duplicates
 			if tt.name == "duplicate server version should fail" {
-				_, err := db.CreateServer(ctx, nil, tt.serverJSON, tt.officialMeta)
+				_, err := db.CreateServer(ctx, nil, tt.serverJSON, tt.officialMeta, models.OwnershipInput{})
 				require.NoError(t, err, "First creation should succeed")
 			}
 
-			result, err := db.CreateServer(ctx, nil, tt.serverJSON, tt.officialMeta)
+			result, err := db.CreateServer(ctx, nil, tt.serverJSON, tt.officialMeta, models.OwnershipInput{})
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -111,7 +111,7 @@ func TestPostgreSQL_GetServerByName(t *testing.T) {
 	}
 
 	// Create the server
-	_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta)
+	_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta, models.OwnershipInput{})
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -173,7 +173,7 @@ func TestPostgreSQL_GetServerByNameAndVersion(t *testing.T) {
 			IsLatest:    i == len(versions)-1, // Only last version is latest
 		}
 
-		_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta)
+		_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta, models.OwnershipInput{})
 		require.NoError(t, err)
 	}
 
@@ -282,7 +282,7 @@ func TestPostgreSQL_ListServers(t *testing.T) {
 			IsLatest:    server.isLatest,
 		}
 
-		_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta)
+		_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta, models.OwnershipInput{})
 		require.NoError(t, err)
 	}
 
@@ -416,7 +416,7 @@ func TestPostgreSQL_UpdateServer(t *testing.T) {
 		IsLatest:    true,
 	}
 
-	_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta)
+	_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta, models.OwnershipInput{})
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -495,7 +495,7 @@ func TestPostgreSQL_SetServerStatus(t *testing.T) {
 		IsLatest:    true,
 	}
 
-	_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta)
+	_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta, models.OwnershipInput{})
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -568,7 +568,7 @@ func TestPostgreSQL_TransactionHandling(t *testing.T) {
 				IsLatest:    true,
 			}
 
-			_, err := db.CreateServer(ctx, tx, serverJSON, officialMeta)
+			_, err := db.CreateServer(ctx, tx, serverJSON, officialMeta, models.OwnershipInput{})
 			return err
 		})
 
@@ -594,7 +594,7 @@ func TestPostgreSQL_TransactionHandling(t *testing.T) {
 				IsLatest:    true,
 			}
 
-			_, err := db.CreateServer(ctx, tx, serverJSON, officialMeta)
+			_, err := db.CreateServer(ctx, tx, serverJSON, officialMeta, models.OwnershipInput{})
 			if err != nil {
 				return err
 			}
@@ -635,7 +635,7 @@ func TestPostgreSQL_HelperMethods(t *testing.T) {
 			IsLatest:    version == "2.0.0",
 		}
 
-		_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta)
+		_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta, models.OwnershipInput{})
 		require.NoError(t, err)
 	}
 
@@ -701,12 +701,12 @@ func TestPostgreSQL_EdgeCases(t *testing.T) {
 
 	t.Run("input validation", func(t *testing.T) {
 		// Test nil inputs
-		_, err := db.CreateServer(ctx, nil, nil, nil)
+		_, err := db.CreateServer(ctx, nil, nil, nil, models.OwnershipInput{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "serverJSON and officialMeta are required")
 
 		// Test empty required fields
-		_, err = db.CreateServer(ctx, nil, &apiv0.ServerJSON{}, &apiv0.RegistryExtensions{})
+		_, err = db.CreateServer(ctx, nil, &apiv0.ServerJSON{}, &apiv0.RegistryExtensions{}, models.OwnershipInput{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "server name and version are required")
 	})
@@ -725,7 +725,7 @@ func TestPostgreSQL_EdgeCases(t *testing.T) {
 			IsLatest:    true,
 		}
 
-		_, err := db.CreateServer(ctx, nil, invalidServer, officialMeta)
+		_, err := db.CreateServer(ctx, nil, invalidServer, officialMeta, models.OwnershipInput{})
 		require.Error(t, err, "Should fail due to server name format constraint")
 	})
 
@@ -761,7 +761,7 @@ func TestPostgreSQL_EdgeCases(t *testing.T) {
 			PublishedAt: testTime,
 			UpdatedAt:   testTime,
 			IsLatest:    true,
-		})
+		}, models.OwnershipInput{})
 		require.NoError(t, err)
 
 		// Test multiple filters combined
@@ -792,7 +792,7 @@ func TestPostgreSQL_EdgeCases(t *testing.T) {
 			PublishedAt: time.Now(),
 			UpdatedAt:   time.Now(),
 			IsLatest:    true,
-		})
+		}, models.OwnershipInput{})
 		require.NoError(t, err)
 
 		// Test all valid status transitions
@@ -830,7 +830,7 @@ func TestPostgreSQL_PerformanceScenarios(t *testing.T) {
 				PublishedAt: time.Now(),
 				UpdatedAt:   time.Now(),
 				IsLatest:    i == versionCount-1, // Only last one is latest
-			})
+			}, models.OwnershipInput{})
 			require.NoError(t, err)
 		}
 
@@ -867,7 +867,7 @@ func TestPostgreSQL_PerformanceScenarios(t *testing.T) {
 				PublishedAt: time.Now(),
 				UpdatedAt:   time.Now(),
 				IsLatest:    true,
-			})
+			}, models.OwnershipInput{})
 			require.NoError(t, err)
 		}
 
