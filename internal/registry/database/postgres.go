@@ -100,7 +100,7 @@ func (db *PostgreSQL) ListServers(
 	filter *database.ServerFilter,
 	cursor string,
 	limit int,
-) ([]*apiv0.ServerResponse, string, error) {
+) ([]*models.ServerResponse, string, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -218,7 +218,7 @@ func (db *PostgreSQL) ListServers(
 	}
 	defer rows.Close()
 
-	var results []*apiv0.ServerResponse
+	var results []*models.ServerResponse
 	for rows.Next() {
 		var serverName, version, status string
 		var isLatest bool
@@ -241,13 +241,9 @@ func (db *PostgreSQL) ListServers(
 			return nil, "", fmt.Errorf("failed to unmarshal server JSON: %w", err)
 		}
 
-		if semanticActive && semanticScore.Valid {
-			dbUtils.AnnotateServerSemanticScore(&serverJSON, semanticScore.Float64)
-		}
-
-		serverResponse := &apiv0.ServerResponse{
+		serverResponse := &models.ServerResponse{
 			Server: serverJSON,
-			Meta: apiv0.ResponseMeta{
+			Meta: models.ServerResponseMeta{
 				Official: &apiv0.RegistryExtensions{
 					Status:      model.Status(status),
 					PublishedAt: publishedAt,
@@ -255,6 +251,9 @@ func (db *PostgreSQL) ListServers(
 					IsLatest:    isLatest,
 				},
 			},
+		}
+		if semanticActive && semanticScore.Valid {
+			serverResponse.Meta.Semantic = &models.ServerSemanticMeta{Score: semanticScore.Float64}
 		}
 
 		results = append(results, serverResponse)
@@ -274,7 +273,7 @@ func (db *PostgreSQL) ListServers(
 }
 
 // GetServerByName retrieves the latest version of a server by server name
-func (db *PostgreSQL) GetServerByName(ctx context.Context, tx pgx.Tx, serverName string) (*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) GetServerByName(ctx context.Context, tx pgx.Tx, serverName string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -314,9 +313,9 @@ func (db *PostgreSQL) GetServerByName(ctx context.Context, tx pgx.Tx, serverName
 	}
 
 	// Build ServerResponse with separated metadata
-	serverResponse := &apiv0.ServerResponse{
+	serverResponse := &models.ServerResponse{
 		Server: serverJSON,
-		Meta: apiv0.ResponseMeta{
+		Meta: models.ServerResponseMeta{
 			Official: &apiv0.RegistryExtensions{
 				Status:      model.Status(status),
 				PublishedAt: publishedAt,
@@ -330,7 +329,7 @@ func (db *PostgreSQL) GetServerByName(ctx context.Context, tx pgx.Tx, serverName
 }
 
 // GetServerByNameAndVersion retrieves a specific version of a server by server name and version
-func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName string, version string) (*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName string, version string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -370,9 +369,9 @@ func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, 
 	}
 
 	// Build ServerResponse with separated metadata
-	serverResponse := &apiv0.ServerResponse{
+	serverResponse := &models.ServerResponse{
 		Server: serverJSON,
-		Meta: apiv0.ResponseMeta{
+		Meta: models.ServerResponseMeta{
 			Official: &apiv0.RegistryExtensions{
 				Status:      model.Status(status),
 				PublishedAt: publishedAt,
@@ -386,7 +385,7 @@ func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, 
 }
 
 // GetAllVersionsByServerName retrieves all versions of a server by server name
-func (db *PostgreSQL) GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx, serverName string) ([]*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx, serverName string) ([]*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -411,7 +410,7 @@ func (db *PostgreSQL) GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx,
 	}
 	defer rows.Close()
 
-	var results []*apiv0.ServerResponse
+	var results []*models.ServerResponse
 	for rows.Next() {
 		var name, version, status string
 		var isLatest bool
@@ -430,9 +429,9 @@ func (db *PostgreSQL) GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx,
 		}
 
 		// Build ServerResponse with separated metadata
-		serverResponse := &apiv0.ServerResponse{
+		serverResponse := &models.ServerResponse{
 			Server: serverJSON,
-			Meta: apiv0.ResponseMeta{
+			Meta: models.ServerResponseMeta{
 				Official: &apiv0.RegistryExtensions{
 					Status:      model.Status(status),
 					PublishedAt: publishedAt,
@@ -457,7 +456,7 @@ func (db *PostgreSQL) GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx,
 }
 
 // CreateServer inserts a new server version with official metadata
-func (db *PostgreSQL) CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *apiv0.ServerJSON, officialMeta *apiv0.RegistryExtensions) (*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *apiv0.ServerJSON, officialMeta *apiv0.RegistryExtensions) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -504,9 +503,9 @@ func (db *PostgreSQL) CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *a
 	}
 
 	// Return the complete ServerResponse
-	serverResponse := &apiv0.ServerResponse{
+	serverResponse := &models.ServerResponse{
 		Server: *serverJSON,
-		Meta: apiv0.ResponseMeta{
+		Meta: models.ServerResponseMeta{
 			Official: officialMeta,
 		},
 	}
@@ -515,7 +514,7 @@ func (db *PostgreSQL) CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *a
 }
 
 // UpdateServer updates an existing server record with new server details
-func (db *PostgreSQL) UpdateServer(ctx context.Context, tx pgx.Tx, serverName, version string, serverJSON *apiv0.ServerJSON) (*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) UpdateServer(ctx context.Context, tx pgx.Tx, serverName, version string, serverJSON *apiv0.ServerJSON) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -564,9 +563,9 @@ func (db *PostgreSQL) UpdateServer(ctx context.Context, tx pgx.Tx, serverName, v
 	}
 
 	// Return the updated ServerResponse
-	serverResponse := &apiv0.ServerResponse{
+	serverResponse := &models.ServerResponse{
 		Server: *serverJSON,
-		Meta: apiv0.ResponseMeta{
+		Meta: models.ServerResponseMeta{
 			Official: &apiv0.RegistryExtensions{
 				Status:      model.Status(status),
 				PublishedAt: publishedAt,
@@ -580,7 +579,7 @@ func (db *PostgreSQL) UpdateServer(ctx context.Context, tx pgx.Tx, serverName, v
 }
 
 // SetServerStatus updates the status of a specific server version
-func (db *PostgreSQL) SetServerStatus(ctx context.Context, tx pgx.Tx, serverName, version string, status string) (*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) SetServerStatus(ctx context.Context, tx pgx.Tx, serverName, version string, status string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -620,9 +619,9 @@ func (db *PostgreSQL) SetServerStatus(ctx context.Context, tx pgx.Tx, serverName
 	}
 
 	// Return the updated ServerResponse
-	serverResponse := &apiv0.ServerResponse{
+	serverResponse := &models.ServerResponse{
 		Server: serverJSON,
-		Meta: apiv0.ResponseMeta{
+		Meta: models.ServerResponseMeta{
 			Official: &apiv0.RegistryExtensions{
 				Status:      model.Status(currentStatus),
 				PublishedAt: publishedAt,
@@ -666,7 +665,7 @@ func (db *PostgreSQL) InTransaction(ctx context.Context, fn func(ctx context.Con
 }
 
 // GetCurrentLatestVersion retrieves the current latest version of a server by server name
-func (db *PostgreSQL) GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, serverName string) (*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, serverName string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -708,9 +707,9 @@ func (db *PostgreSQL) GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, se
 	}
 
 	// Build ServerResponse with separated metadata
-	serverResponse := &apiv0.ServerResponse{
+	serverResponse := &models.ServerResponse{
 		Server: serverJSON,
-		Meta: apiv0.ResponseMeta{
+		Meta: models.ServerResponseMeta{
 			Official: &apiv0.RegistryExtensions{
 				PublishedAt: publishedAt,
 				UpdatedAt:   updatedAt,

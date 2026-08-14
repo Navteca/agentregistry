@@ -13,6 +13,7 @@ import (
 	"github.com/agentregistry-dev/agentregistry/internal/registry/config"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/scoring"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/service"
+	"github.com/agentregistry-dev/agentregistry/pkg/models"
 	"github.com/agentregistry-dev/agentregistry/pkg/registry/database"
 	"github.com/agentregistry-dev/agentregistry/pkg/types"
 	"github.com/danielgtaylor/huma/v2"
@@ -116,7 +117,7 @@ func persistScoringResult(
 	ctx context.Context,
 	registry service.RegistryService,
 	serverName, version string,
-	server *apiv0.ServerResponse,
+	server *models.ServerResponse,
 	result *scoring.AnalyzeResponse,
 ) error {
 	updatedServer := server.Server

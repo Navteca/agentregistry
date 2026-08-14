@@ -161,13 +161,13 @@ func TestGetServerByName(t *testing.T) {
 		serverName  string
 		expectError bool
 		errorMsg    string
-		checkResult func(*testing.T, *apiv0.ServerResponse)
+		checkResult func(*testing.T, *models.ServerResponse)
 	}{
 		{
 			name:        "get latest version by server name",
 			serverName:  "com.example/test-server",
 			expectError: false,
-			checkResult: func(t *testing.T, result *apiv0.ServerResponse) {
+			checkResult: func(t *testing.T, result *models.ServerResponse) {
 				t.Helper()
 				assert.Equal(t, "2.0.0", result.Server.Version) // Should get latest version
 				assert.Equal(t, "Test server v2", result.Server.Description)
@@ -233,14 +233,14 @@ func TestGetServerByNameAndVersion(t *testing.T) {
 		version     string
 		expectError bool
 		errorMsg    string
-		checkResult func(*testing.T, *apiv0.ServerResponse)
+		checkResult func(*testing.T, *models.ServerResponse)
 	}{
 		{
 			name:        "get specific version 1.0.0",
 			serverName:  serverName,
 			version:     "1.0.0",
 			expectError: false,
-			checkResult: func(t *testing.T, result *apiv0.ServerResponse) {
+			checkResult: func(t *testing.T, result *models.ServerResponse) {
 				t.Helper()
 				assert.Equal(t, "1.0.0", result.Server.Version)
 				assert.Equal(t, "Versioned server v1", result.Server.Description)
@@ -252,7 +252,7 @@ func TestGetServerByNameAndVersion(t *testing.T) {
 			serverName:  serverName,
 			version:     "2.0.0",
 			expectError: false,
-			checkResult: func(t *testing.T, result *apiv0.ServerResponse) {
+			checkResult: func(t *testing.T, result *models.ServerResponse) {
 				t.Helper()
 				assert.Equal(t, "2.0.0", result.Server.Version)
 				assert.Equal(t, "Versioned server v2", result.Server.Description)
@@ -413,13 +413,13 @@ func TestGetAllVersionsByServerName(t *testing.T) {
 		serverName  string
 		expectError bool
 		errorMsg    string
-		checkResult func(*testing.T, []*apiv0.ServerResponse)
+		checkResult func(*testing.T, []*models.ServerResponse)
 	}{
 		{
 			name:        "get all versions of server",
 			serverName:  serverName,
 			expectError: false,
-			checkResult: func(t *testing.T, result []*apiv0.ServerResponse) {
+			checkResult: func(t *testing.T, result []*models.ServerResponse) {
 				t.Helper()
 				assert.Len(t, result, 3)
 
@@ -479,7 +479,7 @@ func TestCreateServerConcurrentVersionsNoRace(t *testing.T) {
 
 	const concurrency = 100
 	serverName := "com.example/test-concurrent"
-	results := make([]*apiv0.ServerResponse, concurrency)
+	results := make([]*models.ServerResponse, concurrency)
 	errors := make([]error, concurrency)
 
 	var wg sync.WaitGroup
@@ -556,7 +556,7 @@ func TestUpdateServer(t *testing.T) {
 		newStatus     *string
 		expectError   bool
 		errorMsg      string
-		checkResult   func(*testing.T, *apiv0.ServerResponse)
+		checkResult   func(*testing.T, *models.ServerResponse)
 	}{
 		{
 			name:       "successful server update",
@@ -572,7 +572,7 @@ func TestUpdateServer(t *testing.T) {
 				},
 			},
 			expectError: false,
-			checkResult: func(t *testing.T, result *apiv0.ServerResponse) {
+			checkResult: func(t *testing.T, result *models.ServerResponse) {
 				t.Helper()
 				assert.Equal(t, "Updated description", result.Server.Description)
 				assert.Len(t, result.Server.Remotes, 1)
@@ -592,7 +592,7 @@ func TestUpdateServer(t *testing.T) {
 			},
 			newStatus:   stringPtr(string(model.StatusDeprecated)),
 			expectError: false,
-			checkResult: func(t *testing.T, result *apiv0.ServerResponse) {
+			checkResult: func(t *testing.T, result *models.ServerResponse) {
 				t.Helper()
 				assert.Equal(t, "Updated with status change", result.Server.Description)
 				assert.Equal(t, model.StatusDeprecated, result.Meta.Official.Status)
@@ -885,8 +885,8 @@ func TestDeployServer_AlreadyExistsDoesNotAttemptIdentityCleanup(t *testing.T) {
 		getProviderByIDFn: func(_ context.Context, _ pgx.Tx, providerID string) (*models.Provider, error) {
 			return &models.Provider{ID: providerID, Platform: "local"}, nil
 		},
-		getServerByNameAndVersionFn: func(_ context.Context, _ pgx.Tx, serverName, version string) (*apiv0.ServerResponse, error) {
-			return &apiv0.ServerResponse{
+		getServerByNameAndVersionFn: func(_ context.Context, _ pgx.Tx, serverName, version string) (*models.ServerResponse, error) {
+			return &models.ServerResponse{
 				Server: apiv0.ServerJSON{
 					Name:    serverName,
 					Version: version,
@@ -992,8 +992,8 @@ func TestCreateManagedDeploymentRecord_UsesDeployingStatus(t *testing.T) {
 	var createdRecord *models.Deployment
 
 	mockDB := &deployCreateMockDB{
-		getServerByNameAndVersionFn: func(_ context.Context, _ pgx.Tx, serverName, version string) (*apiv0.ServerResponse, error) {
-			return &apiv0.ServerResponse{
+		getServerByNameAndVersionFn: func(_ context.Context, _ pgx.Tx, serverName, version string) (*models.ServerResponse, error) {
+			return &models.ServerResponse{
 				Server: apiv0.ServerJSON{
 					Name:    serverName,
 					Version: version,
@@ -1084,7 +1084,7 @@ func TestApplyFailedDeploymentAction_UsesSystemContext(t *testing.T) {
 type deployCreateMockDB struct {
 	database.Database
 	getProviderByIDFn           func(ctx context.Context, tx pgx.Tx, providerID string) (*models.Provider, error)
-	getServerByNameAndVersionFn func(ctx context.Context, tx pgx.Tx, serverName, version string) (*apiv0.ServerResponse, error)
+	getServerByNameAndVersionFn func(ctx context.Context, tx pgx.Tx, serverName, version string) (*models.ServerResponse, error)
 	getAgentByNameAndVersionFn  func(ctx context.Context, tx pgx.Tx, agentName, version string) (*models.AgentResponse, error)
 	createDeploymentFn          func(ctx context.Context, tx pgx.Tx, deployment *models.Deployment) error
 	getDeploymentByIDFn         func(ctx context.Context, tx pgx.Tx, id string) (*models.Deployment, error)
@@ -1108,7 +1108,7 @@ func (m *deployCreateMockDB) GetProviderByID(ctx context.Context, tx pgx.Tx, pro
 	return m.getProviderByIDFn(ctx, tx, providerID)
 }
 
-func (m *deployCreateMockDB) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName, version string) (*apiv0.ServerResponse, error) {
+func (m *deployCreateMockDB) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName, version string) (*models.ServerResponse, error) {
 	return m.getServerByNameAndVersionFn(ctx, tx, serverName, version)
 }
 
@@ -1426,11 +1426,11 @@ func TestCreateDeployment_UsesAdapterResolvedFromProviderPlatform(t *testing.T) 
 					require.Equal(t, tt.providerID, providerID)
 					return &models.Provider{ID: providerID, Platform: tt.platform}, nil
 				},
-				getServerByNameAndVersionFn: func(_ context.Context, _ pgx.Tx, serverName, version string) (*apiv0.ServerResponse, error) {
+				getServerByNameAndVersionFn: func(_ context.Context, _ pgx.Tx, serverName, version string) (*models.ServerResponse, error) {
 					if tt.resourceType != "mcp" {
 						t.Fatalf("unexpected server lookup for resource type %s", tt.resourceType)
 					}
-					return &apiv0.ServerResponse{
+					return &models.ServerResponse{
 						Server: apiv0.ServerJSON{Name: serverName, Version: version},
 					}, nil
 				},

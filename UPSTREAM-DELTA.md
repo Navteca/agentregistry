@@ -121,3 +121,60 @@ Conventions:
 
 ### `pkg/models/server_response.go`, `pkg/models/agent.go`, `pkg/models/skill.go`, `pkg/models/prompt.go`
 - **Change:** Adds Ownership *OwnershipMeta extension field so artifact responses carry the registering subject and display-name snapshot. Type is defined in the new file pkg/models/ownership.go; these files gain one field each. To reapply after a version bump: re-add the field to the struct.
+
+### Server response type migration
+
+### `internal/registry/database/postgres.go`
+- **Change:** Server query and mutation methods now return fork-local `models.ServerResponse` values. Semantic search scores are assigned to `ServerResponse.Meta.Semantic` directly instead of round-tripping through publisher-provided metadata.
+- **Reason:** Makes the database layer consistent with the agent, skill, and prompt response paths while preserving the public response JSON.
+- **Reapply after bump:** Change the eight server response return types and constructors to `models.ServerResponse`; assign semantic scores to `Meta.Semantic` and keep the upstream server JSON unchanged.
+
+### `pkg/registry/database/database.go`
+- **Change:** Updated the database interface signatures for the eight server response methods to return `models.ServerResponse`.
+- **Reason:** Keeps the interface aligned with the PostgreSQL implementation.
+- **Reapply after bump:** Replace the eight upstream server response return types with the fork-local model type.
+
+### `internal/registry/service/registry_service.go`
+- **Change:** Propagated `models.ServerResponse` through the server service methods and transaction callbacks.
+- **Reason:** Carries fork-local response metadata from the database to API consumers without converting back to the upstream response.
+- **Reapply after bump:** Update the server service method and transaction callback return types to `models.ServerResponse`.
+
+### `internal/registry/service/service.go`
+- **Change:** Updated the server methods on `RegistryService` to return fork-local response models.
+- **Reason:** Exposes the migrated response type at the service boundary.
+- **Reapply after bump:** Update the six server response signatures in the interface to use `models.ServerResponse`.
+
+### `internal/registry/api/handlers/v0/servers.go`
+- **Change:** Retained `normalizeServerResponse` as a nil-safe pass-through for `models.ServerResponse`; removed semantic score extraction from publisher-provided metadata.
+- **Reason:** The database now supplies fork-local metadata directly, so handler conversion is no longer needed while existing handler call sites remain stable.
+- **Reapply after bump:** Change the normalizer input to the fork-local response and return its value unchanged, preserving the nil guard.
+
+### `internal/registry/api/handlers/v0/scoring.go`
+- **Change:** Updated the server scoring persistence seam to accept `models.ServerResponse`.
+- **Reason:** The scoring endpoint consumes the migrated service response type.
+- **Reapply after bump:** Use `*models.ServerResponse` for the server argument passed to scoring persistence.
+
+### `internal/mcp/registryserver/server.go`
+- **Change:** Server discovery MCP tools now return `models.ServerListResponse` so fork-local response metadata is retained.
+- **Reason:** Avoids converting the migrated service response back to the upstream type and preserves semantic metadata in the serialized output.
+- **Reapply after bump:** Use the fork-local server list/response models for the two server discovery tools and `fetchSingleServer`.
+
+### `internal/registry/database/postgres_test.go`
+- **Change:** Updated the pagination result accumulator to the migrated server response type.
+- **Reason:** Keeps database tests aligned with the database interface without changing assertions.
+- **Reapply after bump:** Change the accumulator type to `[]*models.ServerResponse`.
+
+### `internal/registry/service/registry_service_test.go`
+- **Change:** Updated server response callback and mock database types to the migrated model.
+- **Reason:** Keeps service tests aligned with the service and database interfaces; test expectations are unchanged.
+- **Reapply after bump:** Update server response callback, mock, and result types to `models.ServerResponse`.
+
+### `internal/registry/service/testing/fake_registry.go`
+- **Change:** Kept existing upstream-shaped test setup hooks and added conversion at the fake service boundary to return `models.ServerResponse`.
+- **Reason:** Preserves existing test fixtures while allowing the fake to implement the migrated service interface.
+- **Reapply after bump:** Keep the fixture compatibility conversion if the service response boundary is regenerated.
+
+### `internal/registry/importer/importer_test.go`
+- **Change:** Explicitly converts the migrated database response to the upstream response shape used by the importer fixture.
+- **Reason:** The importer fixture tests the upstream export payload and does not consume fork-local response metadata.
+- **Reapply after bump:** Preserve the explicit `Server`/official-meta conversion at the upstream fixture boundary.

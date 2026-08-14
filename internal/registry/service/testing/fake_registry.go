@@ -97,58 +97,85 @@ func NewFakeRegistry() *FakeRegistry {
 
 // Server methods
 
-func (f *FakeRegistry) ListServers(ctx context.Context, filter *database.ServerFilter, cursor string, limit int) ([]*apiv0.ServerResponse, string, error) {
+func (f *FakeRegistry) ListServers(ctx context.Context, filter *database.ServerFilter, cursor string, limit int) ([]*models.ServerResponse, string, error) {
 	if f.ListServersFn != nil {
-		return f.ListServersFn(ctx, filter, cursor, limit)
+		servers, cursor, err := f.ListServersFn(ctx, filter, cursor, limit)
+		return convertServerResponses(servers), cursor, err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if cursor != "" {
 		return nil, "", nil
 	}
-	return f.Servers, "", nil
+	return convertServerResponses(f.Servers), "", nil
 }
 
-func (f *FakeRegistry) GetServerByName(ctx context.Context, serverName string) (*apiv0.ServerResponse, error) {
+func (f *FakeRegistry) GetServerByName(ctx context.Context, serverName string) (*models.ServerResponse, error) {
 	if f.GetServerByNameFn != nil {
-		return f.GetServerByNameFn(ctx, serverName)
+		server, err := f.GetServerByNameFn(ctx, serverName)
+		return convertServerResponse(server), err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.Servers) > 0 {
-		return f.Servers[0], nil
+		return convertServerResponse(f.Servers[0]), nil
 	}
 	return nil, database.ErrNotFound
 }
 
-func (f *FakeRegistry) GetServerByNameAndVersion(ctx context.Context, serverName, version string) (*apiv0.ServerResponse, error) {
+func (f *FakeRegistry) GetServerByNameAndVersion(ctx context.Context, serverName, version string) (*models.ServerResponse, error) {
 	if f.GetServerByNameAndVersionFn != nil {
-		return f.GetServerByNameAndVersionFn(ctx, serverName, version)
+		server, err := f.GetServerByNameAndVersionFn(ctx, serverName, version)
+		return convertServerResponse(server), err
 	}
 	return f.GetServerByName(ctx, serverName)
 }
 
-func (f *FakeRegistry) GetAllVersionsByServerName(ctx context.Context, serverName string) ([]*apiv0.ServerResponse, error) {
+func (f *FakeRegistry) GetAllVersionsByServerName(ctx context.Context, serverName string) ([]*models.ServerResponse, error) {
 	if f.GetAllVersionsByServerNameFn != nil {
-		return f.GetAllVersionsByServerNameFn(ctx, serverName)
+		servers, err := f.GetAllVersionsByServerNameFn(ctx, serverName)
+		return convertServerResponses(servers), err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.Servers, nil
+	return convertServerResponses(f.Servers), nil
 }
 
-func (f *FakeRegistry) CreateServer(ctx context.Context, req *apiv0.ServerJSON) (*apiv0.ServerResponse, error) {
+func (f *FakeRegistry) CreateServer(ctx context.Context, req *apiv0.ServerJSON) (*models.ServerResponse, error) {
 	if f.CreateServerFn != nil {
-		return f.CreateServerFn(ctx, req)
+		server, err := f.CreateServerFn(ctx, req)
+		return convertServerResponse(server), err
 	}
 	return nil, database.ErrNotFound
 }
 
-func (f *FakeRegistry) UpdateServer(ctx context.Context, serverName, version string, req *apiv0.ServerJSON, newStatus *string) (*apiv0.ServerResponse, error) {
+func (f *FakeRegistry) UpdateServer(ctx context.Context, serverName, version string, req *apiv0.ServerJSON, newStatus *string) (*models.ServerResponse, error) {
 	if f.UpdateServerFn != nil {
-		return f.UpdateServerFn(ctx, serverName, version, req, newStatus)
+		server, err := f.UpdateServerFn(ctx, serverName, version, req, newStatus)
+		return convertServerResponse(server), err
 	}
+
 	return nil, database.ErrNotFound
+}
+
+func convertServerResponse(src *apiv0.ServerResponse) *models.ServerResponse {
+	if src == nil {
+		return nil
+	}
+	return &models.ServerResponse{
+		Server: src.Server,
+		Meta: models.ServerResponseMeta{
+			Official: src.Meta.Official,
+		},
+	}
+}
+
+func convertServerResponses(src []*apiv0.ServerResponse) []*models.ServerResponse {
+	out := make([]*models.ServerResponse, len(src))
+	for i, server := range src {
+		out[i] = convertServerResponse(server)
+	}
+	return out
 }
 
 func (f *FakeRegistry) StoreServerReadme(ctx context.Context, serverName, version string, content []byte, contentType string) error {

@@ -872,7 +872,7 @@ func TestPostgreSQL_PerformanceScenarios(t *testing.T) {
 		}
 
 		// Test paginated retrieval
-		allResults := []*apiv0.ServerResponse{}
+		allResults := []*models.ServerResponse{}
 		cursor := ""
 		pageSize := 10
 
