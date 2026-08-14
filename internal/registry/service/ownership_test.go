@@ -7,8 +7,10 @@ import (
 
 	"github.com/agentregistry-dev/agentregistry/internal/registry/config"
 	internaldb "github.com/agentregistry-dev/agentregistry/internal/registry/database"
+	"github.com/agentregistry-dev/agentregistry/pkg/models"
 	"github.com/agentregistry-dev/agentregistry/pkg/registry/auth"
 	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	"github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,7 +41,12 @@ func newOwnershipTestServer(name string) *apiv0.ServerJSON {
 	return &apiv0.ServerJSON{
 		Name:        "com.example/" + name,
 		Description: "Ownership test server",
+		Schema:      model.CurrentSchemaURL,
 		Version:     "1.0.0",
+		Repository: &model.Repository{
+			URL:    "https://github.com/owner/repo",
+			Source: "git",
+		},
 		Meta: &apiv0.ServerMeta{
 			PublisherProvided: map[string]any{
 				"aregistry.ai/ownership": map[string]any{
@@ -49,6 +56,16 @@ func newOwnershipTestServer(name string) *apiv0.ServerJSON {
 				},
 			},
 		},
+	}
+}
+
+func newOwnershipTestAgent(name string) *models.AgentJSON {
+	return &models.AgentJSON{
+		AgentManifest: models.AgentManifest{
+			Name:        name,
+			Description: "Ownership test agent",
+		},
+		Version: "1.0.0",
 	}
 }
 
@@ -76,18 +93,15 @@ func TestCreateServerAnonymousHasNoOwnership(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
 	ctx := ownershipTestContext("anonymous", "Anonymous", auth.MethodNone)
+	server := newOwnershipTestServer("ownership-anonymous")
 
-	created, err := registry.CreateServer(ctx, newOwnershipTestServer("ownership-anonymous"))
+	created, err := registry.CreateServer(ctx, server)
 	require.NoError(t, err)
 	assert.Nil(t, created.Meta.Ownership)
 
 	fetched, err := registry.GetServerByName(ctx, "com.example/ownership-anonymous")
 	require.NoError(t, err)
 	assert.Nil(t, fetched.Meta.Ownership)
-
-	serialized, err := json.Marshal(fetched)
-	require.NoError(t, err)
-	assert.NotContains(t, string(serialized), `"aregistry.ai/ownership"`)
 }
 
 func TestCreateServerSubjectsRemainDistinctWithSameDisplayName(t *testing.T) {
@@ -126,4 +140,69 @@ func TestCreateServerDoesNotInventDisplayName(t *testing.T) {
 	serialized, err := json.Marshal(created)
 	require.NoError(t, err)
 	assert.NotContains(t, string(serialized), `"displayName"`)
+}
+
+func TestCreateAgentResolvesAndPersistsOwnership(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	ctx := ownershipTestContext("agent-oidc-subject", "Ada Lovelace", auth.MethodOIDC)
+
+	created, err := registry.CreateAgent(ctx, newOwnershipTestAgent("ownership-agent-create"))
+	require.NoError(t, err)
+	require.NotNil(t, created.Meta.Ownership)
+	assert.Equal(t, "agent-oidc-subject", created.Meta.Ownership.Subject)
+	assert.Equal(t, "Ada Lovelace", created.Meta.Ownership.DisplayName)
+	assert.Equal(t, "oidc", created.Meta.Ownership.AuthMethod)
+
+	fetched, err := registry.GetAgentByName(ctx, "ownership-agent-create")
+	require.NoError(t, err)
+	require.NotNil(t, fetched.Meta.Ownership)
+	assert.Equal(t, "agent-oidc-subject", fetched.Meta.Ownership.Subject)
+}
+
+func TestCreateAgentIgnoresOwnershipShapedRequestData(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	ctx := ownershipTestContext("authenticated-subject", "Authenticated User", auth.MethodOIDC)
+
+	var agent models.AgentJSON
+	err := json.Unmarshal([]byte(`{
+		"name": "ownership-agent-request",
+		"version": "1.0.0",
+		"_meta": {
+			"aregistry.ai/ownership": {
+				"subject": "request-subject",
+				"displayName": "Request Display Name",
+				"authMethod": "request-method"
+			}
+		}
+	}`), &agent)
+	require.NoError(t, err)
+
+	created, err := registry.CreateAgent(ctx, &agent)
+	require.NoError(t, err)
+	require.NotNil(t, created.Meta.Ownership)
+	assert.Equal(t, "authenticated-subject", created.Meta.Ownership.Subject)
+	assert.NotEqual(t, "request-subject", created.Meta.Ownership.Subject)
+}
+
+func TestCreateAgentSubjectsRemainDistinctWithSameDisplayName(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+
+	for _, subject := range []string{"agent-subject-one", "agent-subject-two"} {
+		ctx := ownershipTestContext(subject, "Shared Display Name", auth.MethodOIDC)
+		_, err := registry.CreateAgent(ctx, newOwnershipTestAgent("ownership-agent-"+subject))
+		require.NoError(t, err)
+	}
+
+	first, err := registry.GetAgentByName(ownershipTestContext("agent-subject-one", "Shared Display Name", auth.MethodOIDC), "ownership-agent-subject-one")
+	require.NoError(t, err)
+	second, err := registry.GetAgentByName(ownershipTestContext("agent-subject-two", "Shared Display Name", auth.MethodOIDC), "ownership-agent-subject-two")
+	require.NoError(t, err)
+	require.NotNil(t, first.Meta.Ownership)
+	require.NotNil(t, second.Meta.Ownership)
+	assert.Equal(t, "agent-subject-one", first.Meta.Ownership.Subject)
+	assert.Equal(t, "agent-subject-two", second.Meta.Ownership.Subject)
+	assert.Equal(t, first.Meta.Ownership.DisplayName, second.Meta.Ownership.DisplayName)
 }

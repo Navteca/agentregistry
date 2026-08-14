@@ -153,7 +153,7 @@ type Database interface {
 
 	// Agents API
 	// CreateAgent inserts a new agent version with official metadata
-	CreateAgent(ctx context.Context, tx pgx.Tx, agentJSON *models.AgentJSON, officialMeta *models.AgentRegistryExtensions) (*models.AgentResponse, error)
+	CreateAgent(ctx context.Context, tx pgx.Tx, agentJSON *models.AgentJSON, officialMeta *models.AgentRegistryExtensions, ownership models.OwnershipInput) (*models.AgentResponse, error)
 	// UpdateAgent updates an existing agent record
 	UpdateAgent(ctx context.Context, tx pgx.Tx, agentName, version string, agentJSON *models.AgentJSON) (*models.AgentResponse, error)
 	// SetAgentStatus updates the status of a specific agent version

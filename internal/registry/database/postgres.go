@@ -710,7 +710,8 @@ func (db *PostgreSQL) GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, se
 	executor := db.getExecutor(tx)
 
 	query := `
-		SELECT server_name, version, status, value, published_at, updated_at, is_latest
+		SELECT server_name, version, status, value, published_at, updated_at, is_latest,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM servers
 		WHERE server_name = $1 AND is_latest = true
 	`
@@ -721,8 +722,9 @@ func (db *PostgreSQL) GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, se
 	var isLatest bool
 	var publishedAt, updatedAt time.Time
 	var jsonValue []byte
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
 
-	err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest)
+	err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest, &createdBySubject, &createdByDisplayName, &createdByAuthMethod)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
@@ -745,6 +747,7 @@ func (db *PostgreSQL) GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, se
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}
 
@@ -1281,7 +1284,8 @@ func (db *PostgreSQL) ListAgents(ctx context.Context, tx pgx.Tx, filter *databas
 	}
 
 	selectClause := `
-		SELECT agent_name, version, status, published_at, updated_at, is_latest, value`
+		SELECT agent_name, version, status, published_at, updated_at, is_latest, value,
+		       created_by_subject, created_by_display_name, created_by_auth_method`
 	orderClause := "ORDER BY agent_name, version"
 
 	if semanticActive {
@@ -1325,13 +1329,14 @@ func (db *PostgreSQL) ListAgents(ctx context.Context, tx pgx.Tx, filter *databas
 		var publishedAt, updatedAt time.Time
 		var isLatest bool
 		var valueJSON []byte
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
 		var semanticScore sql.NullFloat64
 
 		var scanErr error
 		if semanticActive {
-			scanErr = rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &semanticScore)
+			scanErr = rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod, &semanticScore)
 		} else {
-			scanErr = rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON)
+			scanErr = rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod)
 		}
 
 		if scanErr != nil {
@@ -1352,6 +1357,7 @@ func (db *PostgreSQL) ListAgents(ctx context.Context, tx pgx.Tx, filter *databas
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		}
 		if semanticActive && semanticScore.Valid {
@@ -1387,7 +1393,8 @@ func (db *PostgreSQL) GetAgentByName(ctx context.Context, tx pgx.Tx, agentName s
 	}
 
 	query := `
-		SELECT agent_name, version, status, published_at, updated_at, is_latest, value
+		SELECT agent_name, version, status, published_at, updated_at, is_latest, value,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM agents
 		WHERE agent_name = $1 AND is_latest = true
 		ORDER BY published_at DESC
@@ -1397,7 +1404,8 @@ func (db *PostgreSQL) GetAgentByName(ctx context.Context, tx pgx.Tx, agentName s
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
-	if err := db.getExecutor(tx).QueryRow(ctx, query, agentName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := db.getExecutor(tx).QueryRow(ctx, query, agentName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -1416,6 +1424,7 @@ func (db *PostgreSQL) GetAgentByName(ctx context.Context, tx pgx.Tx, agentName s
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -1434,7 +1443,8 @@ func (db *PostgreSQL) GetAgentByNameAndVersion(ctx context.Context, tx pgx.Tx, a
 	}
 
 	query := `
-		SELECT agent_name, version, status, published_at, updated_at, is_latest, value
+		SELECT agent_name, version, status, published_at, updated_at, is_latest, value,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM agents
 		WHERE agent_name = $1 AND version = $2
 		LIMIT 1
@@ -1443,7 +1453,8 @@ func (db *PostgreSQL) GetAgentByNameAndVersion(ctx context.Context, tx pgx.Tx, a
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
-	if err := db.getExecutor(tx).QueryRow(ctx, query, agentName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := db.getExecutor(tx).QueryRow(ctx, query, agentName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -1462,6 +1473,7 @@ func (db *PostgreSQL) GetAgentByNameAndVersion(ctx context.Context, tx pgx.Tx, a
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -1479,7 +1491,8 @@ func (db *PostgreSQL) GetAllVersionsByAgentName(ctx context.Context, tx pgx.Tx, 
 	}
 
 	query := `
-		SELECT agent_name, version, status, published_at, updated_at, is_latest, value
+		SELECT agent_name, version, status, published_at, updated_at, is_latest, value,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM agents
 		WHERE agent_name = $1
 		ORDER BY published_at DESC
@@ -1495,7 +1508,8 @@ func (db *PostgreSQL) GetAllVersionsByAgentName(ctx context.Context, tx pgx.Tx, 
 		var publishedAt, updatedAt time.Time
 		var isLatest bool
 		var valueJSON []byte
-		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 			return nil, fmt.Errorf("failed to scan agent row: %w", err)
 		}
 		var agentJSON models.AgentJSON
@@ -1511,6 +1525,7 @@ func (db *PostgreSQL) GetAllVersionsByAgentName(ctx context.Context, tx pgx.Tx, 
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		})
 	}
@@ -1523,7 +1538,7 @@ func (db *PostgreSQL) GetAllVersionsByAgentName(ctx context.Context, tx pgx.Tx, 
 	return results, nil
 }
 
-func (db *PostgreSQL) CreateAgent(ctx context.Context, tx pgx.Tx, agentJSON *models.AgentJSON, officialMeta *models.AgentRegistryExtensions) (*models.AgentResponse, error) {
+func (db *PostgreSQL) CreateAgent(ctx context.Context, tx pgx.Tx, agentJSON *models.AgentJSON, officialMeta *models.AgentRegistryExtensions, ownership models.OwnershipInput) (*models.AgentResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -1546,9 +1561,22 @@ func (db *PostgreSQL) CreateAgent(ctx context.Context, tx pgx.Tx, agentJSON *mod
 		return nil, fmt.Errorf("failed to marshal agent JSON: %w", err)
 	}
 	insert := `
-		INSERT INTO agents (agent_name, version, status, published_at, updated_at, is_latest, value)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO agents (
+			agent_name, version, status, published_at, updated_at, is_latest, value,
+			created_by_subject, created_by_display_name, created_by_auth_method
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
+	var createdBySubject, createdByDisplayName, createdByAuthMethod any
+	if ownership.Subject != "" {
+		createdBySubject = ownership.Subject
+		if ownership.DisplayName != "" {
+			createdByDisplayName = ownership.DisplayName
+		}
+		if ownership.AuthMethod != "" {
+			createdByAuthMethod = ownership.AuthMethod
+		}
+	}
 	if _, err := db.getExecutor(tx).Exec(ctx, insert,
 		agentJSON.Name,
 		agentJSON.Version,
@@ -1557,13 +1585,17 @@ func (db *PostgreSQL) CreateAgent(ctx context.Context, tx pgx.Tx, agentJSON *mod
 		officialMeta.UpdatedAt,
 		officialMeta.IsLatest,
 		valueJSON,
+		createdBySubject,
+		createdByDisplayName,
+		createdByAuthMethod,
 	); err != nil {
 		return nil, fmt.Errorf("failed to insert agent: %w", err)
 	}
 	return &models.AgentResponse{
 		Agent: *agentJSON,
 		Meta: models.AgentResponseMeta{
-			Official: officialMeta,
+			Official:  officialMeta,
+			Ownership: ownershipMetaFromInput(ownership),
 		},
 	}, nil
 }
@@ -1677,7 +1709,8 @@ func (db *PostgreSQL) GetCurrentLatestAgentVersion(ctx context.Context, tx pgx.T
 
 	executor := db.getExecutor(tx)
 	query := `
-		SELECT agent_name, version, status, value, published_at, updated_at, is_latest
+		SELECT agent_name, version, status, value, published_at, updated_at, is_latest,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM agents
 		WHERE agent_name = $1 AND is_latest = true
 	`
@@ -1686,7 +1719,8 @@ func (db *PostgreSQL) GetCurrentLatestAgentVersion(ctx context.Context, tx pgx.T
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var jsonValue []byte
-	if err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -1705,6 +1739,7 @@ func (db *PostgreSQL) GetCurrentLatestAgentVersion(ctx context.Context, tx pgx.T
 				IsLatest:    isLatest,
 				Status:      status,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }

@@ -202,7 +202,7 @@ Conventions:
 - **Reapply after bump:** Add the ownership value object as the final `CreateServer` parameter.
 
 ### `internal/registry/database/postgres.go`
-- **Change:** Server inserts persist nullable subject, display-name, and auth-method columns. The four server read paths scan nullable ownership columns and populate `ServerResponseMeta.Ownership`; anonymous and empty-subject inputs write all three columns as `NULL`.
+- **Change:** Server inserts persist nullable subject, display-name, and auth-method columns. All five server read paths scan nullable ownership columns and populate `ServerResponseMeta.Ownership`; anonymous and empty-subject inputs write all three columns as `NULL`.
 - **Reason:** Captures authenticated ownership without allowing request payload metadata or display names to influence identity, and omits ownership for legacy/unowned rows.
 - **Reapply after bump:** Add the three nullable columns and `sql.NullString` scan destinations to each server read query, pass `OwnershipInput` to the insert, and preserve named-column-only update statements.
 
@@ -220,3 +220,30 @@ Conventions:
 - **Change:** Added `OwnershipInput{Subject, DisplayName, AuthMethod}` for explicit service-to-database ownership flow.
 - **Reason:** Gives tasks 9–11 one stable value-object parameter to copy without adding bare string arguments.
 - **Reapply after bump:** Re-add the three plain string fields to the ownership input type.
+
+### Agent ownership capture
+
+### `internal/registry/service/registry_service.go`
+- **Change:** Resolves ownership once per agent create operation and passes `models.OwnershipInput` through the transaction to the database create method.
+- **Reason:** Keeps authentication resolution in the service layer and prevents request payload metadata from overriding the authenticated creator.
+- **Reapply after bump:** Resolve ownership before opening the transaction, pass it through `createAgentInTransaction`, and append it to `Database.CreateAgent`.
+
+### `pkg/registry/database/database.go`
+- **Change:** Added `models.OwnershipInput` to the `CreateAgent` database interface method.
+- **Reason:** Makes agent ownership data flow explicit at the persistence boundary.
+- **Reapply after bump:** Add the ownership value object as the final `CreateAgent` parameter.
+
+### `internal/registry/database/postgres.go`
+- **Change:** Agent inserts persist nullable subject, display-name, and auth-method columns. All five agent read paths scan nullable ownership columns and populate `AgentResponseMeta.Ownership`; named-column-only update and status-update statements remain unchanged.
+- **Reason:** Captures authenticated ownership without trusting request payload data, preserves ownership through updates, and omits ownership for legacy/unowned rows.
+- **Reapply after bump:** Add the three nullable columns and `sql.NullString` scan destinations to each agent read query, pass `OwnershipInput` to the insert, and use `ownershipMetaFromInput` for the create response.
+
+### `internal/registry/service/ownership_test.go`
+- **Change:** Added agent service coverage for authenticated ownership capture, ignoring ownership-shaped request data, and distinct subjects sharing a display name.
+- **Reason:** Verifies agent ownership is resolved from the authenticated principal rather than the request body and remains subject-based.
+- **Reapply after bump:** Reapply the focused agent ownership service tests.
+
+### `internal/registry/database/ownership_test.go`
+- **Change:** Added agent database coverage for ownership surviving update/status-update operations, all five read paths, and omission of the ownership JSON key for NULL ownership columns.
+- **Reason:** Verifies persistence, read-path consistency, update safety, and JSON omission semantics.
+- **Reapply after bump:** Reapply the focused agent ownership database tests.

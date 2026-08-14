@@ -575,12 +575,14 @@ func (s *registryServiceImpl) GetAllVersionsByAgentName(ctx context.Context, age
 
 // CreateAgent creates a new agent version
 func (s *registryServiceImpl) CreateAgent(ctx context.Context, req *models.AgentJSON) (*models.AgentResponse, error) {
+	ownership := resolveOwnership(ctx)
+
 	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*models.AgentResponse, error) {
-		return s.createAgentInTransaction(ctx, tx, req)
+		return s.createAgentInTransaction(ctx, tx, req, ownership)
 	})
 }
 
-func (s *registryServiceImpl) createAgentInTransaction(ctx context.Context, tx pgx.Tx, req *models.AgentJSON) (*models.AgentResponse, error) {
+func (s *registryServiceImpl) createAgentInTransaction(ctx context.Context, tx pgx.Tx, req *models.AgentJSON, ownership models.OwnershipInput) (*models.AgentResponse, error) {
 	// Basic validation: ensure required fields present
 	if req == nil || req.Name == "" || req.Version == "" {
 		return nil, fmt.Errorf("invalid agent payload: name and version are required")
@@ -652,7 +654,7 @@ func (s *registryServiceImpl) createAgentInTransaction(ctx context.Context, tx p
 		IsLatest:    isNewLatest,
 	}
 
-	result, err := s.db.CreateAgent(ctx, tx, &agentJSON, officialMeta)
+	result, err := s.db.CreateAgent(ctx, tx, &agentJSON, officialMeta, ownership)
 	if err != nil {
 		return nil, err
 	}
