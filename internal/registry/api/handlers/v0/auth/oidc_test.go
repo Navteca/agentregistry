@@ -45,6 +45,7 @@ func TestOIDCHandler_ExchangeToken(t *testing.T) {
 			mockValidator: &MockGenericOIDCValidator{
 				validateFunc: func(_ context.Context, _ string) (*auth.OIDCClaims, error) {
 					return &auth.OIDCClaims{
+						Subject: "test-subject",
 						ExtraClaims: map[string]any{
 							"email":              "admin@modelcontextprotocol.io",
 							"email_verified":     true,
@@ -109,56 +110,70 @@ func TestOIDCHandler_ExchangeToken(t *testing.T) {
 
 func TestOIDCHandler_ExchangeTokenRolePermissions(t *testing.T) {
 	cfg := &config.Config{
-		OIDCEnabled:       true,
-		OIDCIssuer:        "https://accounts.google.com",
-		OIDCClientID:      "test-client-id",
-		OIDCRoleClaimPath: "realm_access.roles",
-		OIDCRoleMap:       `{"registry-user":"user"}`,
-		OIDCUserPatterns:  "io.example.*",
-		OIDCReadPerms:     "static-read",
-		OIDCPublishPerms:  "static-publish",
-		OIDCPushPerms:     "static-push",
-		OIDCDeployPerms:   "static-deploy",
-		OIDCEditPerms:     "static-edit",
-		OIDCDeletePerms:   "static-delete",
-		JWTPrivateKey:     "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+		OIDCEnabled:              true,
+		OIDCIssuer:               "https://accounts.google.com",
+		OIDCClientID:             "test-client-id",
+		OIDCRoleClaimPath:        "realm_access.roles",
+		OIDCRoleMap:              `{"registry-user":"user"}`,
+		OIDCUserPatterns:         "io.example.*",
+		OIDCDisplayNameClaimPath: "preferred_username",
+		OIDCReadPerms:            "static-read",
+		OIDCPublishPerms:         "static-publish",
+		OIDCPushPerms:            "static-push",
+		OIDCDeployPerms:          "static-deploy",
+		OIDCEditPerms:            "static-edit",
+		OIDCDeletePerms:          "static-delete",
+		JWTPrivateKey:            "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
 	}
 	handler := auth.NewOIDCHandler(cfg)
 	jwtManager := registryauth.NewJWTManager(cfg)
 
 	tests := []struct {
-		name         string
-		extraClaims  map[string]any
-		expectedPerm []registryauth.Permission
+		name                string
+		subject             string
+		extraClaims         map[string]any
+		expectedPerm        []registryauth.Permission
+		expectedDisplayName string
 	}{
 		{
-			name: "mapped role gets role bundle",
+			name:    "mapped role gets role bundle and display name",
+			subject: "subject-mapped",
 			extraClaims: map[string]any{
-				"realm_access": map[string]any{"roles": []any{"registry-user"}},
+				"realm_access":       map[string]any{"roles": []any{"registry-user"}},
+				"preferred_username": "Ada",
 			},
 			expectedPerm: []registryauth.Permission{
 				{Action: registryauth.PermissionActionRead, ResourcePattern: "io.example.*"},
 				{Action: registryauth.PermissionActionPublish, ResourcePattern: "io.example.*"},
 			},
+			expectedDisplayName: "Ada",
 		},
 		{
-			name: "unknown role gets static fallback",
+			name:    "unknown role gets static fallback and display name",
+			subject: "subject-unmatched",
 			extraClaims: map[string]any{
-				"realm_access": map[string]any{"roles": []any{"unrecognized"}},
+				"realm_access":       map[string]any{"roles": []any{"unrecognized"}},
+				"preferred_username": "Grace",
 			},
-			expectedPerm: staticOIDCPermissions(),
+			expectedPerm:        staticOIDCPermissions(),
+			expectedDisplayName: "Grace",
 		},
 		{
-			name:         "missing role claim gets static fallback",
-			extraClaims:  map[string]any{"email": "user@example.com"},
-			expectedPerm: staticOIDCPermissions(),
+			name:                "absent display name falls back to subject",
+			subject:             "subject-no-name",
+			extraClaims:         map[string]any{"email": "user@example.com"},
+			expectedPerm:        staticOIDCPermissions(),
+			expectedDisplayName: "subject-no-name",
 		},
 		{
-			name: "malformed claims get static fallback",
+			name:    "empty display name falls back to subject",
+			subject: "subject-empty-name",
 			extraClaims: map[string]any{
-				"realm_access": "not-a-map",
+				"realm_access":       "not-a-map",
+				"preferred_username": "",
 			},
-			expectedPerm: staticOIDCPermissions(),
+			expectedPerm:        staticOIDCPermissions(),
+			expectedDisplayName: "subject-empty-name",
 		},
 	}
 
@@ -166,7 +181,10 @@ func TestOIDCHandler_ExchangeTokenRolePermissions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler.SetValidator(&MockGenericOIDCValidator{
 				validateFunc: func(_ context.Context, _ string) (*auth.OIDCClaims, error) {
-					return &auth.OIDCClaims{ExtraClaims: tt.extraClaims}, nil
+					return &auth.OIDCClaims{
+						Subject:     tt.subject,
+						ExtraClaims: tt.extraClaims,
+					}, nil
 				},
 			})
 
@@ -176,6 +194,7 @@ func TestOIDCHandler_ExchangeTokenRolePermissions(t *testing.T) {
 			claims, err := jwtManager.ValidateToken(context.Background(), response.RegistryToken)
 			require.NoError(t, err)
 			assert.ElementsMatch(t, tt.expectedPerm, claims.Permissions)
+			assert.Equal(t, tt.expectedDisplayName, claims.AuthMethodDisplayName)
 		})
 	}
 }

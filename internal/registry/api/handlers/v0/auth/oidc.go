@@ -200,13 +200,14 @@ func (h *OIDCHandler) ExchangeToken(ctx context.Context, oidcToken string) (*aut
 	}
 
 	// Build permissions based on claims and configuration
-	permissions := h.buildPermissions(claims)
+	permissions, displayName := h.buildPermissions(claims)
 
 	// Create JWT claims
 	jwtClaims := auth.JWTClaims{
-		AuthMethod:        auth.MethodOIDC,
-		AuthMethodSubject: claims.Subject,
-		Permissions:       permissions,
+		AuthMethod:            auth.MethodOIDC,
+		AuthMethodSubject:     claims.Subject,
+		AuthMethodDisplayName: displayName,
+		Permissions:           permissions,
 	}
 
 	// Generate Registry JWT token
@@ -248,13 +249,19 @@ func (h *OIDCHandler) validateExtraClaims(claims *OIDCClaims) error {
 }
 
 // buildPermissions builds permissions based on OIDC claims and configuration
-func (h *OIDCHandler) buildPermissions(claims *OIDCClaims) []auth.Permission {
+func (h *OIDCHandler) buildPermissions(claims *OIDCClaims) ([]auth.Permission, string) {
 	var extraClaims map[string]any
+	displayName := ""
 	if claims != nil {
 		extraClaims = claims.ExtraClaims
+		displayName = claims.Subject
 	}
-	if permissions, _, matched := ResolveRolePermissions(extraClaims, h.roleMappingConfig); matched {
-		return permissions
+	rolePermissions, resolvedDisplayName, matched := ResolveRolePermissions(extraClaims, h.roleMappingConfig)
+	if resolvedDisplayName != "" {
+		displayName = resolvedDisplayName
+	}
+	if matched {
+		return rolePermissions, displayName
 	}
 
 	var permissions []auth.Permission
@@ -332,5 +339,5 @@ func (h *OIDCHandler) buildPermissions(claims *OIDCClaims) []auth.Permission {
 		}
 	}
 
-	return permissions
+	return permissions, displayName
 }

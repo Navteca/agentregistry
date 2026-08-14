@@ -40,15 +40,23 @@ Conventions:
 - **Change:** Cache validated OIDC role-mapping configuration when constructing the
   handler and resolve verified OIDC claims into role-scoped permission bundles,
   retaining the existing static permission bundle as the unmatched-role fallback.
+  `buildPermissions` also returns the resolved display name, falling back to the
+  authenticated subject when the configured display-name claim is absent or empty;
+  `ExchangeToken` stores that value in `AuthMethodDisplayName`.
 - **Reason:** The registry must mint permissions based on the caller's mapped OIDC
   role while rejecting malformed role-map configuration at startup rather than
-  silently falling back to an unbounded static bundle.
+  silently falling back to an unbounded static bundle. The display-name snapshot
+  must also reach the registry JWT for downstream ownership capture, including
+  callers using the static permission fallback.
 - **Reapply after bump:** Re-add the cached role-mapping configuration and the
-  resolver call in `buildPermissions`.
+  resolver call in `buildPermissions`, return the display name through
+  `buildPermissions`, apply the subject fallback, and set
+  `AuthMethodDisplayName` in the minted `JWTClaims`.
 
 ### `internal/registry/api/handlers/v0/auth/oidc_test.go`
 - **Change:** Added token-exchange coverage for mapped, unknown, missing, and
-  malformed OIDC role claims.
+  malformed OIDC role claims, including display-name propagation and subject
+  fallback when the configured claim is absent or empty.
 - **Reason:** Verifies role-based permission minting and preservation of the static
   fallback behavior.
 - **Reapply after bump:** Reapply the focused OIDC exchange tests.
@@ -110,3 +118,6 @@ Conventions:
   behavior (full bypass) explicit and correct.
 - **Reapply after bump:** Re-apply the same fixture change if this file is
   regenerated from upstream.
+
+### `pkg/models/server_response.go`, `pkg/models/agent.go`, `pkg/models/skill.go`, `pkg/models/prompt.go`
+- **Change:** Adds Ownership *OwnershipMeta extension field so artifact responses carry the registering subject and display-name snapshot. Type is defined in the new file pkg/models/ownership.go; these files gain one field each. To reapply after a version bump: re-add the field to the struct.
