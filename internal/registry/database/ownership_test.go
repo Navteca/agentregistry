@@ -136,6 +136,23 @@ func ownershipTestSkillMeta() *models.SkillRegistryExtensions {
 	}
 }
 
+func ownershipTestPrompt(name, version string) *models.PromptJSON {
+	return &models.PromptJSON{
+		Name:    name,
+		Version: version,
+		Content: "Ownership test prompt",
+	}
+}
+
+func ownershipTestPromptMeta(publishedAt time.Time, isLatest bool) *models.PromptRegistryExtensions {
+	return &models.PromptRegistryExtensions{
+		Status:      "active",
+		PublishedAt: publishedAt,
+		UpdatedAt:   publishedAt,
+		IsLatest:    isLatest,
+	}
+}
+
 func assertAgentOwnership(t *testing.T, response *models.AgentResponse, ownership models.OwnershipInput) {
 	t.Helper()
 	require.NotNil(t, response.Meta.Ownership)
@@ -266,6 +283,95 @@ func TestSkillWithoutOwnershipOmitsOwnershipJSON(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := db.GetSkillByName(ctx, nil, skill.Name)
+	require.NoError(t, err)
+	assert.Nil(t, result.Meta.Ownership)
+
+	serialized, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.NotContains(t, string(serialized), `"aregistry.ai/ownership"`)
+}
+
+func assertPromptOwnership(t *testing.T, response *models.PromptResponse, ownership models.OwnershipInput) {
+	t.Helper()
+	require.NotNil(t, response.Meta.Ownership)
+	assert.Equal(t, ownership.Subject, response.Meta.Ownership.Subject)
+	assert.Equal(t, ownership.DisplayName, response.Meta.Ownership.DisplayName)
+	assert.Equal(t, ownership.AuthMethod, response.Meta.Ownership.AuthMethod)
+}
+
+func TestPromptOwnershipSurvivesLatestPromotionAndAllReads(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	ctx := internaldb.WithTestSession(context.Background())
+	promptName := "ownership-prompt-promotion"
+	first := ownershipTestPrompt(promptName, "1.0.0")
+	firstOwnership := models.OwnershipInput{
+		Subject:     "prompt-subject-one",
+		DisplayName: "Shared Display Name",
+		AuthMethod:  "oidc",
+	}
+	now := time.Now()
+
+	_, err := db.CreatePrompt(ctx, nil, first, ownershipTestPromptMeta(now, true), firstOwnership)
+	require.NoError(t, err)
+
+	latest, err := db.GetPromptByName(ctx, nil, promptName)
+	require.NoError(t, err)
+	assertPromptOwnership(t, latest, firstOwnership)
+
+	byVersion, err := db.GetPromptByNameAndVersion(ctx, nil, promptName, "1.0.0")
+	require.NoError(t, err)
+	assertPromptOwnership(t, byVersion, firstOwnership)
+
+	versions, err := db.GetAllVersionsByPromptName(ctx, nil, promptName)
+	require.NoError(t, err)
+	require.Len(t, versions, 1)
+	assertPromptOwnership(t, versions[0], firstOwnership)
+
+	listed, _, err := db.ListPrompts(ctx, nil, &database.PromptFilter{Name: &promptName}, "", 10)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assertPromptOwnership(t, listed[0], firstOwnership)
+
+	current, err := db.GetCurrentLatestPromptVersion(ctx, nil, promptName)
+	require.NoError(t, err)
+	assertPromptOwnership(t, current, firstOwnership)
+
+	err = db.UnmarkPromptAsLatest(ctx, nil, promptName)
+	require.NoError(t, err)
+
+	second := ownershipTestPrompt(promptName, "2.0.0")
+	secondOwnership := models.OwnershipInput{
+		Subject:     "prompt-subject-two",
+		DisplayName: "Shared Display Name",
+		AuthMethod:  "oidc",
+	}
+	_, err = db.CreatePrompt(ctx, nil, second, ownershipTestPromptMeta(now.Add(time.Second), true), secondOwnership)
+	require.NoError(t, err)
+
+	versions, err = db.GetAllVersionsByPromptName(ctx, nil, promptName)
+	require.NoError(t, err)
+	require.Len(t, versions, 2)
+	for _, version := range versions {
+		switch version.Prompt.Version {
+		case "1.0.0":
+			assertPromptOwnership(t, version, firstOwnership)
+		case "2.0.0":
+			assertPromptOwnership(t, version, secondOwnership)
+		default:
+			t.Fatalf("unexpected prompt version %q", version.Prompt.Version)
+		}
+	}
+}
+
+func TestPromptWithoutOwnershipOmitsOwnershipJSON(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	ctx := internaldb.WithTestSession(context.Background())
+	prompt := ownershipTestPrompt("ownership-prompt-unowned", "1.0.0")
+
+	_, err := db.CreatePrompt(ctx, nil, prompt, ownershipTestPromptMeta(time.Now(), true), models.OwnershipInput{})
+	require.NoError(t, err)
+
+	result, err := db.GetPromptByName(ctx, nil, prompt.Name)
 	require.NoError(t, err)
 	assert.Nil(t, result.Meta.Ownership)
 

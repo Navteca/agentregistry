@@ -3221,7 +3221,8 @@ func (db *PostgreSQL) ListPrompts(ctx context.Context, tx pgx.Tx, filter *databa
 	}
 
 	query := fmt.Sprintf(`
-        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value
+        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM prompts
         %s
         ORDER BY prompt_name, version
@@ -3241,8 +3242,9 @@ func (db *PostgreSQL) ListPrompts(ctx context.Context, tx pgx.Tx, filter *databa
 		var publishedAt, updatedAt time.Time
 		var isLatest bool
 		var valueJSON []byte
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
 
-		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 			return nil, "", fmt.Errorf("failed to scan prompt row: %w", err)
 		}
 
@@ -3260,6 +3262,7 @@ func (db *PostgreSQL) ListPrompts(ctx context.Context, tx pgx.Tx, filter *databa
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		}
 		results = append(results, resp)
@@ -3289,7 +3292,8 @@ func (db *PostgreSQL) GetPromptByName(ctx context.Context, tx pgx.Tx, promptName
 	}
 
 	query := `
-        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value
+        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM prompts
         WHERE prompt_name = $1 AND is_latest = true
         ORDER BY published_at DESC
@@ -3299,7 +3303,8 @@ func (db *PostgreSQL) GetPromptByName(ctx context.Context, tx pgx.Tx, promptName
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
-	if err := db.getExecutor(tx).QueryRow(ctx, query, promptName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := db.getExecutor(tx).QueryRow(ctx, query, promptName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -3318,6 +3323,7 @@ func (db *PostgreSQL) GetPromptByName(ctx context.Context, tx pgx.Tx, promptName
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -3335,7 +3341,8 @@ func (db *PostgreSQL) GetPromptByNameAndVersion(ctx context.Context, tx pgx.Tx, 
 	}
 
 	query := `
-        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value
+        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM prompts
         WHERE prompt_name = $1 AND version = $2
         LIMIT 1
@@ -3344,7 +3351,8 @@ func (db *PostgreSQL) GetPromptByNameAndVersion(ctx context.Context, tx pgx.Tx, 
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
-	if err := db.getExecutor(tx).QueryRow(ctx, query, promptName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := db.getExecutor(tx).QueryRow(ctx, query, promptName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -3363,6 +3371,7 @@ func (db *PostgreSQL) GetPromptByNameAndVersion(ctx context.Context, tx pgx.Tx, 
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -3380,7 +3389,8 @@ func (db *PostgreSQL) GetAllVersionsByPromptName(ctx context.Context, tx pgx.Tx,
 	}
 
 	query := `
-        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value
+        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM prompts
         WHERE prompt_name = $1
         ORDER BY published_at DESC
@@ -3396,7 +3406,8 @@ func (db *PostgreSQL) GetAllVersionsByPromptName(ctx context.Context, tx pgx.Tx,
 		var publishedAt, updatedAt time.Time
 		var isLatest bool
 		var valueJSON []byte
-		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 			return nil, fmt.Errorf("failed to scan prompt row: %w", err)
 		}
 		var promptJSON models.PromptJSON
@@ -3412,6 +3423,7 @@ func (db *PostgreSQL) GetAllVersionsByPromptName(ctx context.Context, tx pgx.Tx,
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		})
 	}
@@ -3424,7 +3436,7 @@ func (db *PostgreSQL) GetAllVersionsByPromptName(ctx context.Context, tx pgx.Tx,
 	return results, nil
 }
 
-func (db *PostgreSQL) CreatePrompt(ctx context.Context, tx pgx.Tx, promptJSON *models.PromptJSON, officialMeta *models.PromptRegistryExtensions) (*models.PromptResponse, error) {
+func (db *PostgreSQL) CreatePrompt(ctx context.Context, tx pgx.Tx, promptJSON *models.PromptJSON, officialMeta *models.PromptRegistryExtensions, ownership models.OwnershipInput) (*models.PromptResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -3447,9 +3459,22 @@ func (db *PostgreSQL) CreatePrompt(ctx context.Context, tx pgx.Tx, promptJSON *m
 		return nil, fmt.Errorf("failed to marshal prompt JSON: %w", err)
 	}
 	insert := `
-        INSERT INTO prompts (prompt_name, version, status, published_at, updated_at, is_latest, value)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO prompts (
+            prompt_name, version, status, published_at, updated_at, is_latest, value,
+            created_by_subject, created_by_display_name, created_by_auth_method
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `
+	var createdBySubject, createdByDisplayName, createdByAuthMethod any
+	if ownership.Subject != "" {
+		createdBySubject = ownership.Subject
+		if ownership.DisplayName != "" {
+			createdByDisplayName = ownership.DisplayName
+		}
+		if ownership.AuthMethod != "" {
+			createdByAuthMethod = ownership.AuthMethod
+		}
+	}
 	if _, err := db.getExecutor(tx).Exec(ctx, insert,
 		promptJSON.Name,
 		promptJSON.Version,
@@ -3458,13 +3483,17 @@ func (db *PostgreSQL) CreatePrompt(ctx context.Context, tx pgx.Tx, promptJSON *m
 		officialMeta.UpdatedAt,
 		officialMeta.IsLatest,
 		valueJSON,
+		createdBySubject,
+		createdByDisplayName,
+		createdByAuthMethod,
 	); err != nil {
 		return nil, fmt.Errorf("failed to insert prompt: %w", err)
 	}
 	return &models.PromptResponse{
 		Prompt: *promptJSON,
 		Meta: models.PromptResponseMeta{
-			Official: officialMeta,
+			Official:  officialMeta,
+			Ownership: ownershipMetaFromInput(ownership),
 		},
 	}, nil
 }
@@ -3483,7 +3512,8 @@ func (db *PostgreSQL) GetCurrentLatestPromptVersion(ctx context.Context, tx pgx.
 
 	executor := db.getExecutor(tx)
 	query := `
-        SELECT prompt_name, version, status, value, published_at, updated_at, is_latest
+        SELECT prompt_name, version, status, value, published_at, updated_at, is_latest,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM prompts
         WHERE prompt_name = $1 AND is_latest = true
     `
@@ -3492,7 +3522,8 @@ func (db *PostgreSQL) GetCurrentLatestPromptVersion(ctx context.Context, tx pgx.
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var jsonValue []byte
-	if err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -3511,6 +3542,7 @@ func (db *PostgreSQL) GetCurrentLatestPromptVersion(ctx context.Context, tx pgx.
 				IsLatest:    isLatest,
 				Status:      status,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }

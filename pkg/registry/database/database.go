@@ -209,7 +209,7 @@ type Database interface {
 
 	// Prompts API
 	// CreatePrompt inserts a new prompt version with official metadata
-	CreatePrompt(ctx context.Context, tx pgx.Tx, promptJSON *models.PromptJSON, officialMeta *models.PromptRegistryExtensions) (*models.PromptResponse, error)
+	CreatePrompt(ctx context.Context, tx pgx.Tx, promptJSON *models.PromptJSON, officialMeta *models.PromptRegistryExtensions, ownership models.OwnershipInput) (*models.PromptResponse, error)
 	// ListPrompts retrieve prompt entries with optional filtering
 	ListPrompts(ctx context.Context, tx pgx.Tx, filter *PromptFilter, cursor string, limit int) ([]*models.PromptResponse, string, error)
 	// GetPromptByName retrieve a single prompt by its name (latest)

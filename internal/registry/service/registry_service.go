@@ -1474,12 +1474,14 @@ func (s *registryServiceImpl) GetAllVersionsByPromptName(ctx context.Context, pr
 
 // CreatePrompt creates a new prompt version
 func (s *registryServiceImpl) CreatePrompt(ctx context.Context, req *models.PromptJSON) (*models.PromptResponse, error) {
+	ownership := resolveOwnership(ctx)
+
 	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*models.PromptResponse, error) {
-		return s.createPromptInTransaction(ctx, tx, req)
+		return s.createPromptInTransaction(ctx, tx, req, ownership)
 	})
 }
 
-func (s *registryServiceImpl) createPromptInTransaction(ctx context.Context, tx pgx.Tx, req *models.PromptJSON) (*models.PromptResponse, error) {
+func (s *registryServiceImpl) createPromptInTransaction(ctx context.Context, tx pgx.Tx, req *models.PromptJSON, ownership models.OwnershipInput) (*models.PromptResponse, error) {
 	if req == nil || req.Name == "" || req.Version == "" {
 		return nil, fmt.Errorf("invalid prompt payload: name and version are required")
 	}
@@ -1532,7 +1534,7 @@ func (s *registryServiceImpl) createPromptInTransaction(ctx context.Context, tx 
 		IsLatest:    isNewLatest,
 	}
 
-	return s.db.CreatePrompt(ctx, tx, &promptJSON, officialMeta)
+	return s.db.CreatePrompt(ctx, tx, &promptJSON, officialMeta, ownership)
 }
 
 // DeletePrompt permanently removes a prompt version from the registry

@@ -77,6 +77,14 @@ func newOwnershipTestSkill(name string) *models.SkillJSON {
 	}
 }
 
+func newOwnershipTestPrompt(name, version string) *models.PromptJSON {
+	return &models.PromptJSON{
+		Name:    name,
+		Version: version,
+		Content: "Ownership test prompt",
+	}
+}
+
 func TestCreateServerResolvesAndPersistsOwnership(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
@@ -289,4 +297,86 @@ func TestCreateSkillSubjectsRemainDistinctWithSameDisplayName(t *testing.T) {
 	assert.Equal(t, "skill-subject-one", first.Meta.Ownership.Subject)
 	assert.Equal(t, "skill-subject-two", second.Meta.Ownership.Subject)
 	assert.Equal(t, first.Meta.Ownership.DisplayName, second.Meta.Ownership.DisplayName)
+}
+
+func TestCreatePromptResolvesAndPersistsOwnership(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	ctx := ownershipTestContext("prompt-oidc-subject", "Ada Lovelace", auth.MethodOIDC)
+
+	created, err := registry.CreatePrompt(ctx, newOwnershipTestPrompt("ownership-prompt-create", "1.0.0"))
+	require.NoError(t, err)
+	require.NotNil(t, created.Meta.Ownership)
+	assert.Equal(t, "prompt-oidc-subject", created.Meta.Ownership.Subject)
+	assert.Equal(t, "Ada Lovelace", created.Meta.Ownership.DisplayName)
+	assert.Equal(t, "oidc", created.Meta.Ownership.AuthMethod)
+
+	fetched, err := registry.GetPromptByName(ctx, "ownership-prompt-create")
+	require.NoError(t, err)
+	require.NotNil(t, fetched.Meta.Ownership)
+	assert.Equal(t, "prompt-oidc-subject", fetched.Meta.Ownership.Subject)
+}
+
+func TestCreatePromptIgnoresOwnershipShapedRequestData(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	ctx := ownershipTestContext("authenticated-subject", "Authenticated User", auth.MethodOIDC)
+
+	var prompt models.PromptJSON
+	err := json.Unmarshal([]byte(`{
+		"name": "ownership-prompt-request",
+		"version": "1.0.0",
+		"content": "Request fixture",
+		"_meta": {
+			"aregistry.ai/ownership": {
+				"subject": "request-subject",
+				"displayName": "Request Display Name",
+				"authMethod": "request-method"
+			}
+		}
+	}`), &prompt)
+	require.NoError(t, err)
+
+	created, err := registry.CreatePrompt(ctx, &prompt)
+	require.NoError(t, err)
+	require.NotNil(t, created.Meta.Ownership)
+	assert.Equal(t, "authenticated-subject", created.Meta.Ownership.Subject)
+	assert.NotEqual(t, "request-subject", created.Meta.Ownership.Subject)
+}
+
+func TestCreatePromptAnonymousHasNoOwnership(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	ctx := ownershipTestContext("anonymous", "Anonymous", auth.MethodNone)
+
+	created, err := registry.CreatePrompt(ctx, newOwnershipTestPrompt("ownership-prompt-anonymous", "1.0.0"))
+	require.NoError(t, err)
+	assert.Nil(t, created.Meta.Ownership)
+}
+
+func TestPromptOwnershipSurvivesLatestPromotion(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+
+	firstCtx := ownershipTestContext("prompt-subject-one", "Shared Display Name", auth.MethodOIDC)
+	_, err := registry.CreatePrompt(firstCtx, newOwnershipTestPrompt("ownership-prompt-promotion", "1.0.0"))
+	require.NoError(t, err)
+
+	secondCtx := ownershipTestContext("prompt-subject-two", "Shared Display Name", auth.MethodOIDC)
+	_, err = registry.CreatePrompt(secondCtx, newOwnershipTestPrompt("ownership-prompt-promotion", "2.0.0"))
+	require.NoError(t, err)
+
+	versions, err := registry.GetAllVersionsByPromptName(secondCtx, "ownership-prompt-promotion")
+	require.NoError(t, err)
+	require.Len(t, versions, 2)
+	for _, version := range versions {
+		switch version.Prompt.Version {
+		case "1.0.0":
+			assert.Equal(t, "prompt-subject-one", version.Meta.Ownership.Subject)
+		case "2.0.0":
+			assert.Equal(t, "prompt-subject-two", version.Meta.Ownership.Subject)
+		default:
+			t.Fatalf("unexpected prompt version %q", version.Prompt.Version)
+		}
+	}
 }

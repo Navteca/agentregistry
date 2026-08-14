@@ -274,3 +274,30 @@ Conventions:
 - **Change:** Added skill database coverage for ownership surviving update/status-update operations, all five read paths, and omission of the ownership JSON key for NULL ownership columns.
 - **Reason:** Verifies persistence, read-path consistency, update safety, and JSON omission semantics.
 - **Reapply after bump:** Reapply the focused skill ownership database tests.
+
+### Prompt ownership capture
+
+### `internal/registry/service/registry_service.go`
+- **Change:** Resolves ownership once per prompt create operation and passes `models.OwnershipInput` through the transaction to the database create method.
+- **Reason:** Keeps authentication resolution in the service layer and prevents request payload metadata from overriding the authenticated creator.
+- **Reapply after bump:** Resolve ownership before opening the transaction, pass it through `createPromptInTransaction`, and append it to `Database.CreatePrompt`.
+
+### `pkg/registry/database/database.go`
+- **Change:** Added `models.OwnershipInput` to the `CreatePrompt` database interface method.
+- **Reason:** Makes prompt ownership data flow explicit at the persistence boundary.
+- **Reapply after bump:** Add the ownership value object as the final `CreatePrompt` parameter.
+
+### `internal/registry/database/postgres.go`
+- **Change:** Prompt inserts persist nullable subject, display-name, and auth-method columns. All five prompt read paths scan nullable ownership columns and populate `PromptResponseMeta.Ownership`; named-column-only latest-version updates remain unchanged.
+- **Reason:** Captures authenticated ownership without trusting request payload data, preserves ownership through latest-version promotion, and omits ownership for legacy/unowned rows.
+- **Reapply after bump:** Add the three nullable columns and unconditional `sql.NullString` scan destinations to each prompt read query, pass `OwnershipInput` to the insert, and use `ownershipMetaFromInput` for the create response.
+
+### `internal/registry/service/ownership_test.go`
+- **Change:** Added prompt service coverage for authenticated ownership capture, ignoring ownership-shaped request data, anonymous omission, and ownership surviving latest-version promotion.
+- **Reason:** Verifies prompt ownership is resolved from the authenticated principal rather than the request body and remains intact across the prompt mutation that exists.
+- **Reapply after bump:** Reapply the focused prompt ownership service tests.
+
+### `internal/registry/database/ownership_test.go`
+- **Change:** Added prompt database coverage for ownership on all five read paths, preservation through latest-version promotion, and omission of the ownership JSON key for NULL ownership columns.
+- **Reason:** Verifies prompt persistence, read-path consistency, the only prompt mutation affecting rows, and JSON omission semantics.
+- **Reapply after bump:** Reapply the focused prompt ownership database tests.
