@@ -183,11 +183,41 @@ func (s *registryServiceImpl) annotateServerCapabilities(ctx context.Context, se
 	}
 
 	capabilities.CanUpdate = authorizeServerUpdate(ctx, serverName, serverResponse) == nil
-	if s.authz.Authz != nil {
-		capabilities.CanDelete = s.authz.Check(ctx, auth.PermissionActionDelete, auth.Resource{
-			Name: serverName,
-			Type: auth.PermissionArtifactTypeServer,
-		}) == nil
+	capabilities.CanDelete = s.canDeleteCapability(ctx, serverName, auth.PermissionArtifactTypeServer)
+}
+
+func (s *registryServiceImpl) canDeleteCapability(ctx context.Context, name string, resourceType auth.PermissionArtifactType) bool {
+	if _, ok := auth.AuthSessionFrom(ctx); !ok || s.authz.Authz == nil {
+		return false
+	}
+
+	return s.authz.Check(ctx, auth.PermissionActionDelete, auth.Resource{
+		Name: name,
+		Type: resourceType,
+	}) == nil
+}
+
+func (s *registryServiceImpl) annotateAgentCapabilities(ctx context.Context, agentName string, response *models.AgentResponse) {
+	// Agents have no update endpoint, so CanUpdate is always false.
+	response.Meta.Capabilities = &models.CapabilitiesMeta{
+		CanUpdate: false,
+		CanDelete: s.canDeleteCapability(ctx, agentName, auth.PermissionArtifactTypeAgent),
+	}
+}
+
+func (s *registryServiceImpl) annotateSkillCapabilities(ctx context.Context, skillName string, response *models.SkillResponse) {
+	// Skills have no update endpoint, so CanUpdate is always false.
+	response.Meta.Capabilities = &models.CapabilitiesMeta{
+		CanUpdate: false,
+		CanDelete: s.canDeleteCapability(ctx, skillName, auth.PermissionArtifactTypeSkill),
+	}
+}
+
+func (s *registryServiceImpl) annotatePromptCapabilities(ctx context.Context, promptName string, response *models.PromptResponse) {
+	// Prompts have no update endpoint, so CanUpdate is always false.
+	response.Meta.Capabilities = &models.CapabilitiesMeta{
+		CanUpdate: false,
+		CanDelete: s.canDeleteCapability(ctx, promptName, auth.PermissionArtifactTypePrompt),
 	}
 }
 
@@ -339,22 +369,42 @@ func (s *registryServiceImpl) ListSkills(ctx context.Context, filter *database.S
 	if err != nil {
 		return nil, "", err
 	}
+	for _, skill := range skills {
+		s.annotateSkillCapabilities(ctx, skill.Skill.Name, skill)
+	}
 	return skills, next, nil
 }
 
 // GetSkillByName retrieves the latest version of a skill by its name
 func (s *registryServiceImpl) GetSkillByName(ctx context.Context, skillName string) (*models.SkillResponse, error) {
-	return s.db.GetSkillByName(ctx, nil, skillName)
+	skill, err := s.db.GetSkillByName(ctx, nil, skillName)
+	if err != nil {
+		return nil, err
+	}
+	s.annotateSkillCapabilities(ctx, skillName, skill)
+	return skill, nil
 }
 
 // GetSkillByNameAndVersion retrieves a specific version of a skill by name and version
 func (s *registryServiceImpl) GetSkillByNameAndVersion(ctx context.Context, skillName, version string) (*models.SkillResponse, error) {
-	return s.db.GetSkillByNameAndVersion(ctx, nil, skillName, version)
+	skill, err := s.db.GetSkillByNameAndVersion(ctx, nil, skillName, version)
+	if err != nil {
+		return nil, err
+	}
+	s.annotateSkillCapabilities(ctx, skillName, skill)
+	return skill, nil
 }
 
 // GetAllVersionsBySkillName retrieves all versions for a skill
 func (s *registryServiceImpl) GetAllVersionsBySkillName(ctx context.Context, skillName string) ([]*models.SkillResponse, error) {
-	return s.db.GetAllVersionsBySkillName(ctx, nil, skillName)
+	skills, err := s.db.GetAllVersionsBySkillName(ctx, nil, skillName)
+	if err != nil {
+		return nil, err
+	}
+	for _, skill := range skills {
+		s.annotateSkillCapabilities(ctx, skillName, skill)
+	}
+	return skills, nil
 }
 
 // CreateSkill creates a new skill version
@@ -451,9 +501,15 @@ func (s *registryServiceImpl) DeleteSkill(ctx context.Context, skillName, versio
 // UpdateServer updates an existing server with new details
 func (s *registryServiceImpl) UpdateServer(ctx context.Context, serverName, version string, req *apiv0.ServerJSON, newStatus *string) (*models.ServerResponse, error) {
 	// Wrap the entire operation in a transaction
-	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*models.ServerResponse, error) {
+	updatedServer, err := database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*models.ServerResponse, error) {
 		return s.updateServerInTransaction(ctx, tx, serverName, version, req, newStatus)
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	s.annotateServerCapabilities(ctx, serverName, updatedServer)
+	return updatedServer, nil
 }
 
 // updateServerInTransaction contains the actual UpdateServer logic within a transaction
@@ -500,9 +556,11 @@ func (s *registryServiceImpl) updateServerInTransaction(ctx context.Context, tx 
 		if err != nil {
 			return nil, err
 		}
+		updatedWithStatus.Meta.Ownership = currentServer.Meta.Ownership
 		return updatedWithStatus, nil
 	}
 
+	updatedServerResponse.Meta.Ownership = currentServer.Meta.Ownership
 	return updatedServerResponse, nil
 }
 
@@ -638,22 +696,42 @@ func (s *registryServiceImpl) ListAgents(ctx context.Context, filter *database.A
 	if err != nil {
 		return nil, "", err
 	}
+	for _, agent := range agents {
+		s.annotateAgentCapabilities(ctx, agent.Agent.Name, agent)
+	}
 	return agents, next, nil
 }
 
 // GetAgentByName retrieves the latest version of an agent by its name
 func (s *registryServiceImpl) GetAgentByName(ctx context.Context, agentName string) (*models.AgentResponse, error) {
-	return s.db.GetAgentByName(ctx, nil, agentName)
+	agent, err := s.db.GetAgentByName(ctx, nil, agentName)
+	if err != nil {
+		return nil, err
+	}
+	s.annotateAgentCapabilities(ctx, agentName, agent)
+	return agent, nil
 }
 
 // GetAgentByNameAndVersion retrieves a specific version of an agent by name and version
 func (s *registryServiceImpl) GetAgentByNameAndVersion(ctx context.Context, agentName, version string) (*models.AgentResponse, error) {
-	return s.db.GetAgentByNameAndVersion(ctx, nil, agentName, version)
+	agent, err := s.db.GetAgentByNameAndVersion(ctx, nil, agentName, version)
+	if err != nil {
+		return nil, err
+	}
+	s.annotateAgentCapabilities(ctx, agentName, agent)
+	return agent, nil
 }
 
 // GetAllVersionsByAgentName retrieves all versions for an agent
 func (s *registryServiceImpl) GetAllVersionsByAgentName(ctx context.Context, agentName string) ([]*models.AgentResponse, error) {
-	return s.db.GetAllVersionsByAgentName(ctx, nil, agentName)
+	agents, err := s.db.GetAllVersionsByAgentName(ctx, nil, agentName)
+	if err != nil {
+		return nil, err
+	}
+	for _, agent := range agents {
+		s.annotateAgentCapabilities(ctx, agentName, agent)
+	}
+	return agents, nil
 }
 
 // CreateAgent creates a new agent version
@@ -1535,22 +1613,42 @@ func (s *registryServiceImpl) ListPrompts(ctx context.Context, filter *database.
 	if err != nil {
 		return nil, "", err
 	}
+	for _, prompt := range prompts {
+		s.annotatePromptCapabilities(ctx, prompt.Prompt.Name, prompt)
+	}
 	return prompts, next, nil
 }
 
 // GetPromptByName retrieves the latest version of a prompt by its name
 func (s *registryServiceImpl) GetPromptByName(ctx context.Context, promptName string) (*models.PromptResponse, error) {
-	return s.db.GetPromptByName(ctx, nil, promptName)
+	prompt, err := s.db.GetPromptByName(ctx, nil, promptName)
+	if err != nil {
+		return nil, err
+	}
+	s.annotatePromptCapabilities(ctx, promptName, prompt)
+	return prompt, nil
 }
 
 // GetPromptByNameAndVersion retrieves a specific version of a prompt by name and version
 func (s *registryServiceImpl) GetPromptByNameAndVersion(ctx context.Context, promptName, version string) (*models.PromptResponse, error) {
-	return s.db.GetPromptByNameAndVersion(ctx, nil, promptName, version)
+	prompt, err := s.db.GetPromptByNameAndVersion(ctx, nil, promptName, version)
+	if err != nil {
+		return nil, err
+	}
+	s.annotatePromptCapabilities(ctx, promptName, prompt)
+	return prompt, nil
 }
 
 // GetAllVersionsByPromptName retrieves all versions for a prompt
 func (s *registryServiceImpl) GetAllVersionsByPromptName(ctx context.Context, promptName string) ([]*models.PromptResponse, error) {
-	return s.db.GetAllVersionsByPromptName(ctx, nil, promptName)
+	prompts, err := s.db.GetAllVersionsByPromptName(ctx, nil, promptName)
+	if err != nil {
+		return nil, err
+	}
+	for _, prompt := range prompts {
+		s.annotatePromptCapabilities(ctx, promptName, prompt)
+	}
+	return prompts, nil
 }
 
 // CreatePrompt creates a new prompt version

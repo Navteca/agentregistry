@@ -288,6 +288,12 @@ Conventions:
   authorization predicate and the configured authorizer's delete check without
   changing enforcement. Missing sessions produce all-false capabilities, and a
   nil authorizer provider cannot fail open for deletion.
+- **Additional AR-1B change:** Added shared delete-capability computation and
+  per-type capability annotation to all agent, skill, and prompt list, latest,
+  version-specific, and all-version reads. Annotates successful server update
+  responses after the transaction commits, carrying forward the fetched
+  ownership metadata so owner-scoped update capabilities match a subsequent
+  read.
 - **Reapply after bump:** Update server response and transaction callback types
   to `models.ServerResponse`. Add the owner narrowing check after the
   transactional current-server fetch and retain the review predicate insertion
@@ -388,6 +394,16 @@ Conventions:
   without exercising HTTP handlers or weakening enforcement.
 - **Reapply after bump:** Preserve the real-JWT authorization fixtures and
   permission-removal cases when reapplying server capability computation.
+
+### `internal/registry/service/artifact_capabilities_test.go`
+- **Change:** Added real-JWT service coverage for delete capabilities across
+  every agent, skill, and prompt read path, including owner-scoped edit
+  permissions and sessionless all-false behavior. Added coverage that server
+  update responses match the capabilities of a subsequent read.
+- **Reason:** Proves the four artifact types expose consistent caller-specific
+  capability metadata without changing server-side authorization enforcement.
+- **Reapply after bump:** Preserve the real capability authorizer, ownership
+  contexts, all read-path cases, and post-update/read comparison.
 
 ### `internal/registry/service/ownership_test.go`
 - **Change:** Passes the shared service test authorizer into every registry service construction.
