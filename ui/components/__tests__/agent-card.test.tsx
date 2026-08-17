@@ -49,6 +49,80 @@ describe("AgentCard", () => {
     expect(screen.getByText("gpt-4")).toBeInTheDocument()
   })
 
+  it("renders the ownership display name instead of the subject", () => {
+    const ownedAgent: AgentResponse = {
+      ...mockAgent,
+      _meta: {
+        ...mockAgent._meta,
+        "aregistry.ai/ownership": {
+          displayName: "Ada Lovelace",
+          subject: "oidc-subject",
+        },
+      },
+    }
+    render(<AgentCard agent={ownedAgent} />)
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument()
+    expect(screen.queryByText("oidc-subject")).not.toBeInTheDocument()
+  })
+
+  it("falls back to the ownership subject when the display name is empty", () => {
+    const ownedAgent: AgentResponse = {
+      ...mockAgent,
+      _meta: {
+        ...mockAgent._meta,
+        "aregistry.ai/ownership": {
+          displayName: "",
+          subject: "github-user",
+        },
+      },
+    }
+    render(<AgentCard agent={ownedAgent} />)
+    expect(screen.getByText("github-user")).toBeInTheDocument()
+  })
+
+  it("renders a placeholder when ownership is absent", () => {
+    render(<AgentCard agent={mockAgent} />)
+    expect(screen.getByText("Unknown")).toBeInTheDocument()
+  })
+
+  it("does not render a last-modified element when updatedAt is absent", () => {
+    const agentWithoutUpdatedAt: AgentResponse = {
+      ...mockAgent,
+      _meta: {},
+    }
+    render(<AgentCard agent={agentWithoutUpdatedAt} />)
+    expect(screen.queryByText("Last modified")).not.toBeInTheDocument()
+  })
+
+  it("renders HTML in a display name as literal text", () => {
+    const ownedAgent: AgentResponse = {
+      ...mockAgent,
+      _meta: {
+        ...mockAgent._meta,
+        "aregistry.ai/ownership": {
+          displayName: "<script>alert(1)</script>",
+          subject: "oidc-subject",
+        },
+      },
+    }
+    const { container } = render(<AgentCard agent={ownedAgent} />)
+    expect(screen.getByText("<script>alert(1)</script>")).toBeInTheDocument()
+    expect(container.querySelector("script")).not.toBeInTheDocument()
+  })
+
+  it("does not render a javascript repository URL as a link", () => {
+    const unsafeAgent: AgentResponse = {
+      ...mockAgent,
+      agent: {
+        ...mockAgent.agent,
+        repository: { url: "javascript:alert(1)" },
+      },
+    }
+    render(<AgentCard agent={unsafeAgent} />)
+    expect(screen.queryByRole("link", { name: "Repo" })).not.toBeInTheDocument()
+    expect(screen.getByText("Repo")).toBeInTheDocument()
+  })
+
   it("calls onClick when card is clicked", async () => {
     const onClick = vi.fn()
     render(<AgentCard agent={mockAgent} onClick={onClick} />)

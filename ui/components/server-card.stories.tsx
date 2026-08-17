@@ -36,6 +36,10 @@ const mockServer: ServerResponse = {
       status: "active",
       isLatest: true,
     },
+    "aregistry.ai/ownership": {
+      displayName: "Acme Registry",
+      subject: "acme-subject",
+    },
   },
 }
 

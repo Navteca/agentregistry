@@ -1,6 +1,7 @@
 "use client"
 
 import { ServerResponse } from "@/lib/admin-api"
+import { getSafeHttpUrl } from "@/lib/safe-url"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -37,6 +38,8 @@ export function ServerCard({
 }: ServerCardProps) {
   const { server: serverData, _meta } = server
   const official = _meta?.['io.modelcontextprotocol.registry/official']
+  const ownership = _meta?.['aregistry.ai/ownership']
+  const registeredBy = ownership?.displayName || ownership?.subject
 
   const publisherProvided = serverData._meta?.['io.modelcontextprotocol.registry/publisher-provided'] as Record<string, any> | undefined
   const publisherMetadata = publisherProvided?.['aregistry.ai/metadata'] as Record<string, any> | undefined
@@ -44,6 +47,8 @@ export function ServerCard({
   const identityData = publisherMetadata?.identity
   const hasOciPackage = serverData.packages?.some(pkg => pkg.registryType === "oci") ?? false
   const repositoryUrl = serverData.repository?.url
+  const safeRepositoryUrl = getSafeHttpUrl(repositoryUrl)
+  const safeWebsiteUrl = getSafeHttpUrl(serverData.websiteUrl)
 
   const formatDate = (dateString: string) => {
     try {
@@ -58,6 +63,7 @@ export function ServerCard({
   }
 
   const icon = serverData.icons?.[0]
+  const safeIconSrc = getSafeHttpUrl(icon?.src)
 
   return (
     <TooltipProvider>
@@ -65,8 +71,8 @@ export function ServerCard({
         className="group flex items-start gap-3.5 py-4 px-2 -mx-2 rounded-md cursor-pointer transition-colors hover:bg-muted/50"
         onClick={() => onClick?.()}
       >
-        {icon ? (
-          <img src={icon.src} alt="" className="w-10 h-10 rounded flex-shrink-0 mt-0.5" />
+        {safeIconSrc ? (
+          <img src={safeIconSrc} alt="" className="w-10 h-10 rounded flex-shrink-0 mt-0.5" />
         ) : (
           <div className="w-10 h-10 rounded bg-primary/8 flex items-center justify-center flex-shrink-0 mt-0.5">
             <span className="text-xs font-semibold text-primary uppercase">
@@ -109,6 +115,11 @@ export function ServerCard({
             {official?.publishedAt && (
               <span>{formatDate(official.publishedAt)}</span>
             )}
+
+            <span>
+              <span className="text-muted-foreground">Registered by</span>{" "}
+              {registeredBy || <span className="text-muted-foreground">Unknown</span>}
+            </span>
 
             {serverData.packages && serverData.packages.length > 0 && (
               <span className="flex items-center gap-1">
@@ -195,23 +206,23 @@ export function ServerCard({
               Remove
             </Button>
           )}
-          {showExternalLinks && repositoryUrl && (
+          {showExternalLinks && safeRepositoryUrl && (
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={(e) => { e.stopPropagation(); window.open(repositoryUrl, '_blank') }}
+              onClick={(e) => { e.stopPropagation(); window.open(safeRepositoryUrl, '_blank') }}
               aria-label="View repository"
             >
               <Github className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           )}
-          {showExternalLinks && serverData.websiteUrl && (
+          {showExternalLinks && safeWebsiteUrl && (
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={(e) => { e.stopPropagation(); window.open(serverData.websiteUrl, '_blank') }}
+              onClick={(e) => { e.stopPropagation(); window.open(safeWebsiteUrl, '_blank') }}
               aria-label="Visit website"
             >
               <Globe className="h-3.5 w-3.5" aria-hidden="true" />

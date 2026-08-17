@@ -1,6 +1,7 @@
 "use client"
 
 import { SkillResponse } from "@/lib/admin-api"
+import { getSafeHttpUrl } from "@/lib/safe-url"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -22,6 +23,10 @@ interface SkillCardProps {
 export function SkillCard({ skill, onDelete, showDelete = false, showExternalLinks = true, onClick, versionCount }: SkillCardProps) {
   const { skill: skillData, _meta } = skill
   const official = _meta?.['io.modelcontextprotocol.registry/official']
+  const ownership = _meta?.['aregistry.ai/ownership']
+  const registeredBy = ownership?.displayName || ownership?.subject
+  const safeRepositoryUrl = getSafeHttpUrl(skillData.repository?.url)
+  const safeWebsiteUrl = getSafeHttpUrl(skillData.websiteUrl)
 
   const formatDate = (dateString: string) => {
     try {
@@ -64,6 +69,11 @@ export function SkillCard({ skill, onDelete, showDelete = false, showExternalLin
               <span>{formatDate(official.publishedAt)}</span>
             )}
 
+            <span>
+              <span className="text-muted-foreground">Registered by</span>{" "}
+              {registeredBy || <span className="text-muted-foreground">Unknown</span>}
+            </span>
+
             {skillData.packages && skillData.packages.length > 0 && (
               <span className="flex items-center gap-1">
                 <Package className="h-3 w-3" />
@@ -88,22 +98,22 @@ export function SkillCard({ skill, onDelete, showDelete = false, showExternalLin
         </div>
 
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          {showExternalLinks && skillData.repository?.url && (
+          {showExternalLinks && safeRepositoryUrl && (
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={(e) => { e.stopPropagation(); window.open(skillData.repository?.url || '', '_blank') }}
+              onClick={(e) => { e.stopPropagation(); window.open(safeRepositoryUrl, '_blank') }}
             >
               <Github className="h-3.5 w-3.5" />
             </Button>
           )}
-          {showExternalLinks && skillData.websiteUrl && (
+          {showExternalLinks && safeWebsiteUrl && (
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={(e) => { e.stopPropagation(); window.open(skillData.websiteUrl, '_blank') }}
+              onClick={(e) => { e.stopPropagation(); window.open(safeWebsiteUrl, '_blank') }}
             >
               <Globe className="h-3.5 w-3.5" />
             </Button>

@@ -33,6 +33,67 @@ describe("PromptCard", () => {
     expect(screen.getByText("1.2.0")).toBeInTheDocument()
   })
 
+  it("renders the ownership display name instead of the subject", () => {
+    const ownedPrompt: PromptResponse = {
+      ...mockPrompt,
+      _meta: {
+        ...mockPrompt._meta,
+        "aregistry.ai/ownership": {
+          displayName: "Ada Lovelace",
+          subject: "oidc-subject",
+        },
+      },
+    }
+    render(<PromptCard prompt={ownedPrompt} />)
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument()
+    expect(screen.queryByText("oidc-subject")).not.toBeInTheDocument()
+  })
+
+  it("falls back to the ownership subject when the display name is empty", () => {
+    const ownedPrompt: PromptResponse = {
+      ...mockPrompt,
+      _meta: {
+        ...mockPrompt._meta,
+        "aregistry.ai/ownership": {
+          displayName: "",
+          subject: "github-user",
+        },
+      },
+    }
+    render(<PromptCard prompt={ownedPrompt} />)
+    expect(screen.getByText("github-user")).toBeInTheDocument()
+  })
+
+  it("renders a placeholder when ownership is absent", () => {
+    render(<PromptCard prompt={mockPrompt} />)
+    expect(screen.getByText("Unknown")).toBeInTheDocument()
+  })
+
+  it("does not render a last-modified element when updatedAt is absent", () => {
+    const promptWithoutUpdatedAt: PromptResponse = {
+      ...mockPrompt,
+      _meta: {},
+    }
+    render(<PromptCard prompt={promptWithoutUpdatedAt} />)
+    expect(screen.queryByText("Last modified")).not.toBeInTheDocument()
+  })
+
+  it("renders HTML in a display name as literal text", () => {
+    const ownedPrompt: PromptResponse = {
+      ...mockPrompt,
+      _meta: {
+        ...mockPrompt._meta,
+        "aregistry.ai/ownership": {
+          displayName: "<script>alert(1)</script>",
+          subject: "oidc-subject",
+        },
+      },
+    }
+    const { container } = render(<PromptCard prompt={ownedPrompt} />)
+    expect(screen.getByText("<script>alert(1)</script>")).toBeInTheDocument()
+    expect(container.querySelector("script")).not.toBeInTheDocument()
+  })
+
   it("renders published date", () => {
     render(<PromptCard prompt={mockPrompt} />)
     expect(screen.getByText(/Apr \d+, 2025/)).toBeInTheDocument()

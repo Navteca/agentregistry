@@ -389,3 +389,13 @@ Conventions:
 - **Change:** Scheme-allowlisted artifact-supplied website, repository, remote, and icon URLs before rendering them as links or images; rejected link values remain visible as text. The server detail quick-info pills also show registered-by ownership and optional last-modified metadata.
 - **Reason:** Closes the AR-1 criterion on URL scheme allowlisting. The pre-existing form validation was bypassable when artifacts were published directly through the API. Ownership and modification metadata are displayed from typed response metadata without using presentation names as identity.
 - **Reapply after bump:** Retain the `getSafeHttpUrl` validation at every server detail URL and icon rendering site, and render ownership from `aregistry.ai/ownership` plus `official.updatedAt` in the quick-info pills.
+
+### AR-1 — `ui/components/server-card.tsx`, `ui/components/agent-card.tsx`, `ui/components/skill-card.tsx`
+- **Change:** Scheme-allowlisted artifact-supplied icon, repository, and website URLs in catalog cards with `getSafeHttpUrl`; unsafe links and actions are not rendered.
+- **Reason:** Closes the AR-1 URL scheme bypass in catalog cards, including `window.open` call sites that could execute a `javascript:` URL when artifacts were published directly through the API. Prompt cards have no artifact-supplied URLs and are intentionally unchanged for this concern.
+- **Reapply after bump:** Retain `getSafeHttpUrl` at each catalog-card URL rendering or `window.open` site; do not add URL handling to prompt cards unless they gain artifact-supplied URLs.
+
+### AR-1 — `ui/components/server-card.tsx`, `ui/components/agent-card.tsx`, `ui/components/skill-card.tsx`, `ui/components/prompt-card.tsx`
+- **Change:** Catalog cards show registered-by metadata from `aregistry.ai/ownership`, preferring `displayName` and falling back to `subject`, with `Unknown` for unowned artifacts. Updated-at is intentionally not shown on cards.
+- **Reason:** Adds ownership context without treating the presentation `displayName` as identity. Last-modified remains on the server detail view because adding it to dense catalog rows would make their metadata unscannable; this is a deliberate deviation from the AR-1 ticket wording.
+- **Reapply after bump:** Render registered-by in the existing metadata row after published date, preserve the `displayName`/`subject` fallback and `Unknown` placeholder, and keep last-modified exclusive to the detail view.
