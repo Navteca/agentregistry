@@ -74,6 +74,16 @@ function buildMockServerWithScoring(): ServerResponse & { allVersions?: ServerRe
 }
 
 describe("ServerDetail Score Tab - MCP Scoring", () => {
+  it("does not render a javascript website URL as a link", () => {
+    const server = buildMockServer()
+    server.server.websiteUrl = "javascript:alert(1)"
+
+    render(<ServerDetail server={server} />)
+
+    expect(screen.queryByRole("link", { name: "Website" })).not.toBeInTheDocument()
+    expect(screen.getByText("javascript:alert(1)")).toBeInTheDocument()
+  })
+
   it("renders category scores when mcp_scoring data exists", async () => {
     const user = userEvent.setup()
     render(<ServerDetail server={buildMockServerWithScoring()} />)

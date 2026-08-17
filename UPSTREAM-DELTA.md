@@ -384,3 +384,8 @@ Conventions:
 - **Change:** Added prompt database coverage for ownership on all five read paths, preservation through latest-version promotion, and omission of the ownership JSON key for NULL ownership columns.
 - **Reason:** Verifies prompt persistence, read-path consistency, the only prompt mutation affecting rows, and JSON omission semantics.
 - **Reapply after bump:** Reapply the focused prompt ownership database tests.
+
+### AR-1 — `ui/components/server-detail.tsx`
+- **Change:** Scheme-allowlisted artifact-supplied website, repository, remote, and icon URLs before rendering them as links or images; rejected link values remain visible as text.
+- **Reason:** Closes the AR-1 criterion on URL scheme allowlisting. The pre-existing form validation was bypassable when artifacts were published directly through the API.
+- **Reapply after bump:** Retain the `getSafeHttpUrl` validation at every server detail URL and icon rendering site.
