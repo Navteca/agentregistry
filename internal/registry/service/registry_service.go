@@ -131,6 +131,10 @@ func (s *registryServiceImpl) ListServers(ctx context.Context, filter *database.
 		return nil, "", err
 	}
 
+	for _, serverRecord := range serverRecords {
+		s.annotateServerCapabilities(ctx, serverRecord.Server.Name, serverRecord)
+	}
+
 	return serverRecords, nextCursor, nil
 }
 
@@ -141,6 +145,7 @@ func (s *registryServiceImpl) GetServerByName(ctx context.Context, serverName st
 		return nil, err
 	}
 
+	s.annotateServerCapabilities(ctx, serverName, serverRecord)
 	return serverRecord, nil
 }
 
@@ -151,6 +156,7 @@ func (s *registryServiceImpl) GetServerByNameAndVersion(ctx context.Context, ser
 		return nil, err
 	}
 
+	s.annotateServerCapabilities(ctx, serverName, serverRecord)
 	return serverRecord, nil
 }
 
@@ -161,7 +167,28 @@ func (s *registryServiceImpl) GetAllVersionsByServerName(ctx context.Context, se
 		return nil, err
 	}
 
+	for _, serverRecord := range serverRecords {
+		s.annotateServerCapabilities(ctx, serverName, serverRecord)
+	}
+
 	return serverRecords, nil
+}
+
+func (s *registryServiceImpl) annotateServerCapabilities(ctx context.Context, serverName string, serverResponse *models.ServerResponse) {
+	capabilities := &models.CapabilitiesMeta{}
+	serverResponse.Meta.Capabilities = capabilities
+
+	if _, ok := auth.AuthSessionFrom(ctx); !ok {
+		return
+	}
+
+	capabilities.CanUpdate = authorizeServerUpdate(ctx, serverName, serverResponse) == nil
+	if s.authz.Authz != nil {
+		capabilities.CanDelete = s.authz.Check(ctx, auth.PermissionActionDelete, auth.Resource{
+			Name: serverName,
+			Type: auth.PermissionArtifactTypeServer,
+		}) == nil
+	}
 }
 
 // CreateServer creates a new server version

@@ -284,14 +284,20 @@ Conventions:
   fetched in the same transaction as the write; display names are never
   authorization inputs. Resolving ownership in the service keeps authentication
   context out of the database and prevents request metadata from overriding the
-  authenticated creator.
+  authenticated creator. Capability flags reuse the existing update
+  authorization predicate and the configured authorizer's delete check without
+  changing enforcement. Missing sessions produce all-false capabilities, and a
+  nil authorizer provider cannot fail open for deletion.
 - **Reapply after bump:** Update server response and transaction callback types
   to `models.ServerResponse`. Add the owner narrowing check after the
   transactional current-server fetch and retain the review predicate insertion
   point. Resolve ownership before each create transaction, pass it through the
   corresponding create callback, append it to all four database create calls,
   and require the composition-root `auth.Authorizer` in the service
-  constructor.
+  constructor. Annotate every server read response with caller-specific
+  `can_update` and `can_delete` capabilities after database retrieval. Apply
+  capability annotation as a service-layer post-pass to list, latest,
+  version-specific, and all-version server reads.
 
 ### `internal/registry/registry_app.go`
 - **Change:** Passes the existing composition-root `auth.Authorizer` into the
@@ -374,6 +380,15 @@ Conventions:
 - **Reason:** Keeps service test construction explicit after making the authorizer constructor parameter required.
 - **Reapply after bump:** Preserve the explicit authorizer fixture at every service construction.
 
+### `internal/registry/service/server_capabilities_test.go`
+- **Change:** Added service-layer coverage for caller-specific server update and
+  delete capabilities across every server read path, including missing-session
+  and nil-authorizer cases.
+- **Reason:** Proves capability flags reflect the existing authorization rules
+  without exercising HTTP handlers or weakening enforcement.
+- **Reapply after bump:** Preserve the real-JWT authorization fixtures and
+  permission-removal cases when reapplying server capability computation.
+
 ### `internal/registry/service/ownership_test.go`
 - **Change:** Passes the shared service test authorizer into every registry service construction.
 - **Reason:** Keeps service test construction explicit after making the authorizer constructor parameter required.
@@ -421,10 +436,11 @@ Conventions:
   other failures), unauthenticated setup errors, and a forbidden response from
   the preliminary read when the edit token lacked `read`. The non-fatal
   assertions allowed invalid responses to be indexed or dereferenced and abort
-  the package. Reachability validation settings were not changed.
-- **Reapply after bump:**   Preserve the offline repository fixture, authenticated setup and request
-  contexts, explicit read-plus-edit test token permissions, and fatal
-  response-length/status guards when reapplying the AR-1 test fixes.
+  the package. The initial fixture repairs did not change reachability
+  validation settings.
+- **Reapply after bump:** Preserve the offline repository fixture, authenticated
+  setup and request contexts, explicit read-plus-edit test token permissions,
+  and fatal response-length/status guards when reapplying the AR-1 test fixes.
 - **Observation:** `resolveOwnership` in
   `internal/registry/service/ownership.go:10` excludes only `auth.MethodNone`,
   so a session with a zero-value auth method passes through it. The
