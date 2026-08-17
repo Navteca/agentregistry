@@ -195,44 +195,44 @@ Conventions:
   regenerated from upstream.
 
 ### `pkg/models/server_response.go`
-- **Change:** Added an `Ownership *OwnershipMeta` extension field to server
-  response metadata so responses carry the registering subject and display-name
-  snapshot. The `OwnershipMeta` type is defined in fork-local
-  `pkg/models/ownership.go`.
-- **Reason:** Lets server responses expose registry-managed ownership metadata
-  without changing the upstream artifact JSON payload.
-- **Reapply after bump:** Re-add the ownership metadata field and preserve its
-  `aregistry.ai/ownership` JSON key.
+- **Change:** Added `Ownership *OwnershipMeta` and
+  `Capabilities *CapabilitiesMeta` extension fields to server response metadata.
+  `CapabilitiesMeta` is defined in fork-local `pkg/models/capabilities.go`.
+- **Reason:** Lets responses expose registry-managed ownership metadata — the
+  registering subject and a display-name snapshot — and caller-specific
+  permitted actions, without changing the upstream artifact JSON payload.
+- **Reapply after bump:** Re-add both metadata fields and preserve their
+  `aregistry.ai/ownership` and `aregistry.ai/capabilities` JSON keys.
 
 ### `pkg/models/agent.go`
-- **Change:** Added an `Ownership *OwnershipMeta` extension field to agent
-  response metadata so responses carry the registering subject and display-name
-  snapshot. The `OwnershipMeta` type is defined in fork-local
-  `pkg/models/ownership.go`.
-- **Reason:** Lets agent responses expose registry-managed ownership metadata
-  without changing the upstream artifact JSON payload.
-- **Reapply after bump:** Re-add the ownership metadata field and preserve its
-  `aregistry.ai/ownership` JSON key.
+- **Change:** Added `Ownership *OwnershipMeta` and
+  `Capabilities *CapabilitiesMeta` extension fields to agent response metadata.
+  `CapabilitiesMeta` is defined in fork-local `pkg/models/capabilities.go`.
+- **Reason:** Lets responses expose registry-managed ownership metadata — the
+  registering subject and a display-name snapshot — and caller-specific
+  permitted actions, without changing the upstream artifact JSON payload.
+- **Reapply after bump:** Re-add both metadata fields and preserve their
+  `aregistry.ai/ownership` and `aregistry.ai/capabilities` JSON keys.
 
 ### `pkg/models/skill.go`
-- **Change:** Added an `Ownership *OwnershipMeta` extension field to skill
-  response metadata so responses carry the registering subject and display-name
-  snapshot. The `OwnershipMeta` type is defined in fork-local
-  `pkg/models/ownership.go`.
-- **Reason:** Lets skill responses expose registry-managed ownership metadata
-  without changing the upstream artifact JSON payload.
-- **Reapply after bump:** Re-add the ownership metadata field and preserve its
-  `aregistry.ai/ownership` JSON key.
+- **Change:** Added `Ownership *OwnershipMeta` and
+  `Capabilities *CapabilitiesMeta` extension fields to skill response metadata.
+  `CapabilitiesMeta` is defined in fork-local `pkg/models/capabilities.go`.
+- **Reason:** Lets responses expose registry-managed ownership metadata — the
+  registering subject and a display-name snapshot — and caller-specific
+  permitted actions, without changing the upstream artifact JSON payload.
+- **Reapply after bump:** Re-add both metadata fields and preserve their
+  `aregistry.ai/ownership` and `aregistry.ai/capabilities` JSON keys.
 
 ### `pkg/models/prompt.go`
-- **Change:** Added an `Ownership *OwnershipMeta` extension field to prompt
-  response metadata so responses carry the registering subject and display-name
-  snapshot. The `OwnershipMeta` type is defined in fork-local
-  `pkg/models/ownership.go`.
-- **Reason:** Lets prompt responses expose registry-managed ownership metadata
-  without changing the upstream artifact JSON payload.
-- **Reapply after bump:** Re-add the ownership metadata field and preserve its
-  `aregistry.ai/ownership` JSON key.
+- **Change:** Added `Ownership *OwnershipMeta` and
+  `Capabilities *CapabilitiesMeta` extension fields to prompt response metadata.
+  `CapabilitiesMeta` is defined in fork-local `pkg/models/capabilities.go`.
+- **Reason:** Lets responses expose registry-managed ownership metadata — the
+  registering subject and a display-name snapshot — and caller-specific
+  permitted actions, without changing the upstream artifact JSON payload.
+- **Reapply after bump:** Re-add both metadata fields and preserve their
+  `aregistry.ai/ownership` and `aregistry.ai/capabilities` JSON keys.
 
 ### `internal/registry/database/postgres.go`
 - **Change:** Server query and mutation methods now return fork-local
@@ -277,7 +277,8 @@ Conventions:
   system bypass, and the `isArtifactReviewed` AR-2 stub remains the review
   predicate insertion point. Resolves ownership once per server, agent, skill,
   and prompt create operation and passes `models.OwnershipInput` through each
-  transaction to the database.
+  transaction to the database. The service constructor now requires and stores
+  the existing by-value `auth.Authorizer` from the composition root.
 - **Reason:** Carries fork-local response metadata to API consumers without
   converting back to upstream types. Owner authorization must use the row
   fetched in the same transaction as the write; display names are never
@@ -288,8 +289,17 @@ Conventions:
   to `models.ServerResponse`. Add the owner narrowing check after the
   transactional current-server fetch and retain the review predicate insertion
   point. Resolve ownership before each create transaction, pass it through the
-  corresponding create callback, and append it to all four database create
-  calls.
+  corresponding create callback, append it to all four database create calls,
+  and require the composition-root `auth.Authorizer` in the service
+  constructor.
+
+### `internal/registry/registry_app.go`
+- **Change:** Passes the existing composition-root `auth.Authorizer` into the
+  registry service.
+- **Reason:** Service-layer capability computation must use the same authorizer
+  and provider configuration as database mutation enforcement.
+- **Reapply after bump:** Pass the constructed `auth.Authorizer` to the
+  registry service constructor.
 
 ### `internal/registry/service/service.go`
 - **Change:** Updated the server methods on `RegistryService` to return fork-local response models.
@@ -340,9 +350,92 @@ Conventions:
 - **Reapply after bump:** Keep the fixture compatibility conversion if the service response boundary is regenerated.
 
 ### `internal/registry/importer/importer_test.go`
-- **Change:** Explicitly converts the migrated database response to the upstream response shape used by the importer fixture.
-- **Reason:** The importer fixture tests the upstream export payload and does not consume fork-local response metadata.
-- **Reapply after bump:** Preserve the explicit `Server`/official-meta conversion at the upstream fixture boundary.
+- **Change:** Explicitly converts the migrated database response to the upstream response shape used by the importer fixture. Service construction now passes an explicit permissive test authorizer.
+- **Reason:** The importer fixture tests the upstream export payload and does not consume fork-local response metadata. The required service constructor authorizer keeps test wiring explicit.
+- **Reapply after bump:** Preserve the explicit `Server`/official-meta conversion at the upstream fixture boundary and pass an explicit test authorizer when constructing the service.
+
+### `internal/cli/export.go`
+- **Change:** Passes the existing command authorizer into the registry service constructor.
+- **Reason:** The service constructor now requires its authorizer explicitly.
+- **Reapply after bump:** Pass the existing command authorizer to `NewRegistryService`.
+
+### `internal/cli/import.go`
+- **Change:** Passes the existing command authorizer into the registry service constructor.
+- **Reason:** The service constructor now requires its authorizer explicitly.
+- **Reapply after bump:** Pass the existing command authorizer to `NewRegistryService`.
+
+### `internal/mcp/registryserver/server_integration_test.go`
+- **Change:** Passes an explicit permissive test authorizer into the registry service constructor.
+- **Reason:** The service constructor now requires its authorizer explicitly.
+- **Reapply after bump:** Preserve explicit test authorization wiring.
+
+### `internal/registry/service/registry_service_test.go`
+- **Change:** Added a shared permissive test-authorizer fixture and passed it to every registry service construction.
+- **Reason:** Keeps service test construction explicit after making the authorizer constructor parameter required.
+- **Reapply after bump:** Preserve the explicit authorizer fixture at every service construction.
+
+### `internal/registry/service/ownership_test.go`
+- **Change:** Passes the shared service test authorizer into every registry service construction.
+- **Reason:** Keeps service test construction explicit after making the authorizer constructor parameter required.
+- **Reapply after bump:** Preserve explicit authorizer wiring.
+
+### `internal/registry/api/cors_test.go`
+- **Change:** Passes an explicit permissive test authorizer into each registry service construction.
+- **Reason:** Keeps API test construction explicit after making the authorizer constructor parameter required.
+- **Reapply after bump:** Preserve explicit authorizer wiring.
+
+### `internal/registry/api/handlers/v0/edit_test.go`
+- **Change:** Passes an explicit permissive test authorizer into each registry service construction.
+- **Reason:** Keeps handler test construction explicit after making the authorizer constructor parameter required.
+- **Reapply after bump:** Preserve explicit authorizer wiring.
+
+### `internal/registry/api/handlers/v0/servers_test.go`
+- **Change:** Passes an explicit permissive test authorizer into every registry service construction.
+- **Reason:** Keeps handler test construction explicit after making the authorizer constructor parameter required.
+- **Reapply after bump:** Preserve explicit authorizer wiring.
+
+### `internal/registry/api/handlers/v0/telemetry_test.go`
+- **Change:** Passes an explicit permissive test authorizer into the registry service construction.
+- **Reason:** Keeps handler test construction explicit after making the authorizer constructor parameter required.
+- **Reapply after bump:** Preserve explicit authorizer wiring.
+
+### Interlude — pre-existing test fixture repairs
+- **Files:** `internal/registry/service/registry_service_test.go`,
+  `internal/registry/api/handlers/v0/servers_test.go`,
+  `internal/registry/api/handlers/v0/edit_test.go`,
+  `internal/registry/api/handlers/v0/telemetry_test.go`,
+  `internal/registry/importer/importer_test.go`, and
+  `internal/mcp/registryserver/server_integration_test.go`.
+- **Change:** Completed the three pre-existing fixture defect variants caused
+  by fixtures written against a populated `PublicActions` map, after commit
+  `0f6e5d2` emptied it: server fixtures now provide the deliberately
+  non-existent `https://github.com/fixture-owner/fixture-repository`
+  repository; server-creation setup calls use `database.WithTestSession`; and
+  hand-built edit tokens include the explicit `read` permission required before
+  the edit. Protected HTTP requests and service reads in the handler fixtures
+  also carry the test session, and edit request bodies include the required
+  repository fixture. The three unsafe `assert` checks were changed to fatal guards:
+  `assert.Len` to `require.Len` in the local-file and HTTP-file importer tests,
+  and `assert.Equal` to `require.Equal` for the edit status response.
+- **Reason:** The defects produced missing-repository errors (which masked the
+  other failures), unauthenticated setup errors, and a forbidden response from
+  the preliminary read when the edit token lacked `read`. The non-fatal
+  assertions allowed invalid responses to be indexed or dereferenced and abort
+  the package. Reachability validation settings were not changed.
+- **Reapply after bump:**   Preserve the offline repository fixture, authenticated setup and request
+  contexts, explicit read-plus-edit test token permissions, and fatal
+  response-length/status guards when reapplying the AR-1 test fixes.
+- **Observation:** `resolveOwnership` in
+  `internal/registry/service/ownership.go:10` excludes only `auth.MethodNone`,
+  so a session with a zero-value auth method passes through it. The
+  `ownership.Subject != ""` guard in `internal/registry/database/postgres.go:506`
+  is what prevents a bad ownership row; that guard is correctly placed, while
+  the service-layer method check is narrower than it reads.
+- **Follow-up:** Disabled repository reachability validation in
+  `TestListServersSemanticSearch` because its fixture URL is intentionally
+  unreachable and repository-URL validation issues an outbound request to a
+  publisher-supplied URL at registration time. That pre-existing SSRF surface
+  remains on the findings list and is not addressed here.
 
 ### AR-1 — `ui/components/server-detail.tsx`
 - **Change:** Scheme-allowlisted artifact-supplied website, repository, remote, and icon URLs before rendering them as links or images; rejected link values remain visible as text. The server detail quick-info pills also show registered-by ownership and optional last-modified metadata.

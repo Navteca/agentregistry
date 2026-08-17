@@ -40,7 +40,7 @@ func TestEditServerEndpoint(t *testing.T) {
 	}
 
 	// Create registry service and test data
-	registryService := service.NewRegistryService(database.NewTestDB(t), cfg, nil)
+	registryService := service.NewRegistryService(database.NewTestDB(t), cfg, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
 
 	// Create authorizer
 	jwtManager := auth.NewJWTManager(cfg)
@@ -461,7 +461,12 @@ func TestEditServerEndpointEdgeCases(t *testing.T) {
 	}
 
 	// Create registry service
-	registryService := service.NewRegistryService(database.NewTestDB(t), cfg, nil)
+	registryService := service.NewRegistryService(database.NewTestDB(t), cfg, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
+	ctxWithAuth := database.WithTestSession(context.Background())
 
 	// Setup test servers with different characteristics
 	testServers := []struct {
@@ -476,22 +481,23 @@ func TestEditServerEndpointEdgeCases(t *testing.T) {
 	}
 
 	for _, server := range testServers {
-		_, err := registryService.CreateServer(context.Background(), &apiv0.ServerJSON{
+		_, err := registryService.CreateServer(ctxWithAuth, &apiv0.ServerJSON{
 			Schema:      model.CurrentSchemaURL,
 			Name:        server.name,
 			Description: "Test server for editing",
 			Version:     server.version,
+			Repository:  fixtureRepository,
 		})
 		require.NoError(t, err)
 
 		// Set specific status if not active
 		if server.status != model.StatusActive {
-			ctxWithAuth := database.WithTestSession(context.Background())
 			_, err = registryService.UpdateServer(ctxWithAuth, server.name, server.version, &apiv0.ServerJSON{
 				Schema:      model.CurrentSchemaURL,
 				Name:        server.name,
 				Description: "Test server for editing",
 				Version:     server.version,
+				Repository:  fixtureRepository,
 			}, stringPtr(string(server.status)))
 			require.NoError(t, err)
 		}
@@ -550,6 +556,7 @@ func TestEditServerEndpointEdgeCases(t *testing.T) {
 					Name:        tt.serverName,
 					Description: "Status transition test",
 					Version:     tt.version,
+					Repository:  fixtureRepository,
 				}
 
 				bodyBytes, err := json.Marshal(requestBody)
@@ -566,6 +573,7 @@ func TestEditServerEndpointEdgeCases(t *testing.T) {
 				tokenResponse, err := jwtManager.GenerateTokenResponse(context.Background(), auth.JWTClaims{
 					AuthMethod: auth.MethodNone,
 					Permissions: []auth.Permission{
+						{Action: auth.PermissionActionRead, ResourcePattern: "*"},
 						{Action: auth.PermissionActionEdit, ResourcePattern: "*"},
 					},
 				})
@@ -581,7 +589,7 @@ func TestEditServerEndpointEdgeCases(t *testing.T) {
 				w := httptest.NewRecorder()
 				mux.ServeHTTP(w, req)
 
-				assert.Equal(t, tt.expectedStatus, w.Code)
+				require.Equal(t, tt.expectedStatus, w.Code)
 
 				if tt.expectedError != "" {
 					assert.Contains(t, w.Body.String(), tt.expectedError)
@@ -600,11 +608,12 @@ func TestEditServerEndpointEdgeCases(t *testing.T) {
 	t.Run("URL encoding edge cases", func(t *testing.T) {
 		// Create server with special characters
 		specialServerName := "io.dots.and-dashes/server_with_underscores"
-		_, err := registryService.CreateServer(context.Background(), &apiv0.ServerJSON{
+		_, err := registryService.CreateServer(ctxWithAuth, &apiv0.ServerJSON{
 			Schema:      model.CurrentSchemaURL,
 			Name:        specialServerName,
 			Description: "Server with special characters",
 			Version:     "1.0.0",
+			Repository:  fixtureRepository,
 		})
 		require.NoError(t, err)
 
@@ -613,6 +622,7 @@ func TestEditServerEndpointEdgeCases(t *testing.T) {
 			Name:        specialServerName,
 			Description: "Updated server with special chars",
 			Version:     "1.0.0",
+			Repository:  fixtureRepository,
 		}
 
 		bodyBytes, err := json.Marshal(requestBody)
@@ -629,6 +639,7 @@ func TestEditServerEndpointEdgeCases(t *testing.T) {
 		tokenResponse, err := jwtManager.GenerateTokenResponse(context.Background(), auth.JWTClaims{
 			AuthMethod: auth.MethodNone,
 			Permissions: []auth.Permission{
+				{Action: auth.PermissionActionRead, ResourcePattern: "*"},
 				{Action: auth.PermissionActionEdit, ResourcePattern: "*"},
 			},
 		})
@@ -660,6 +671,7 @@ func TestEditServerEndpointEdgeCases(t *testing.T) {
 			Name:        "com.example/multi-version-server",
 			Description: "Updated v1.0.0 specifically",
 			Version:     "1.0.0",
+			Repository:  fixtureRepository,
 		}
 
 		bodyBytes, err := json.Marshal(requestBody)
@@ -676,6 +688,7 @@ func TestEditServerEndpointEdgeCases(t *testing.T) {
 		tokenResponse, err := jwtManager.GenerateTokenResponse(context.Background(), auth.JWTClaims{
 			AuthMethod: auth.MethodNone,
 			Permissions: []auth.Permission{
+				{Action: auth.PermissionActionRead, ResourcePattern: "*"},
 				{Action: auth.PermissionActionEdit, ResourcePattern: "*"},
 			},
 		})
@@ -700,7 +713,7 @@ func TestEditServerEndpointEdgeCases(t *testing.T) {
 		assert.Equal(t, "1.0.0", response.Server.Version)
 
 		// Verify the other version wasn't affected
-		otherVersion, err := registryService.GetServerByNameAndVersion(context.Background(), "com.example/multi-version-server", "2.0.0")
+		otherVersion, err := registryService.GetServerByNameAndVersion(ctxWithAuth, "com.example/multi-version-server", "2.0.0")
 		require.NoError(t, err)
 		assert.NotEqual(t, "Updated v1.0.0 specifically", otherVersion.Server.Description)
 	})

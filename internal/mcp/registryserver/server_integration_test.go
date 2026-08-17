@@ -12,15 +12,16 @@ import (
 	"github.com/agentregistry-dev/agentregistry/internal/registry/config"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/database"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/service"
+	"github.com/agentregistry-dev/agentregistry/pkg/registry/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
 )
 
 func TestMCPListServers_HappyPath(t *testing.T) {
-	ctx := context.Background()
+	ctx := database.WithTestSession(context.Background())
 	db := database.NewTestDB(t)
-	svc := service.NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	svc := service.NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
 
 	// Seed a published server so the MCP tool can return it.
 	const (
@@ -32,6 +33,10 @@ func TestMCPListServers_HappyPath(t *testing.T) {
 		Name:        serverName,
 		Description: "Echo test server",
 		Version:     serverVersion,
+		Repository: &model.Repository{
+			URL:    "https://github.com/fixture-owner/fixture-repository",
+			Source: "git",
+		},
 	})
 	if err != nil && strings.Contains(err.Error(), "vector") {
 		t.Skip("pgvector extension not available in local Postgres; skipping MCP integration test")

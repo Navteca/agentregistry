@@ -21,6 +21,7 @@ import (
 	"github.com/agentregistry-dev/agentregistry/internal/registry/database"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/service"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/telemetry"
+	"github.com/agentregistry-dev/agentregistry/pkg/registry/auth"
 	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
 )
@@ -34,8 +35,9 @@ func TestPrometheusHandler(t *testing.T) {
 		EnableRegistryValidation: false, // Disable for unit tests
 	}
 
-	registryService := service.NewRegistryService(database.NewTestDB(t), testConfig, nil)
-	server, err := registryService.CreateServer(context.Background(), &apiv0.ServerJSON{
+	registryService := service.NewRegistryService(database.NewTestDB(t), testConfig, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
+	ctx := database.WithTestSession(context.Background())
+	server, err := registryService.CreateServer(ctx, &apiv0.ServerJSON{
 		Schema:      model.CurrentSchemaURL,
 		Name:        "io.github.example/test-server",
 		Description: "Test server detail",
@@ -65,7 +67,7 @@ func TestPrometheusHandler(t *testing.T) {
 
 	// Create request - using latest version endpoint
 	url := "/v0/servers/" + url.PathEscape(server.Server.Name) + "/versions/latest"
-	req := httptest.NewRequest(http.MethodGet, url, nil)
+	req := httptest.NewRequest(http.MethodGet, url, nil).WithContext(database.WithTestSession(context.Background()))
 	w := httptest.NewRecorder()
 
 	// Serve the request
@@ -76,7 +78,7 @@ func TestPrometheusHandler(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req = httptest.NewRequest(http.MethodGet, "/metrics", nil).WithContext(database.WithTestSession(context.Background()))
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 

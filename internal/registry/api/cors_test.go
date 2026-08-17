@@ -17,6 +17,7 @@ import (
 	"github.com/agentregistry-dev/agentregistry/internal/registry/database"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/service"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/telemetry"
+	"github.com/agentregistry-dev/agentregistry/pkg/registry/auth"
 )
 
 func TestCORSHeaders(t *testing.T) {
@@ -33,7 +34,7 @@ func TestCORSHeaders(t *testing.T) {
 
 	// Create test services
 	db := database.NewTestDB(t)
-	registryService := service.NewRegistryService(db, cfg, nil)
+	registryService := service.NewRegistryService(db, cfg, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
 
 	shutdownTelemetry, metrics, err := telemetry.InitMetrics("test")
 	require.NoError(t, err)
@@ -147,7 +148,7 @@ func TestCORSHeaderValues(t *testing.T) {
 
 	// Create test services
 	db := database.NewTestDB(t)
-	registryService := service.NewRegistryService(db, cfg, nil)
+	registryService := service.NewRegistryService(db, cfg, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
 
 	shutdownTelemetry, metrics, err := telemetry.InitMetrics("test")
 	require.NoError(t, err)

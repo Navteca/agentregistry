@@ -116,7 +116,7 @@ func newOwnershipTestPrompt(name, version string) *models.PromptJSON {
 
 func TestCreateServerResolvesAndPersistsOwnership(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 	ctx := ownershipTestContext("oidc-subject", "Ada Lovelace", auth.MethodOIDC)
 
 	created, err := registry.CreateServer(ctx, newOwnershipTestServer("ownership-create"))
@@ -136,7 +136,7 @@ func TestCreateServerResolvesAndPersistsOwnership(t *testing.T) {
 
 func TestCreateServerAnonymousHasNoOwnership(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 	ctx := ownershipTestContext("anonymous", "Anonymous", auth.MethodNone)
 	server := newOwnershipTestServer("ownership-anonymous")
 
@@ -151,7 +151,7 @@ func TestCreateServerAnonymousHasNoOwnership(t *testing.T) {
 
 func TestCreateServerSubjectsRemainDistinctWithSameDisplayName(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 
 	for _, subject := range []string{"subject-one", "subject-two"} {
 		ctx := ownershipTestContext(subject, "Shared Display Name", auth.MethodOIDC)
@@ -172,7 +172,7 @@ func TestCreateServerSubjectsRemainDistinctWithSameDisplayName(t *testing.T) {
 
 func TestCreateServerDoesNotInventDisplayName(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 	ctx := ownershipTestContext("github-user", "", auth.MethodGitHubAT)
 
 	created, err := registry.CreateServer(ctx, newOwnershipTestServer("ownership-no-display"))
@@ -185,7 +185,7 @@ func TestCreateServerDoesNotInventDisplayName(t *testing.T) {
 
 func TestCreateAgentResolvesAndPersistsOwnership(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 	ctx := ownershipTestContext("agent-oidc-subject", "Ada Lovelace", auth.MethodOIDC)
 
 	created, err := registry.CreateAgent(ctx, newOwnershipTestAgent("ownership-agent-create"))
@@ -203,7 +203,7 @@ func TestCreateAgentResolvesAndPersistsOwnership(t *testing.T) {
 
 func TestCreateAgentIgnoresOwnershipShapedRequestData(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 	ctx := ownershipTestContext("authenticated-subject", "Authenticated User", auth.MethodOIDC)
 
 	var agent models.AgentJSON
@@ -230,7 +230,7 @@ func TestCreateAgentIgnoresOwnershipShapedRequestData(t *testing.T) {
 
 func TestCreateAgentSubjectsRemainDistinctWithSameDisplayName(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 
 	createdAgents := make(map[string]*models.AgentResponse, 2)
 	for _, subject := range []string{"agent-subject-one", "agent-subject-two"} {
@@ -268,7 +268,7 @@ func TestCreateAgentSubjectsRemainDistinctWithSameDisplayName(t *testing.T) {
 
 func TestCreateSkillResolvesAndPersistsOwnership(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 	ctx := ownershipTestContext("skill-oidc-subject", "Ada Lovelace", auth.MethodOIDC)
 
 	created, err := registry.CreateSkill(ctx, newOwnershipTestSkill("ownership-skill-create"))
@@ -286,7 +286,7 @@ func TestCreateSkillResolvesAndPersistsOwnership(t *testing.T) {
 
 func TestCreateSkillIgnoresOwnershipShapedRequestData(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 	ctx := ownershipTestContext("authenticated-subject", "Authenticated User", auth.MethodOIDC)
 
 	var skill models.SkillJSON
@@ -313,7 +313,7 @@ func TestCreateSkillIgnoresOwnershipShapedRequestData(t *testing.T) {
 
 func TestCreateSkillAnonymousHasNoOwnership(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 	ctx := ownershipTestContext("anonymous", "Anonymous", auth.MethodNone)
 
 	created, err := registry.CreateSkill(ctx, newOwnershipTestSkill("ownership-skill-anonymous"))
@@ -323,7 +323,7 @@ func TestCreateSkillAnonymousHasNoOwnership(t *testing.T) {
 
 func TestCreateSkillSubjectsRemainDistinctWithSameDisplayName(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 
 	for _, subject := range []string{"skill-subject-one", "skill-subject-two"} {
 		ctx := ownershipTestContext(subject, "Shared Display Name", auth.MethodOIDC)
@@ -344,7 +344,7 @@ func TestCreateSkillSubjectsRemainDistinctWithSameDisplayName(t *testing.T) {
 
 func TestCreatePromptResolvesAndPersistsOwnership(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 	ctx := ownershipTestContext("prompt-oidc-subject", "Ada Lovelace", auth.MethodOIDC)
 
 	created, err := registry.CreatePrompt(ctx, newOwnershipTestPrompt("ownership-prompt-create", "1.0.0"))
@@ -362,7 +362,7 @@ func TestCreatePromptResolvesAndPersistsOwnership(t *testing.T) {
 
 func TestCreatePromptIgnoresOwnershipShapedRequestData(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 	ctx := ownershipTestContext("authenticated-subject", "Authenticated User", auth.MethodOIDC)
 
 	var prompt models.PromptJSON
@@ -389,7 +389,7 @@ func TestCreatePromptIgnoresOwnershipShapedRequestData(t *testing.T) {
 
 func TestCreatePromptAnonymousHasNoOwnership(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 	ctx := ownershipTestContext("anonymous", "Anonymous", auth.MethodNone)
 
 	created, err := registry.CreatePrompt(ctx, newOwnershipTestPrompt("ownership-prompt-anonymous", "1.0.0"))
@@ -399,7 +399,7 @@ func TestCreatePromptAnonymousHasNoOwnership(t *testing.T) {
 
 func TestPromptOwnershipSurvivesLatestPromotion(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 
 	firstCtx := ownershipTestContext("prompt-subject-one", "Shared Display Name", auth.MethodOIDC)
 	_, err := registry.CreatePrompt(firstCtx, newOwnershipTestPrompt("ownership-prompt-promotion", "1.0.0"))
@@ -426,7 +426,7 @@ func TestPromptOwnershipSurvivesLatestPromotion(t *testing.T) {
 
 func TestUpdateServerOwnerScopedEdit(t *testing.T) {
 	db := internaldb.NewTestDB(t)
-	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 
 	tests := []struct {
 		name          string

@@ -13,6 +13,7 @@ import (
 	"github.com/agentregistry-dev/agentregistry/internal/registry/importer"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/seed"
 	"github.com/agentregistry-dev/agentregistry/internal/registry/service"
+	"github.com/agentregistry-dev/agentregistry/pkg/registry/auth"
 	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stretchr/testify/assert"
@@ -45,17 +46,18 @@ func TestImportService_LocalFile(t *testing.T) {
 
 	// Create registry service
 	testDB := database.NewTestDB(t)
-	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
 
 	// Create importer service and test import
 	importerService := importer.NewService(registryService)
-	err = importerService.ImportFromPath(context.Background(), tempFile, false)
+	ctx := database.WithTestSession(context.Background())
+	err = importerService.ImportFromPath(ctx, tempFile, false)
 	require.NoError(t, err)
 
 	// Verify the server was imported using registry service
-	servers, _, err := registryService.ListServers(context.Background(), nil, "", 10)
+	servers, _, err := registryService.ListServers(ctx, nil, "", 10)
 	require.NoError(t, err)
-	assert.Len(t, servers, 1)
+	require.Len(t, servers, 1)
 	assert.Equal(t, "io.github.test/test-server-1", servers[0].Server.Name)
 	assert.Equal(t, "1.0.0", servers[0].Server.Version)
 	assert.Equal(t, "Test server 1", servers[0].Server.Description)
@@ -91,17 +93,18 @@ func TestImportService_HTTPFile(t *testing.T) {
 
 	// Create registry service
 	testDB := database.NewTestDB(t)
-	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
 
 	// Create importer service and test import
 	importerService := importer.NewService(registryService)
-	err = importerService.ImportFromPath(context.Background(), httpServer.URL+"/seed.json", false)
+	ctx := database.WithTestSession(context.Background())
+	err = importerService.ImportFromPath(ctx, httpServer.URL+"/seed.json", false)
 	require.NoError(t, err)
 
 	// Verify the server was imported
-	servers, _, err := registryService.ListServers(context.Background(), nil, "", 10)
+	servers, _, err := registryService.ListServers(ctx, nil, "", 10)
 	require.NoError(t, err)
-	assert.Len(t, servers, 1)
+	require.Len(t, servers, 1)
 	assert.Equal(t, "io.github.test/http-test-server", servers[0].Server.Name)
 	assert.Equal(t, "2.0.0", servers[0].Server.Version)
 	assert.Equal(t, "HTTP test server", servers[0].Server.Description)
@@ -109,11 +112,11 @@ func TestImportService_HTTPFile(t *testing.T) {
 }
 
 func TestImportService_RegistryPagination(t *testing.T) {
-	ctx := context.Background()
+	ctx := database.WithTestSession(context.Background())
 
 	// Create registry service with test data
 	testDB := database.NewTestDB(t)
-	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
 
 	// Setup source registry with test data
 	sourceServers := []*apiv0.ServerJSON{
@@ -122,12 +125,20 @@ func TestImportService_RegistryPagination(t *testing.T) {
 			Name:        "com.source/server-1",
 			Description: "Source server 1",
 			Version:     "1.0.0",
+			Repository: &model.Repository{
+				URL:    "https://github.com/fixture-owner/fixture-repository",
+				Source: "git",
+			},
 		},
 		{
 			Schema:      model.CurrentSchemaURL,
 			Name:        "com.source/server-2",
 			Description: "Source server 2",
 			Version:     "1.0.0",
+			Repository: &model.Repository{
+				URL:    "https://github.com/fixture-owner/fixture-repository",
+				Source: "git",
+			},
 		},
 	}
 
@@ -163,14 +174,14 @@ func TestImportService_RegistryPagination(t *testing.T) {
 
 	// Create target registry for import
 	targetDB := database.NewTestDB(t)
-	targetRegistryService := service.NewRegistryService(targetDB, &config.Config{EnableRegistryValidation: false}, nil)
+	targetRegistryService := service.NewRegistryService(targetDB, &config.Config{EnableRegistryValidation: false}, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
 	// Create importer service and test registry import
 	importerService := importer.NewService(targetRegistryService)
-	err := importerService.ImportFromPath(context.Background(), httpServer.URL+"/v0/servers", false)
+	err := importerService.ImportFromPath(ctx, httpServer.URL+"/v0/servers", false)
 	require.NoError(t, err)
 
 	// Verify servers were imported
-	importedServers, _, err := targetRegistryService.ListServers(context.Background(), nil, "", 10)
+	importedServers, _, err := targetRegistryService.ListServers(ctx, nil, "", 10)
 	require.NoError(t, err)
 	assert.Len(t, importedServers, 2)
 
@@ -186,7 +197,7 @@ func TestImportService_RegistryPagination(t *testing.T) {
 func TestImportService_ErrorHandling(t *testing.T) {
 	// Create registry service
 	testDB := database.NewTestDB(t)
-	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
 	importerService := importer.NewService(registryService)
 
 	tests := []struct {
@@ -277,7 +288,7 @@ func TestImportService_ReadmeSeed(t *testing.T) {
 	require.NoError(t, os.WriteFile(readmeSeedPath, readmeData, 0o600))
 
 	testDB := database.NewTestDB(t)
-	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
 
 	importerService := importer.NewService(registryService)
 	importerService.SetReadmeSeedPath(readmeSeedPath)

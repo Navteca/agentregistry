@@ -23,8 +23,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// permissiveTestAuthorizer allows every Check call because its jwtManager is nil.
+// Capability tests must construct an authorizer with a real JWTManager instead.
+func permissiveTestAuthorizer() auth.Authorizer {
+	return auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)}
+}
+
 func TestValidateNoDuplicateRemoteURLs(t *testing.T) {
-	ctx := context.Background()
+	ctx := internaldb.WithTestSession(context.Background())
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	// Create test data
 	existingServers := map[string]*apiv0.ServerJSON{
@@ -33,6 +43,7 @@ func TestValidateNoDuplicateRemoteURLs(t *testing.T) {
 			Name:        "com.example/existing-server",
 			Description: "An existing server",
 			Version:     "1.0.0",
+			Repository:  fixtureRepository,
 			Remotes: []model.Transport{
 				{Type: "streamable-http", URL: "https://api.example.com/mcp"},
 				{Type: "sse", URL: "https://webhook.example.com/sse"},
@@ -43,6 +54,7 @@ func TestValidateNoDuplicateRemoteURLs(t *testing.T) {
 			Name:        "com.microsoft/another-server",
 			Description: "Another existing server",
 			Version:     "1.0.0",
+			Repository:  fixtureRepository,
 			Remotes: []model.Transport{
 				{Type: "streamable-http", URL: "https://api.microsoft.com/mcp"},
 			},
@@ -50,7 +62,7 @@ func TestValidateNoDuplicateRemoteURLs(t *testing.T) {
 	}
 
 	testDB := internaldb.NewTestDB(t)
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
 
 	// Create existing servers using the new CreateServer method
 	for _, server := range existingServers {
@@ -135,9 +147,13 @@ func TestValidateNoDuplicateRemoteURLs(t *testing.T) {
 }
 
 func TestGetServerByName(t *testing.T) {
-	ctx := context.Background()
+	ctx := internaldb.WithTestSession(context.Background())
 	testDB := internaldb.NewTestDB(t)
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	// Create multiple versions of the same server
 	_, err := service.CreateServer(ctx, &apiv0.ServerJSON{
@@ -145,6 +161,7 @@ func TestGetServerByName(t *testing.T) {
 		Name:        "com.example/test-server",
 		Description: "Test server v1",
 		Version:     "1.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -153,6 +170,7 @@ func TestGetServerByName(t *testing.T) {
 		Name:        "com.example/test-server",
 		Description: "Test server v2",
 		Version:     "2.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -204,9 +222,13 @@ func TestGetServerByName(t *testing.T) {
 }
 
 func TestGetServerByNameAndVersion(t *testing.T) {
-	ctx := context.Background()
+	ctx := internaldb.WithTestSession(context.Background())
 	testDB := internaldb.NewTestDB(t)
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	serverName := "com.example/versioned-server"
 
@@ -216,6 +238,7 @@ func TestGetServerByNameAndVersion(t *testing.T) {
 		Name:        serverName,
 		Description: "Versioned server v1",
 		Version:     "1.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -224,6 +247,7 @@ func TestGetServerByNameAndVersion(t *testing.T) {
 		Name:        serverName,
 		Description: "Versioned server v2",
 		Version:     "2.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -297,9 +321,13 @@ func TestGetServerByNameAndVersion(t *testing.T) {
 }
 
 func TestStoreAndRetrieveServerReadme(t *testing.T) {
-	ctx := context.Background()
+	ctx := internaldb.WithTestSession(context.Background())
 	testDB := internaldb.NewTestDB(t)
-	svc := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	svc := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	serverName := "com.example/readme-server"
 
@@ -308,6 +336,7 @@ func TestStoreAndRetrieveServerReadme(t *testing.T) {
 		Name:        serverName,
 		Description: "Readme server v1",
 		Version:     "1.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -335,6 +364,7 @@ func TestStoreAndRetrieveServerReadme(t *testing.T) {
 		Name:        serverName,
 		Description: "Readme server v2",
 		Version:     "2.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -353,9 +383,13 @@ func TestStoreAndRetrieveServerReadme(t *testing.T) {
 }
 
 func TestGetServerReadmeMissing(t *testing.T) {
-	ctx := context.Background()
+	ctx := internaldb.WithTestSession(context.Background())
 	testDB := internaldb.NewTestDB(t)
-	svc := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	svc := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	serverName := "com.example/missing-readme"
 
@@ -364,6 +398,7 @@ func TestGetServerReadmeMissing(t *testing.T) {
 		Name:        serverName,
 		Description: "Server without readme",
 		Version:     "1.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -377,9 +412,13 @@ func TestGetServerReadmeMissing(t *testing.T) {
 }
 
 func TestGetAllVersionsByServerName(t *testing.T) {
-	ctx := context.Background()
+	ctx := internaldb.WithTestSession(context.Background())
 	testDB := internaldb.NewTestDB(t)
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	serverName := "com.example/multi-version-server"
 
@@ -389,6 +428,7 @@ func TestGetAllVersionsByServerName(t *testing.T) {
 		Name:        serverName,
 		Description: "Multi-version server v1",
 		Version:     "1.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -397,6 +437,7 @@ func TestGetAllVersionsByServerName(t *testing.T) {
 		Name:        serverName,
 		Description: "Multi-version server v2",
 		Version:     "2.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -405,6 +446,7 @@ func TestGetAllVersionsByServerName(t *testing.T) {
 		Name:        serverName,
 		Description: "Multi-version server v2.1",
 		Version:     "2.1.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -473,9 +515,13 @@ func TestGetAllVersionsByServerName(t *testing.T) {
 }
 
 func TestCreateServerConcurrentVersionsNoRace(t *testing.T) {
-	ctx := context.Background()
+	ctx := internaldb.WithTestSession(context.Background())
 	testDB := internaldb.NewTestDB(t)
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	const concurrency = 100
 	serverName := "com.example/test-concurrent"
@@ -492,6 +538,7 @@ func TestCreateServerConcurrentVersionsNoRace(t *testing.T) {
 				Name:        serverName,
 				Description: fmt.Sprintf("Version %d", idx),
 				Version:     fmt.Sprintf("1.0.%d", idx),
+				Repository:  fixtureRepository,
 			})
 			results[idx] = result
 			errors[idx] = err
@@ -534,7 +581,7 @@ func TestUpdateServer(t *testing.T) {
 	service := NewRegistryService(testDB, &config.Config{
 		EnableRegistryValidation:       false,
 		ValidateRepositoryReachability: false,
-	}, nil)
+	}, nil, permissiveTestAuthorizer())
 	ctxWithAuth := internaldb.WithTestSession(ctx)
 	// Reachability validation is disabled in this test config; keep this deliberately
 	// non-existent fixture URL so the test never depends on a live repository.
@@ -655,7 +702,7 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 	service := NewRegistryService(testDB, &config.Config{
 		EnableRegistryValidation:       true,
 		ValidateRepositoryReachability: false,
-	}, nil)
+	}, nil, permissiveTestAuthorizer())
 	ctxWithAuth := internaldb.WithTestSession(ctx)
 	// Reachability validation is disabled in this test config; keep this deliberately
 	// non-existent fixture URL so the test never depends on a live repository.
@@ -757,9 +804,13 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 }
 
 func TestListServers(t *testing.T) {
-	ctx := context.Background()
+	ctx := internaldb.WithTestSession(context.Background())
 	testDB := internaldb.NewTestDB(t)
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	// Create test servers
 	testServers := []struct {
@@ -778,6 +829,7 @@ func TestListServers(t *testing.T) {
 			Name:        server.name,
 			Description: server.description,
 			Version:     server.version,
+			Repository:  fixtureRepository,
 		})
 		require.NoError(t, err)
 	}
@@ -849,9 +901,13 @@ func TestListServers(t *testing.T) {
 }
 
 func TestVersionComparison(t *testing.T) {
-	ctx := context.Background()
+	ctx := internaldb.WithTestSession(context.Background())
 	testDB := internaldb.NewTestDB(t)
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil, permissiveTestAuthorizer())
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	serverName := "com.example/version-comparison-server"
 
@@ -876,6 +932,7 @@ func TestVersionComparison(t *testing.T) {
 			Name:        serverName,
 			Description: v.description,
 			Version:     v.version,
+			Repository:  fixtureRepository,
 		})
 		require.NoError(t, err, "Failed to create version %s", v.version)
 	}

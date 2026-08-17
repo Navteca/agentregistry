@@ -61,6 +61,7 @@ func IsUnsupportedDeploymentPlatformError(err error) bool {
 type registryServiceImpl struct {
 	db                 database.Database
 	cfg                *config.Config
+	authz              auth.Authorizer
 	embeddingsProvider embeddings.Provider
 	deploymentAdapters map[string]registrytypes.DeploymentPlatformAdapter
 	logger             *slog.Logger
@@ -76,10 +77,12 @@ func NewRegistryService(
 	db database.Database,
 	cfg *config.Config,
 	embeddingProvider embeddings.Provider,
+	authz auth.Authorizer,
 ) RegistryService {
 	return &registryServiceImpl{
 		db:                 db,
 		cfg:                cfg,
+		authz:              authz,
 		embeddingsProvider: embeddingProvider,
 		logger:             slog.Default().With("component", "registry"),
 	}
