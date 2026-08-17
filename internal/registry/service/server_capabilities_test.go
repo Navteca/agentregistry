@@ -71,6 +71,7 @@ func TestServerCapabilitiesForAllReadPaths(t *testing.T) {
 		ctx       context.Context
 		canUpdate bool
 		canDelete bool
+		canDeploy bool
 	}{
 		{
 			name: "owner with edit own",
@@ -112,6 +113,14 @@ func TestServerCapabilitiesForAllReadPaths(t *testing.T) {
 			canDelete: true,
 		},
 		{
+			name: "deploy",
+			ctx: ownershipPermissionContext("deploy-subject", "Deploy User", []auth.Permission{
+				{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+				{Action: auth.PermissionActionDeploy, ResourcePattern: "*"},
+			}),
+			canDeploy: true,
+		},
+		{
 			name: "neither",
 			ctx: ownershipPermissionContext("read-only-subject", "Read Only", []auth.Permission{
 				{Action: auth.PermissionActionRead, ResourcePattern: "*"},
@@ -128,6 +137,7 @@ func TestServerCapabilitiesForAllReadPaths(t *testing.T) {
 				require.NotNil(t, responses[0].Meta.Capabilities)
 				assert.Equal(t, tt.canUpdate, responses[0].Meta.Capabilities.CanUpdate)
 				assert.Equal(t, tt.canDelete, responses[0].Meta.Capabilities.CanDelete)
+				assert.Equal(t, tt.canDeploy, responses[0].Meta.Capabilities.CanDeploy)
 			})
 		}
 	}
@@ -142,6 +152,7 @@ func TestServerCapabilitiesWithoutSessionAreFalse(t *testing.T) {
 	require.NotNil(t, response.Meta.Capabilities)
 	assert.False(t, response.Meta.Capabilities.CanUpdate)
 	assert.False(t, response.Meta.Capabilities.CanDelete)
+	assert.False(t, response.Meta.Capabilities.CanDeploy)
 }
 
 func TestServerCapabilitiesWithNilAuthorizerProviderCannotDelete(t *testing.T) {
@@ -161,6 +172,7 @@ func TestServerCapabilitiesWithNilAuthorizerProviderCannotDelete(t *testing.T) {
 	require.NotNil(t, response.Meta.Capabilities)
 	assert.True(t, response.Meta.Capabilities.CanUpdate)
 	assert.False(t, response.Meta.Capabilities.CanDelete)
+	assert.False(t, response.Meta.Capabilities.CanDeploy)
 }
 
 func realCapabilityTestAuthorizer(t *testing.T) auth.Authorizer {

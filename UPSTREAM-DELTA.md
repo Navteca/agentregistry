@@ -580,3 +580,60 @@ Conventions:
   `displayName`/`subject` fallback and `Unknown` placeholder; keep
   last-modified exclusive to the detail view and do not add URL handling unless
   prompt cards gain artifact-supplied URLs.
+
+## AR-1B Task 5B — Deploy capability
+
+### `pkg/models/capabilities.go`
+- **Change:** Added the required `CanDeploy` field to `CapabilitiesMeta`,
+  serialized as `can_deploy`.
+- **Reason:** Exposes the caller's existing deploy authorization as a
+  response capability without changing deployment enforcement.
+- **Reapply after bump:** Add `CanDeploy bool \`json:"can_deploy"\`` alongside
+  `CanUpdate` and `CanDelete`.
+
+### `pkg/models/capabilities_test.go`
+- **Change:** Extended capability JSON coverage to include `can_deploy`.
+- **Reason:** Verifies the new required response field and its wire format.
+- **Reapply after bump:** Preserve the `can_deploy` serialization assertion.
+
+### `internal/registry/service/registry_service.go`
+- **Change:** Generalized delete capability authorization into `canPerform`,
+  which retains the no-session and nil-authorizer fail-closed guards and accepts
+  an authorization action. Server and agent responses now compute `CanDeploy`
+  with `PermissionActionDeploy`; skills and prompts explicitly set it to false
+  because they have no deployment endpoint.
+- **Reason:** Keeps capability computation aligned with the existing deployment
+  enforcement in the database while keeping artifact deployability
+  preconditions separate from permission.
+- **Reapply after bump:** Replace delete-only capability checks with the shared
+  action predicate, compute deploy for server and agent artifact names, and
+  preserve explicit false values for skills and prompts.
+
+### `internal/registry/service/server_capabilities_test.go`
+- **Change:** Added real-JWT coverage for deploy-authorized and
+  non-deploy-authorized server principals, including no-session and
+  nil-authorizer fail-closed cases.
+- **Reason:** Verifies server `CanDeploy` matches `PermissionActionDeploy`.
+- **Reapply after bump:** Preserve deploy and fail-closed capability cases.
+
+### `internal/registry/service/artifact_capabilities_test.go`
+- **Change:** Added real-JWT deploy capability coverage across all agent,
+  skill, and prompt read paths, asserting deploy is available only for agents
+  with the permission and remains false for skills and prompts.
+- **Reason:** Verifies per-type behavior and the response consistency of every
+  read path.
+- **Reapply after bump:** Preserve deploy permission, no-deploy permission,
+  and per-artifact-type assertions.
+
+### `openapi.yaml`
+- **Change:** Regenerated the schema so `CapabilitiesMeta` includes required
+  `can_deploy`.
+- **Reason:** Keeps the checked-in API contract synchronized with the model.
+- **Reapply after bump:** Regenerate the OpenAPI specification after adding
+  `CanDeploy`.
+
+### `ui/lib/api/types.gen.ts`
+- **Change:** Regenerated the TypeScript client type so `CapabilitiesMeta`
+  exposes required `can_deploy: boolean`.
+- **Reason:** Keeps frontend consumers synchronized with the API response shape.
+- **Reapply after bump:** Run `make gen-client` after regenerating OpenAPI.

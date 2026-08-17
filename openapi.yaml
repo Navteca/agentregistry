@@ -1931,11 +1931,14 @@ components:
             properties:
                 can_delete:
                     type: boolean
+                can_deploy:
+                    type: boolean
                 can_update:
                     type: boolean
             required:
                 - can_update
                 - can_delete
+                - can_deploy
         CategoryDetail:
             type: object
             additionalProperties: false

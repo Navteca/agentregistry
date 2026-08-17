@@ -4,4 +4,5 @@ package models
 type CapabilitiesMeta struct {
 	CanUpdate bool `json:"can_update"`
 	CanDelete bool `json:"can_delete"`
+	CanDeploy bool `json:"can_deploy"`
 }

@@ -17,13 +17,14 @@ type artifactCapabilityReader struct {
 	read func(context.Context) ([]*models.CapabilitiesMeta, error)
 }
 
-func assertArtifactCapabilitiesForReadPaths(t *testing.T, readers []artifactCapabilityReader) {
+func assertArtifactCapabilitiesForReadPaths(t *testing.T, artifactCanDeploy bool, readers []artifactCapabilityReader) {
 	t.Helper()
 
 	tests := []struct {
 		name      string
 		ctx       context.Context
 		canDelete bool
+		canDeploy bool
 	}{
 		{
 			name: "principal with delete",
@@ -38,6 +39,14 @@ func assertArtifactCapabilitiesForReadPaths(t *testing.T, readers []artifactCapa
 			ctx: ownershipPermissionContext("read-only-subject", "Read Only", []auth.Permission{
 				{Action: auth.PermissionActionRead, ResourcePattern: "*"},
 			}),
+		},
+		{
+			name: "principal with deploy",
+			ctx: ownershipPermissionContext("deploy-subject", "Deploy User", []auth.Permission{
+				{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+				{Action: auth.PermissionActionDeploy, ResourcePattern: "*"},
+			}),
+			canDeploy: true,
 		},
 		{
 			name: "owner with edit own",
@@ -59,6 +68,11 @@ func assertArtifactCapabilitiesForReadPaths(t *testing.T, readers []artifactCapa
 				require.NotNil(t, responses[0])
 				assert.False(t, responses[0].CanUpdate)
 				assert.Equal(t, tt.canDelete, responses[0].CanDelete)
+				if artifactCanDeploy {
+					assert.Equal(t, tt.canDeploy, responses[0].CanDeploy)
+				} else {
+					assert.False(t, responses[0].CanDeploy)
+				}
 			})
 		}
 	}
@@ -72,7 +86,7 @@ func TestAgentCapabilitiesForAllReadPaths(t *testing.T) {
 	_, err := registry.CreateAgent(ownershipTestContext("artifact-owner", "Owner", auth.MethodOIDC), newOwnershipTestAgent(name))
 	require.NoError(t, err)
 
-	assertArtifactCapabilitiesForReadPaths(t, []artifactCapabilityReader{
+	assertArtifactCapabilitiesForReadPaths(t, true, []artifactCapabilityReader{
 		{
 			name: "list",
 			read: func(ctx context.Context) ([]*models.CapabilitiesMeta, error) {
@@ -132,7 +146,7 @@ func TestSkillCapabilitiesForAllReadPaths(t *testing.T) {
 	_, err := registry.CreateSkill(ownershipTestContext("artifact-owner", "Owner", auth.MethodOIDC), newOwnershipTestSkill(name))
 	require.NoError(t, err)
 
-	assertArtifactCapabilitiesForReadPaths(t, []artifactCapabilityReader{
+	assertArtifactCapabilitiesForReadPaths(t, false, []artifactCapabilityReader{
 		{
 			name: "list",
 			read: func(ctx context.Context) ([]*models.CapabilitiesMeta, error) {
@@ -192,7 +206,7 @@ func TestPromptCapabilitiesForAllReadPaths(t *testing.T) {
 	_, err := registry.CreatePrompt(ownershipTestContext("artifact-owner", "Owner", auth.MethodOIDC), newOwnershipTestPrompt(name, "1.0.0"))
 	require.NoError(t, err)
 
-	assertArtifactCapabilitiesForReadPaths(t, []artifactCapabilityReader{
+	assertArtifactCapabilitiesForReadPaths(t, false, []artifactCapabilityReader{
 		{
 			name: "list",
 			read: func(ctx context.Context) ([]*models.CapabilitiesMeta, error) {
@@ -252,18 +266,21 @@ func TestArtifactCapabilitiesWithoutSessionAreFalse(t *testing.T) {
 	require.NotNil(t, agent.Meta.Capabilities)
 	assert.False(t, agent.Meta.Capabilities.CanUpdate)
 	assert.False(t, agent.Meta.Capabilities.CanDelete)
+	assert.False(t, agent.Meta.Capabilities.CanDeploy)
 
 	skill := &models.SkillResponse{}
 	registry.annotateSkillCapabilities(context.Background(), "com.example/skill", skill)
 	require.NotNil(t, skill.Meta.Capabilities)
 	assert.False(t, skill.Meta.Capabilities.CanUpdate)
 	assert.False(t, skill.Meta.Capabilities.CanDelete)
+	assert.False(t, skill.Meta.Capabilities.CanDeploy)
 
 	prompt := &models.PromptResponse{}
 	registry.annotatePromptCapabilities(context.Background(), "com.example/prompt", prompt)
 	require.NotNil(t, prompt.Meta.Capabilities)
 	assert.False(t, prompt.Meta.Capabilities.CanUpdate)
 	assert.False(t, prompt.Meta.Capabilities.CanDelete)
+	assert.False(t, prompt.Meta.Capabilities.CanDeploy)
 }
 
 func TestUpdateServerResponseHasCapabilities(t *testing.T) {
