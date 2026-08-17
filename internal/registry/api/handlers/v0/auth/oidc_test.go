@@ -145,6 +145,7 @@ func TestOIDCHandler_ExchangeTokenRolePermissions(t *testing.T) {
 			expectedPerm: []registryauth.Permission{
 				{Action: registryauth.PermissionActionRead, ResourcePattern: "io.example.*"},
 				{Action: registryauth.PermissionActionPublish, ResourcePattern: "io.example.*"},
+				{Action: registryauth.PermissionActionEditOwn, ResourcePattern: "io.example.*"},
 			},
 			expectedDisplayName: "Ada",
 		},

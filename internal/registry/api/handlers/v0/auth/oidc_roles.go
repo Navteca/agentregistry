@@ -194,7 +194,7 @@ func resolveDisplayName(claims map[string]any, cfg *RoleMappingConfig) string {
 // buildRoleBundle expands an internal role into its permission bundle,
 // scoped to the role's configured resource patterns:
 //
-//	user    = read + publish
+//	user    = read + publish + edit_own
 //	curator = user + edit + delete
 //	admin   = curator + deploy
 //
@@ -208,10 +208,14 @@ func buildRoleBundle(role InternalRole, patterns []string) []auth.Permission {
 		return nil
 	}
 
-	actions := []auth.PermissionAction{auth.PermissionActionRead, auth.PermissionActionPublish}
+	actions := []auth.PermissionAction{
+		auth.PermissionActionRead,
+		auth.PermissionActionPublish,
+		auth.PermissionActionEditOwn,
+	}
 	switch role {
 	case InternalRoleUser:
-		// read + publish only
+		// read + publish + edit_own
 	case InternalRoleCurator:
 		actions = append(actions, auth.PermissionActionEdit, auth.PermissionActionDelete)
 	case InternalRoleAdmin:

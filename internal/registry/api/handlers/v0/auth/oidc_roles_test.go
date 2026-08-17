@@ -97,7 +97,7 @@ func TestResolveRolePermissions(t *testing.T) {
 		return cfg
 	}
 
-	t.Run("user role yields read+publish only", func(t *testing.T) {
+	t.Run("user role yields read+publish+edit_own", func(t *testing.T) {
 		claims := map[string]any{
 			"realm_access": map[string]any{"roles": []any{"registry-user"}},
 			"name":         "Ada Lovelace",
@@ -108,10 +108,11 @@ func TestResolveRolePermissions(t *testing.T) {
 		assert.ElementsMatch(t, []auth.Permission{
 			{Action: auth.PermissionActionRead, ResourcePattern: "io.example.*"},
 			{Action: auth.PermissionActionPublish, ResourcePattern: "io.example.*"},
+			{Action: auth.PermissionActionEditOwn, ResourcePattern: "io.example.*"},
 		}, perms)
 	})
 
-	t.Run("curator role adds edit+delete", func(t *testing.T) {
+	t.Run("curator role adds edit+delete on top of edit_own", func(t *testing.T) {
 		claims := map[string]any{
 			"realm_access": map[string]any{"roles": []any{"registry-curator"}},
 		}
@@ -120,7 +121,7 @@ func TestResolveRolePermissions(t *testing.T) {
 		actions := actionSet(perms)
 		assert.ElementsMatch(t, []auth.PermissionAction{
 			auth.PermissionActionRead, auth.PermissionActionPublish,
-			auth.PermissionActionEdit, auth.PermissionActionDelete,
+			auth.PermissionActionEditOwn, auth.PermissionActionEdit, auth.PermissionActionDelete,
 		}, actions)
 	})
 
@@ -133,7 +134,8 @@ func TestResolveRolePermissions(t *testing.T) {
 		actions := actionSet(perms)
 		assert.ElementsMatch(t, []auth.PermissionAction{
 			auth.PermissionActionRead, auth.PermissionActionPublish,
-			auth.PermissionActionEdit, auth.PermissionActionDelete, auth.PermissionActionDeploy,
+			auth.PermissionActionEditOwn, auth.PermissionActionEdit,
+			auth.PermissionActionDelete, auth.PermissionActionDeploy,
 		}, actions)
 	})
 

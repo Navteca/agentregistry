@@ -434,6 +434,10 @@ func (s *registryServiceImpl) updateServerInTransaction(ctx context.Context, tx 
 		return nil, err
 	}
 
+	if err := authorizeServerUpdate(ctx, serverName, currentServer); err != nil {
+		return nil, err
+	}
+
 	// Skip registry validation if:
 	// 1. Server is currently deleted, OR
 	// 2. Server is being set to deleted status
@@ -470,6 +474,53 @@ func (s *registryServiceImpl) updateServerInTransaction(ctx context.Context, tx 
 	}
 
 	return updatedServerResponse, nil
+}
+
+func authorizeServerUpdate(ctx context.Context, serverName string, currentServer *models.ServerResponse) error {
+	session, ok := auth.AuthSessionFrom(ctx)
+	if !ok || session == nil {
+		return auth.ErrUnauthenticated
+	}
+	if auth.IsSystemSession(session) {
+		return nil
+	}
+
+	user := session.Principal().User
+	if hasEffectivePermission(user, serverName, auth.PermissionActionEdit) {
+		return nil
+	}
+	if !hasEffectivePermission(user, serverName, auth.PermissionActionEditOwn) {
+		return auth.ErrForbidden
+	}
+
+	ownership := currentServer.Meta.Ownership
+	if ownership == nil || ownership.Subject == "" || user.Subject == "" || ownership.Subject != user.Subject {
+		return auth.ErrForbidden
+	}
+	if isArtifactReviewed(currentServer) {
+		return auth.ErrForbidden
+	}
+	return nil
+}
+
+func hasEffectivePermission(user auth.User, resource string, action auth.PermissionAction) bool {
+	if auth.HasPermission(resource, action, user.Permissions) {
+		return true
+	}
+	for _, permission := range user.Permissions {
+		// The admin sentinel clears authz.Check through IsRegistryAdmin, but
+		// HasPermission deliberately does not match it. Without this fallback,
+		// sentinel-only sessions would incorrectly enter owner narrowing.
+		if permission.Action == auth.PermissionActionAdmin && permission.ResourcePattern == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+func isArtifactReviewed(_ *models.ServerResponse) bool {
+	// AR-2 insertion point: replace this stub with the review-state predicate.
+	return false
 }
 
 func (s *registryServiceImpl) StoreServerReadme(ctx context.Context, serverName, version string, content []byte, contentType string) error {

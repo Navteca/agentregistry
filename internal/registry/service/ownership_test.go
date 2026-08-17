@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/agentregistry-dev/agentregistry/internal/registry/config"
@@ -35,6 +36,34 @@ func ownershipTestContext(subject, displayName string, method auth.Method) conte
 			DisplayName: displayName,
 		},
 	})
+}
+
+func ownershipPermissionContext(subject, displayName string, permissions []auth.Permission) context.Context {
+	return auth.AuthSessionTo(context.Background(), &ownershipTestSession{
+		user: auth.User{
+			Permissions: permissions,
+			AuthMethod:  auth.MethodOIDC,
+			Subject:     subject,
+			DisplayName: displayName,
+		},
+	})
+}
+
+func ownerEditPermissions() []auth.Permission {
+	return []auth.Permission{
+		{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+		{Action: auth.PermissionActionPublish, ResourcePattern: "*"},
+		{Action: auth.PermissionActionEditOwn, ResourcePattern: "*"},
+	}
+}
+
+func curatorEditPermissions() []auth.Permission {
+	return []auth.Permission{
+		{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+		{Action: auth.PermissionActionPublish, ResourcePattern: "*"},
+		{Action: auth.PermissionActionEdit, ResourcePattern: "*"},
+		{Action: auth.PermissionActionDelete, ResourcePattern: "*"},
+	}
 }
 
 func newOwnershipTestServer(name string) *apiv0.ServerJSON {
@@ -192,6 +221,7 @@ func TestCreateAgentIgnoresOwnershipShapedRequestData(t *testing.T) {
 				"authMethod": "request-method"
 			}
 		}
+
 	}`), &agent)
 	require.NoError(t, err)
 
@@ -378,5 +408,101 @@ func TestPromptOwnershipSurvivesLatestPromotion(t *testing.T) {
 		default:
 			t.Fatalf("unexpected prompt version %q", version.Prompt.Version)
 		}
+	}
+}
+
+func TestUpdateServerOwnerScopedEdit(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
+
+	tests := []struct {
+		name          string
+		ownerSubject  string
+		ownerName     string
+		editorSubject string
+		editorName    string
+		editorPerms   []auth.Permission
+		wantErr       error
+	}{
+		{
+			name:          "user updates own unreviewed artifact",
+			ownerSubject:  "owner-subject",
+			ownerName:     "Owner",
+			editorSubject: "owner-subject",
+			editorName:    "Owner",
+			editorPerms:   ownerEditPermissions(),
+		},
+		{
+			name:          "another subject is refused",
+			ownerSubject:  "owner-subject",
+			ownerName:     "Owner",
+			editorSubject: "other-subject",
+			editorName:    "Other",
+			editorPerms:   ownerEditPermissions(),
+			wantErr:       auth.ErrForbidden,
+		},
+		{
+			name:          "unowned artifact is refused",
+			ownerSubject:  "",
+			ownerName:     "",
+			editorSubject: "owner-subject",
+			editorName:    "Owner",
+			editorPerms:   ownerEditPermissions(),
+			wantErr:       auth.ErrForbidden,
+		},
+		{
+			name:          "curator updates another subject's artifact",
+			ownerSubject:  "owner-subject",
+			ownerName:     "Owner",
+			editorSubject: "curator-subject",
+			editorName:    "Curator",
+			editorPerms:   curatorEditPermissions(),
+		},
+		{
+			name:          "same display name with different subjects is refused",
+			ownerSubject:  "owner-subject",
+			ownerName:     "Shared Name",
+			editorSubject: "other-subject",
+			editorName:    "Shared Name",
+			editorPerms:   ownerEditPermissions(),
+			wantErr:       auth.ErrForbidden,
+		},
+		{
+			name:          "display name change does not lose owner rights",
+			ownerSubject:  "owner-subject",
+			ownerName:     "Old Name",
+			editorSubject: "owner-subject",
+			editorName:    "New Name",
+			editorPerms:   ownerEditPermissions(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			serverSuffix := "owner-edit-" + strings.ToLower(strings.NewReplacer(" ", "-", "'", "").Replace(tt.name))
+			serverName := "com.example/" + serverSuffix
+			ownerContext := ownershipPermissionContext(tt.ownerSubject, tt.ownerName, ownerEditPermissions())
+			if tt.ownerSubject == "" {
+				ownerContext = ownershipTestContext("anonymous", "Anonymous", auth.MethodNone)
+			}
+
+			_, err := registry.CreateServer(ownerContext, newOwnershipTestServer(serverSuffix))
+			require.NoError(t, err)
+
+			update := newOwnershipTestServer(serverSuffix)
+			update.Description = "Updated ownership test server"
+			editorContext := ownershipPermissionContext(tt.editorSubject, tt.editorName, tt.editorPerms)
+			updated, err := registry.UpdateServer(editorContext, serverName, "1.0.0", update, nil)
+
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.Nil(t, updated)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, updated)
+			assert.Equal(t, "Updated ownership test server", updated.Server.Description)
+		})
 	}
 }

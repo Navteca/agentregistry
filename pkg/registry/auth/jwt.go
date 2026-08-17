@@ -31,6 +31,7 @@ const (
 	PermissionActionRead    PermissionAction = "read"
 	PermissionActionPublish PermissionAction = "publish"
 	PermissionActionEdit    PermissionAction = "edit"
+	PermissionActionEditOwn PermissionAction = "edit_own"
 	PermissionActionDelete  PermissionAction = "delete"
 	PermissionActionDeploy  PermissionAction = "deploy"
 
@@ -207,6 +208,11 @@ func (j *JWTManager) ValidateToken(_ context.Context, tokenString string) (*JWTC
 }
 
 func (j *JWTManager) HasPermission(resource string, action PermissionAction, permissions []Permission) bool {
+	return HasPermission(resource, action, permissions)
+}
+
+// HasPermission reports whether permissions grant action on resource.
+func HasPermission(resource string, action PermissionAction, permissions []Permission) bool {
 	for _, perm := range permissions {
 		if perm.Action == action && isResourceMatch(resource, perm.ResourcePattern) {
 			return true

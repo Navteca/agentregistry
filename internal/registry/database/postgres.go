@@ -549,10 +549,7 @@ func (db *PostgreSQL) UpdateServer(ctx context.Context, tx pgx.Tx, serverName, v
 		return nil, ctx.Err()
 	}
 
-	if err := db.authz.Check(ctx, auth.PermissionActionEdit, auth.Resource{
-		Name: serverName,
-		Type: auth.PermissionArtifactTypeServer,
-	}); err != nil {
+	if err := db.checkServerEditPermission(ctx, serverName); err != nil {
 		return nil, err
 	}
 
@@ -608,16 +605,28 @@ func (db *PostgreSQL) UpdateServer(ctx context.Context, tx pgx.Tx, serverName, v
 	return serverResponse, nil
 }
 
+func (db *PostgreSQL) checkServerEditPermission(ctx context.Context, serverName string) error {
+	resource := auth.Resource{
+		Name: serverName,
+		Type: auth.PermissionArtifactTypeServer,
+	}
+
+	if err := db.authz.Check(ctx, auth.PermissionActionEdit, resource); err != nil {
+		if !errors.Is(err, auth.ErrForbidden) {
+			return err
+		}
+		return db.authz.Check(ctx, auth.PermissionActionEditOwn, resource)
+	}
+	return nil
+}
+
 // SetServerStatus updates the status of a specific server version
 func (db *PostgreSQL) SetServerStatus(ctx context.Context, tx pgx.Tx, serverName, version string, status string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
 
-	if err := db.authz.Check(ctx, auth.PermissionActionEdit, auth.Resource{
-		Name: serverName,
-		Type: auth.PermissionArtifactTypeServer,
-	}); err != nil {
+	if err := db.checkServerEditPermission(ctx, serverName); err != nil {
 		return nil, err
 	}
 

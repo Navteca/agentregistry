@@ -381,7 +381,7 @@ endif
 	    --set image.repository=$(DOCKER_REPO) \
 	    --set image.tag=$(VERSION) \
 	    --set config.jwtPrivateKey="$$JWT_KEY" \
-	    --set config.enableAnonymousAuth="true" \
+	    --set config.enableAnonymousAuth="false" \
 	    --set service.type=LoadBalancer \
 	    --set database.postgres.bundled.image.repository=pgvector \
 	    --set database.postgres.bundled.image.name=pgvector \

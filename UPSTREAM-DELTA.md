@@ -70,10 +70,14 @@ Conventions:
   `AGENT_REGISTRY_OIDC_*` ConfigMap entries.
 
 ### `pkg/registry/auth/jwt.go`
-- **Change:** Added a new `PermissionActionAdmin PermissionAction = "admin"`
+- **Change:** (1) Added a new `PermissionActionAdmin PermissionAction = "admin"`
   sentinel action. `GenerateTokenResponse`'s namespace-denylist bypass check
   now requires `perm.Action == PermissionActionAdmin && perm.ResourcePattern
   == "*"` instead of a bare `perm.ResourcePattern == "*"` on any action.
+- **AR-1:** Added `PermissionActionEditOwn PermissionAction = "edit_own"` and
+  exposed the existing resource-pattern matcher through the package-level
+  `HasPermission` helper so transactional owner checks reuse authorization
+  matching without changing the admin sentinel semantics.
 - **Reason:** Upstream's denylist bypass treated *any* permission with
   `ResourcePattern: "*"` as admin, regardless of its `Action`. A caller with
   only `{Action: publish, ResourcePattern: "*"}` (a legitimate "publish
@@ -148,6 +152,61 @@ Conventions:
 - **Change:** Retained `normalizeServerResponse` as a nil-safe pass-through for `models.ServerResponse`; removed semantic score extraction from publisher-provided metadata.
 - **Reason:** The database now supplies fork-local metadata directly, so handler conversion is no longer needed while existing handler call sites remain stable.
 - **Reapply after bump:** Change the normalizer input to the fork-local response and return its value unchanged, preserving the nil guard.
+
+### AR-1 — `internal/registry/api/handlers/v0/auth/oidc_roles.go`
+- **Change:** Added `edit_own` to the user permission bundle and updated the
+  bundle documentation.
+- **Reason:** Users need a distinct permission for owner-scoped edits without
+  receiving curator-level `edit`.
+- **Reapply after bump:** Add `PermissionActionEditOwn` to the user actions and
+  update the bundle documentation.
+
+### AR-1 — `internal/registry/api/handlers/v0/edit.go`
+- **Change:** Removed the admin-only wording from the server edit endpoint
+  description.
+- **Reason:** Unreviewed owner edits are now supported.
+- **Reapply after bump:** Update the endpoint description to describe general
+  server updates.
+
+### AR-1 — `internal/registry/database/postgres.go`
+- **Change:** Server update and status mutations accept either `edit` or
+  `edit_own` at the database authorization gate.
+- **Reason:** The database layer provides only the coarse edit-authority gate;
+  ownership and review narrowing belongs to the service transaction.
+- **Reapply after bump:** Use the same shared coarse edit check for both server
+  mutation methods.
+
+### AR-1 — `internal/registry/service/registry_service.go`
+- **Change:** Added transactional owner-scoped server update authorization,
+  comparing stable subjects and rejecting unowned or reviewed artifacts for
+  `edit_own`; added the `isArtifactReviewed` AR-2 stub. The
+  `IsSystemSession` branch preserves the existing internal-system authorization
+  bypass and does not grant new user authority.
+- **Reason:** The ownership decision must use the row fetched in the same
+  transaction as the write. Display names are never authorization inputs.
+- **Reapply after bump:** Add the narrowing check after the transactional
+  current-server fetch and retain the review predicate insertion point.
+
+### AR-1 — `internal/registry/service/ownership_test.go`
+- **Change:** Added PostgreSQL-backed coverage for owner edits, cross-subject
+  refusal, unowned artifacts, curator override, same-display-name subjects,
+  and display-name changes.
+- **Reason:** Verifies subject-only owner authorization and the curator
+  permission path.
+- **Reapply after bump:** Reapply the focused owner-scoped update tests.
+
+### AR-1 — `internal/registry/api/handlers/v0/auth/oidc_roles_test.go`
+- **Change:** Updated role-bundle expectations for the user-granted
+  `edit_own` permission.
+- **Reason:** Keeps role-mapping tests aligned with the new user bundle.
+- **Reapply after bump:** Reapply the `edit_own` expectations to role-bundle
+  tests.
+
+### AR-1 — `internal/registry/api/handlers/v0/auth/oidc_test.go`
+- **Change:** Updated mapped-user token exchange expectations for `edit_own`.
+- **Reason:** Verifies the new permission is carried into signed user tokens.
+- **Reapply after bump:** Reapply the `edit_own` expectation to the mapped-role
+  exchange test.
 
 ### `internal/registry/api/handlers/v0/scoring.go`
 - **Change:** Updated the server scoring persistence seam to accept `models.ServerResponse`.
