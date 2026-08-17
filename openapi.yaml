@@ -335,6 +335,26 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/ErrorModel'
+    /v0/auth/me:
+        get:
+            tags:
+                - auth
+            summary: Get the current principal
+            description: Returns the authenticated caller's subject, display name, and authentication method.
+            operationId: get-current-principal-v0
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CurrentPrincipalResponse'
+                default:
+                    description: Error
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorModel'
     /v0/config/frontend:
         get:
             tags:
@@ -1794,6 +1814,8 @@ components:
             type: object
             additionalProperties: false
             properties:
+                aregistry.ai/capabilities:
+                    $ref: '#/components/schemas/CapabilitiesMeta'
                 aregistry.ai/deployments:
                     $ref: '#/components/schemas/ResourceDeploymentsMeta'
                 aregistry.ai/ownership:
@@ -1903,6 +1925,17 @@ components:
                         $ref: '#/components/schemas/Input'
             required:
                 - type
+        CapabilitiesMeta:
+            type: object
+            additionalProperties: false
+            properties:
+                can_delete:
+                    type: boolean
+                can_update:
+                    type: boolean
+            required:
+                - can_update
+                - can_delete
         CategoryDetail:
             type: object
             additionalProperties: false
@@ -1950,6 +1983,20 @@ components:
             required:
                 - name
                 - platform
+        CurrentPrincipalResponse:
+            type: object
+            additionalProperties: false
+            properties:
+                auth_method:
+                    type: string
+                display_name:
+                    type: string
+                subject:
+                    type: string
+            required:
+                - subject
+                - display_name
+                - auth_method
         Deployment:
             type: object
             additionalProperties: false
@@ -2577,6 +2624,8 @@ components:
             type: object
             additionalProperties: false
             properties:
+                aregistry.ai/capabilities:
+                    $ref: '#/components/schemas/CapabilitiesMeta'
                 aregistry.ai/ownership:
                     $ref: '#/components/schemas/OwnershipMeta'
                 io.modelcontextprotocol.registry/official:
@@ -2893,6 +2942,8 @@ components:
             type: object
             additionalProperties: false
             properties:
+                aregistry.ai/capabilities:
+                    $ref: '#/components/schemas/CapabilitiesMeta'
                 aregistry.ai/deployments:
                     $ref: '#/components/schemas/ResourceDeploymentsMeta'
                 aregistry.ai/ownership:
@@ -3083,6 +3134,8 @@ components:
             type: object
             additionalProperties: false
             properties:
+                aregistry.ai/capabilities:
+                    $ref: '#/components/schemas/CapabilitiesMeta'
                 aregistry.ai/ownership:
                     $ref: '#/components/schemas/OwnershipMeta'
                 io.modelcontextprotocol.registry/official:

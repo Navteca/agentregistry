@@ -63,6 +63,7 @@ export type AgentResponse = {
 };
 
 export type AgentResponseMeta = {
+    'aregistry.ai/capabilities'?: CapabilitiesMeta;
     'aregistry.ai/deployments'?: ResourceDeploymentsMeta;
     'aregistry.ai/ownership'?: OwnershipMeta;
     'aregistry.ai/semantic'?: AgentSemanticMeta;
@@ -140,6 +141,11 @@ export type Argument = {
     };
 };
 
+export type CapabilitiesMeta = {
+    can_delete: boolean;
+    can_update: boolean;
+};
+
 export type CategoryDetail = {
     issues: Array<Issue>;
     rules_met: number;
@@ -156,6 +162,12 @@ export type CreateProviderInput = {
     id?: string;
     name: string;
     platform: string;
+};
+
+export type CurrentPrincipalResponse = {
+    auth_method: string;
+    display_name: string;
+    subject: string;
 };
 
 export type Deployment = {
@@ -546,6 +558,7 @@ export type PromptResponse = {
 };
 
 export type PromptResponseMeta = {
+    'aregistry.ai/capabilities'?: CapabilitiesMeta;
     'aregistry.ai/ownership'?: OwnershipMeta;
     'io.modelcontextprotocol.registry/official'?: PromptRegistryExtensions;
 };
@@ -714,6 +727,7 @@ export type ServerResponse = {
 };
 
 export type ServerResponseMeta = {
+    'aregistry.ai/capabilities'?: CapabilitiesMeta;
     'aregistry.ai/deployments'?: ResourceDeploymentsMeta;
     'aregistry.ai/ownership'?: OwnershipMeta;
     'aregistry.ai/semantic'?: ServerSemanticMeta;
@@ -803,6 +817,7 @@ export type SkillResponse = {
 };
 
 export type SkillResponseMeta = {
+    'aregistry.ai/capabilities'?: CapabilitiesMeta;
     'aregistry.ai/ownership'?: OwnershipMeta;
     'io.modelcontextprotocol.registry/official'?: SkillRegistryExtensions;
 };
@@ -1125,6 +1140,31 @@ export type ExchangeHttpTokenV0Responses = {
 };
 
 export type ExchangeHttpTokenV0Response = ExchangeHttpTokenV0Responses[keyof ExchangeHttpTokenV0Responses];
+
+export type GetCurrentPrincipalV0Data = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v0/auth/me';
+};
+
+export type GetCurrentPrincipalV0Errors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetCurrentPrincipalV0Error = GetCurrentPrincipalV0Errors[keyof GetCurrentPrincipalV0Errors];
+
+export type GetCurrentPrincipalV0Responses = {
+    /**
+     * OK
+     */
+    200: CurrentPrincipalResponse;
+};
+
+export type GetCurrentPrincipalV0Response = GetCurrentPrincipalV0Responses[keyof GetCurrentPrincipalV0Responses];
 
 export type GetFrontendConfigData = {
     body?: never;

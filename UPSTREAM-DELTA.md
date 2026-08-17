@@ -491,6 +491,47 @@ Conventions:
   using the `displayName`/`subject` fallback and `Unknown` placeholder; keep
   last-modified exclusive to the detail view.
 
+## AR-1B — Current principal endpoint
+
+### `internal/registry/api/handlers/v0/auth/main.go`
+- **Change:** Registers the authenticated current-principal endpoint alongside
+  the existing authentication endpoints.
+- **Reason:** Exposes the caller's subject, display name, and authentication
+  method to the frontend without returning permissions or deriving a role.
+- **Reapply after bump:** Register `RegisterCurrentPrincipalEndpoint` with the
+  existing authentication route registrations.
+
+### `openapi.yaml`
+- **Change:** Regenerated the API specification to include `GET /v0/auth/me`
+  and its identity response schema.
+- **Reason:** Keeps the checked-in API contract synchronized with the endpoint.
+- **Reapply after bump:** Regenerate the OpenAPI specification after registering
+  the current-principal endpoint.
+
+### `ui/lib/api/index.ts`
+- **Change:** Regenerated the TypeScript client barrel exports to include the
+  current-principal operation and response types.
+- **Reason:** Keeps the checked-in frontend client synchronized with the API
+  contract.
+- **Reapply after bump:** Run `make gen-client` after regenerating the OpenAPI
+  specification.
+
+### `ui/lib/api/sdk.gen.ts`
+- **Change:** Regenerated the TypeScript client operation for
+  `GET /v0/auth/me`.
+- **Reason:** Keeps the checked-in frontend client synchronized with the API
+  contract.
+- **Reapply after bump:** Run `make gen-client` after regenerating the OpenAPI
+  specification.
+
+### `ui/lib/api/types.gen.ts`
+- **Change:** Regenerated the TypeScript response and operation types for
+  `GET /v0/auth/me`.
+- **Reason:** Keeps the checked-in frontend client synchronized with the API
+  contract.
+- **Reapply after bump:** Run `make gen-client` after regenerating the OpenAPI
+  specification.
+
 ### AR-1 — `ui/components/agent-card.tsx`
 - **Change:** Scheme-allowlisted the artifact-supplied repository `href` with
   `getSafeHttpUrl`; rejected URLs remain visible as text without an anchor. The
