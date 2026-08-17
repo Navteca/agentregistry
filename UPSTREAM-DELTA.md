@@ -386,6 +386,6 @@ Conventions:
 - **Reapply after bump:** Reapply the focused prompt ownership database tests.
 
 ### AR-1 — `ui/components/server-detail.tsx`
-- **Change:** Scheme-allowlisted artifact-supplied website, repository, remote, and icon URLs before rendering them as links or images; rejected link values remain visible as text.
-- **Reason:** Closes the AR-1 criterion on URL scheme allowlisting. The pre-existing form validation was bypassable when artifacts were published directly through the API.
-- **Reapply after bump:** Retain the `getSafeHttpUrl` validation at every server detail URL and icon rendering site.
+- **Change:** Scheme-allowlisted artifact-supplied website, repository, remote, and icon URLs before rendering them as links or images; rejected link values remain visible as text. The server detail quick-info pills also show registered-by ownership and optional last-modified metadata.
+- **Reason:** Closes the AR-1 criterion on URL scheme allowlisting. The pre-existing form validation was bypassable when artifacts were published directly through the API. Ownership and modification metadata are displayed from typed response metadata without using presentation names as identity.
+- **Reapply after bump:** Retain the `getSafeHttpUrl` validation at every server detail URL and icon rendering site, and render ownership from `aregistry.ai/ownership` plus `official.updatedAt` in the quick-info pills.

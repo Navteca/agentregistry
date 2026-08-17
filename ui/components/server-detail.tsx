@@ -60,6 +60,8 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
 
   const { server: serverData, _meta } = selectedVersion
   const official = _meta?.['io.modelcontextprotocol.registry/official']
+  const ownership = _meta?.['aregistry.ai/ownership']
+  const registeredBy = ownership?.displayName || ownership?.subject
 
   const publisherProvided = serverData._meta?.['io.modelcontextprotocol.registry/publisher-provided'] as Record<string, unknown> | undefined
   const publisherMetadata = publisherProvided?.['aregistry.ai/metadata'] as Record<string, any> | undefined
@@ -172,6 +174,16 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
             <span className="flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded text-sm">
               <Calendar className="h-3 w-3 text-muted-foreground" />
               {formatDate(official.publishedAt)}
+            </span>
+          )}
+          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded text-sm">
+            <span className="text-muted-foreground">Registered by</span>
+            {registeredBy || <span className="text-muted-foreground">Unknown</span>}
+          </span>
+          {official?.updatedAt && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded text-sm">
+              <span className="text-muted-foreground">Last modified</span>
+              {formatDate(official.updatedAt)}
             </span>
           )}
           {serverData.websiteUrl && (

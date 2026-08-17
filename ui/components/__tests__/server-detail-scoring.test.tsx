@@ -74,6 +74,93 @@ function buildMockServerWithScoring(): ServerResponse & { allVersions?: ServerRe
 }
 
 describe("ServerDetail Score Tab - MCP Scoring", () => {
+  it("renders the ownership display name instead of the subject", () => {
+    const server = buildMockServer({
+      _meta: {
+        "io.modelcontextprotocol.registry/official": {
+          publishedAt: "2024-11-01T00:00:00Z",
+          updatedAt: "2025-08-20T00:00:00Z",
+          status: "active",
+          isLatest: true,
+        },
+        "aregistry.ai/ownership": {
+          displayName: "Ada Lovelace",
+          subject: "oidc-subject",
+        },
+      },
+    })
+
+    render(<ServerDetail server={server} />)
+
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument()
+    expect(screen.queryByText("oidc-subject")).not.toBeInTheDocument()
+  })
+
+  it("falls back to the ownership subject when the display name is empty", () => {
+    const server = buildMockServer({
+      _meta: {
+        "io.modelcontextprotocol.registry/official": {
+          publishedAt: "2024-11-01T00:00:00Z",
+          updatedAt: "2025-08-20T00:00:00Z",
+          status: "active",
+          isLatest: true,
+        },
+        "aregistry.ai/ownership": {
+          displayName: "",
+          subject: "github-user",
+        },
+      },
+    })
+
+    render(<ServerDetail server={server} />)
+
+    expect(screen.getByText("github-user")).toBeInTheDocument()
+  })
+
+  it("renders a placeholder when ownership is absent", () => {
+    render(<ServerDetail server={buildMockServer()} />)
+
+    expect(screen.getByText("Unknown")).toBeInTheDocument()
+  })
+
+  it("does not render a last-modified badge when updatedAt is absent", () => {
+    const server = buildMockServer({
+      _meta: {
+        "io.modelcontextprotocol.registry/official": {
+          publishedAt: "2024-11-01T00:00:00Z",
+          status: "active",
+          isLatest: true,
+        },
+      },
+    })
+
+    render(<ServerDetail server={server} />)
+
+    expect(screen.queryByText("Last modified")).not.toBeInTheDocument()
+  })
+
+  it("renders HTML in a display name as literal text", () => {
+    const server = buildMockServer({
+      _meta: {
+        "io.modelcontextprotocol.registry/official": {
+          publishedAt: "2024-11-01T00:00:00Z",
+          updatedAt: "2025-08-20T00:00:00Z",
+          status: "active",
+          isLatest: true,
+        },
+        "aregistry.ai/ownership": {
+          displayName: "<script>alert(1)</script>",
+          subject: "oidc-subject",
+        },
+      },
+    })
+
+    const { container } = render(<ServerDetail server={server} />)
+
+    expect(screen.getByText("<script>alert(1)</script>")).toBeInTheDocument()
+    expect(container.querySelector("script")).not.toBeInTheDocument()
+  })
+
   it("does not render a javascript website URL as a link", () => {
     const server = buildMockServer()
     server.server.websiteUrl = "javascript:alert(1)"
