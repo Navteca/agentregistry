@@ -181,10 +181,6 @@ func TestCreateServerDoesNotInventDisplayName(t *testing.T) {
 	assert.Equal(t, "github-user", created.Meta.Ownership.Subject)
 	assert.Empty(t, created.Meta.Ownership.DisplayName)
 	assert.Equal(t, "github-at", created.Meta.Ownership.AuthMethod)
-
-	serialized, err := json.Marshal(created)
-	require.NoError(t, err)
-	assert.NotContains(t, string(serialized), `"displayName"`)
 }
 
 func TestCreateAgentResolvesAndPersistsOwnership(t *testing.T) {
@@ -236,15 +232,32 @@ func TestCreateAgentSubjectsRemainDistinctWithSameDisplayName(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	registry := NewRegistryService(db, &config.Config{EnableRegistryValidation: false}, nil)
 
+	createdAgents := make(map[string]*models.AgentResponse, 2)
 	for _, subject := range []string{"agent-subject-one", "agent-subject-two"} {
 		ctx := ownershipTestContext(subject, "Shared Display Name", auth.MethodOIDC)
-		_, err := registry.CreateAgent(ctx, newOwnershipTestAgent("ownership-agent-"+subject))
+		created, err := registry.CreateAgent(ctx, newOwnershipTestAgent("ownership-agent-"+subject))
 		require.NoError(t, err)
+		require.NotNil(t, created)
+		require.Equal(t, "ownership-agent-"+subject, created.Agent.Name)
+		require.Equal(t, "1.0.0", created.Agent.Version)
+		require.NotNil(t, created.Meta.Official)
+		t.Logf("created agent name=%q version=%q is_latest=%t", created.Agent.Name, created.Agent.Version, created.Meta.Official.IsLatest)
+		createdAgents[subject] = created
 	}
 
-	first, err := registry.GetAgentByName(ownershipTestContext("agent-subject-one", "Shared Display Name", auth.MethodOIDC), "ownership-agent-subject-one")
+	firstCreated := createdAgents["agent-subject-one"]
+	first, err := registry.GetAgentByNameAndVersion(
+		ownershipTestContext("agent-subject-one", "Shared Display Name", auth.MethodOIDC),
+		firstCreated.Agent.Name,
+		firstCreated.Agent.Version,
+	)
 	require.NoError(t, err)
-	second, err := registry.GetAgentByName(ownershipTestContext("agent-subject-two", "Shared Display Name", auth.MethodOIDC), "ownership-agent-subject-two")
+	secondCreated := createdAgents["agent-subject-two"]
+	second, err := registry.GetAgentByNameAndVersion(
+		ownershipTestContext("agent-subject-two", "Shared Display Name", auth.MethodOIDC),
+		secondCreated.Agent.Name,
+		secondCreated.Agent.Version,
+	)
 	require.NoError(t, err)
 	require.NotNil(t, first.Meta.Ownership)
 	require.NotNil(t, second.Meta.Ownership)

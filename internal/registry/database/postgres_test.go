@@ -400,6 +400,7 @@ func TestPostgreSQL_ListServers(t *testing.T) {
 func TestPostgreSQL_UpdateServer(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	ctx := context.Background()
+	setupCtx := internaldb.WithTestSession(ctx)
 
 	// Setup test data
 	serverName := "com.example/update-test-server"
@@ -416,7 +417,7 @@ func TestPostgreSQL_UpdateServer(t *testing.T) {
 		IsLatest:    true,
 	}
 
-	_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta, models.OwnershipInput{})
+	_, err := db.CreateServer(setupCtx, nil, serverJSON, officialMeta, models.OwnershipInput{})
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -967,8 +968,8 @@ func TestPostgreSQL_UpdateDeploymentState_UsesID(t *testing.T) {
 		Origin:       "managed",
 	}
 
-	require.NoError(t, db.CreateDeployment(ctx, nil, first))
-	require.NoError(t, db.CreateDeployment(ctx, nil, second))
+	require.NoError(t, db.CreateDeployment(ctxWithAuth, nil, first))
+	require.NoError(t, db.CreateDeployment(ctxWithAuth, nil, second))
 
 	require.NoError(t, db.UpdateDeploymentState(ctxWithAuth, nil, first.ID, &models.DeploymentStatePatch{
 		Status: stringPtr("failed"),

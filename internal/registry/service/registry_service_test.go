@@ -531,17 +531,28 @@ func TestCreateServerConcurrentVersionsNoRace(t *testing.T) {
 func TestUpdateServer(t *testing.T) {
 	ctx := context.Background()
 	testDB := internaldb.NewTestDB(t)
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	service := NewRegistryService(testDB, &config.Config{
+		EnableRegistryValidation:       false,
+		ValidateRepositoryReachability: false,
+	}, nil)
+	ctxWithAuth := internaldb.WithTestSession(ctx)
+	// Reachability validation is disabled in this test config; keep this deliberately
+	// non-existent fixture URL so the test never depends on a live repository.
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	serverName := "com.example/update-test-server"
 	version := "1.0.0"
 
 	// Create initial server
-	_, err := service.CreateServer(ctx, &apiv0.ServerJSON{
+	_, err := service.CreateServer(ctxWithAuth, &apiv0.ServerJSON{
 		Schema:      model.CurrentSchemaURL,
 		Name:        serverName,
 		Description: "Original description",
 		Version:     version,
+		Repository:  fixtureRepository,
 		Remotes: []model.Transport{
 			{Type: "streamable-http", URL: "https://original.example.com/mcp"},
 		},
@@ -567,6 +578,7 @@ func TestUpdateServer(t *testing.T) {
 				Name:        serverName,
 				Description: "Updated description",
 				Version:     version,
+				Repository:  fixtureRepository,
 				Remotes: []model.Transport{
 					{Type: "streamable-http", URL: "https://updated.example.com/mcp"},
 				},
@@ -589,6 +601,7 @@ func TestUpdateServer(t *testing.T) {
 				Name:        serverName,
 				Description: "Updated with status change",
 				Version:     version,
+				Repository:  fixtureRepository,
 			},
 			newStatus:   stringPtr(string(model.StatusDeprecated)),
 			expectError: false,
@@ -607,6 +620,7 @@ func TestUpdateServer(t *testing.T) {
 				Name:        "com.example/non-existent",
 				Description: "Should fail",
 				Version:     "1.0.0",
+				Repository:  fixtureRepository,
 			},
 			expectError: true,
 			errorMsg:    "record not found",
@@ -615,7 +629,6 @@ func TestUpdateServer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctxWithAuth := internaldb.WithTestSession(ctx)
 			result, err := service.UpdateServer(ctxWithAuth, tt.serverName, tt.version, tt.updatedServer, tt.newStatus)
 
 			if tt.expectError {
@@ -639,7 +652,17 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 	ctx := context.Background()
 	testDB := internaldb.NewTestDB(t)
 	// Enable registry validation to test that it gets skipped for deleted servers
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: true}, nil)
+	service := NewRegistryService(testDB, &config.Config{
+		EnableRegistryValidation:       true,
+		ValidateRepositoryReachability: false,
+	}, nil)
+	ctxWithAuth := internaldb.WithTestSession(ctx)
+	// Reachability validation is disabled in this test config; keep this deliberately
+	// non-existent fixture URL so the test never depends on a live repository.
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	serverName := "com.example/validation-skip-test"
 	version := "1.0.0"
@@ -650,6 +673,7 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 		Name:        serverName,
 		Description: "Server with invalid package for testing validation skip",
 		Version:     version,
+		Repository:  fixtureRepository,
 		Packages: []model.Package{
 			{
 				RegistryType: "npm",
@@ -663,18 +687,17 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 	// Create initial server (validation disabled for creation in this test)
 	originalConfig := service.(*registryServiceImpl).cfg.EnableRegistryValidation
 	service.(*registryServiceImpl).cfg.EnableRegistryValidation = false
-	_, err := service.CreateServer(ctx, invalidServer)
+	_, err := service.CreateServer(ctxWithAuth, invalidServer)
 	require.NoError(t, err, "failed to create server with validation disabled")
 	service.(*registryServiceImpl).cfg.EnableRegistryValidation = originalConfig
 
 	// First, set server to deleted status
-	ctxWithAuth := internaldb.WithTestSession(ctx)
 	deletedStatus := string(model.StatusDeleted)
 	_, err = service.UpdateServer(ctxWithAuth, serverName, version, invalidServer, &deletedStatus)
 	require.NoError(t, err, "should be able to set server to deleted (validation should be skipped)")
 
 	// Verify server is now deleted
-	updatedServer, err := service.GetServerByNameAndVersion(ctx, serverName, version)
+	updatedServer, err := service.GetServerByNameAndVersion(ctxWithAuth, serverName, version)
 	require.NoError(t, err)
 	assert.Equal(t, model.StatusDeleted, updatedServer.Meta.Official.Status)
 
@@ -684,6 +707,7 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 		Name:        serverName,
 		Description: "Updated description for deleted server",
 		Version:     version,
+		Repository:  fixtureRepository,
 		Packages: []model.Package{
 			{
 				RegistryType: "npm",
@@ -707,6 +731,7 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 		Name:        "com.example/being-deleted-test",
 		Description: "Server being deleted",
 		Version:     "1.0.0",
+		Repository:  fixtureRepository,
 		Packages: []model.Package{
 			{
 				RegistryType: "npm",
@@ -719,7 +744,7 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 
 	// Create active server (with validation disabled)
 	service.(*registryServiceImpl).cfg.EnableRegistryValidation = false
-	_, err = service.CreateServer(ctx, activeServer)
+	_, err = service.CreateServer(ctxWithAuth, activeServer)
 	require.NoError(t, err)
 	service.(*registryServiceImpl).cfg.EnableRegistryValidation = originalConfig
 

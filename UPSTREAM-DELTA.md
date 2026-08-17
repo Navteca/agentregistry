@@ -208,6 +208,30 @@ Conventions:
 - **Reapply after bump:** Reapply the `edit_own` expectation to the mapped-role
   exchange test.
 
+### AR-1 — `internal/registry/database/postgres_test.go`
+- **Change:** Authenticated setup contexts are used for server and deployment
+  fixture creation.
+- **Reason:** Authentication is mandatory after the upstream `PublicActions`
+  regression fix; these fixtures are not testing anonymous access.
+- **Reapply after bump:** Use `database.WithTestSession` for setup mutations.
+
+### AR-1 — `internal/registry/api/handlers/v0/edit_test.go`
+- **Change:** Authenticated setup contexts are used for all server fixture
+  creation.
+- **Reason:** The endpoint tests exercise authenticated edit behavior and must
+  not rely on the removed sessionless public actions.
+- **Reapply after bump:** Use the existing `database.WithTestSession` helper
+  for setup creates.
+
+### AR-1 — `internal/registry/service/registry_service_test.go`
+- **Change:** Server update fixtures now include a deliberately non-existent,
+  structurally valid fixture repository URL, disable repository reachability,
+  and use the shared authenticated test session for setup.
+- **Reason:** Structural repository validation remains required, while tests
+  must not make live network requests; setup mutations also require auth.
+- **Reapply after bump:** Preserve the fixture-only repository and
+  `WithTestSession` setup context.
+
 ### `internal/registry/api/handlers/v0/scoring.go`
 - **Change:** Updated the server scoring persistence seam to accept `models.ServerResponse`.
 - **Reason:** The scoring endpoint consumes the migrated service response type.

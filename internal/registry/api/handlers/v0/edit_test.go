@@ -34,8 +34,9 @@ func TestEditServerEndpoint(t *testing.T) {
 	_, err := rand.Read(testSeed)
 	require.NoError(t, err)
 	cfg := &config.Config{
-		JWTPrivateKey:            hex.EncodeToString(testSeed),
-		EnableRegistryValidation: false,
+		JWTPrivateKey:                  hex.EncodeToString(testSeed),
+		EnableRegistryValidation:       false,
+		ValidateRepositoryReachability: false,
 	}
 
 	// Create registry service and test data
@@ -71,8 +72,9 @@ func TestEditServerEndpoint(t *testing.T) {
 	}
 
 	// Create the test servers
+	ctxWithAuth := database.WithTestSession(context.Background())
 	for _, server := range testServers {
-		_, err := registryService.CreateServer(context.Background(), server)
+		_, err := registryService.CreateServer(ctxWithAuth, server)
 		require.NoError(t, err)
 	}
 
@@ -88,11 +90,10 @@ func TestEditServerEndpoint(t *testing.T) {
 			ID:     "testuser/deleted-server",
 		},
 	}
-	_, err = registryService.CreateServer(context.Background(), deletedServer)
+	_, err = registryService.CreateServer(ctxWithAuth, deletedServer)
 	require.NoError(t, err)
 
 	// Set the server to deleted status
-	ctxWithAuth := database.WithTestSession(context.Background())
 	_, err = registryService.UpdateServer(ctxWithAuth, deletedServer.Name, deletedServer.Version, deletedServer, stringPtr(string(model.StatusDeleted)))
 	require.NoError(t, err)
 
@@ -108,7 +109,7 @@ func TestEditServerEndpoint(t *testing.T) {
 			ID:     "testuser/build-metadata-server",
 		},
 	}
-	_, err = registryService.CreateServer(context.Background(), buildMetadataServer)
+	_, err = registryService.CreateServer(ctxWithAuth, buildMetadataServer)
 	require.NoError(t, err)
 
 	testCases := []struct {
@@ -131,6 +132,7 @@ func TestEditServerEndpoint(t *testing.T) {
 				AuthMethod:        auth.MethodGitHubAT,
 				AuthMethodSubject: "testuser",
 				Permissions: []auth.Permission{
+					{Action: auth.PermissionActionRead, ResourcePattern: "io.github.testuser/*"},
 					{Action: auth.PermissionActionEdit, ResourcePattern: "io.github.testuser/*"},
 				},
 			},
@@ -162,6 +164,7 @@ func TestEditServerEndpoint(t *testing.T) {
 				AuthMethod:        auth.MethodGitHubAT,
 				AuthMethodSubject: "testuser",
 				Permissions: []auth.Permission{
+					{Action: auth.PermissionActionRead, ResourcePattern: "io.github.testuser/*"},
 					{Action: auth.PermissionActionEdit, ResourcePattern: "io.github.testuser/*"},
 				},
 			},
@@ -170,6 +173,11 @@ func TestEditServerEndpoint(t *testing.T) {
 				Name:        "io.github.testuser/editable-server",
 				Description: "Server with status change",
 				Version:     "1.0.0",
+				Repository: &model.Repository{
+					// Reachability validation is off; this deliberately nonexistent URL keeps the fixture offline.
+					URL:    "https://github.com/fixture-owner/fixture-repository",
+					Source: "git",
+				},
 			},
 			statusParam:    "deprecated",
 			expectedStatus: http.StatusOK,
@@ -269,6 +277,7 @@ func TestEditServerEndpoint(t *testing.T) {
 				AuthMethod:        auth.MethodGitHubAT,
 				AuthMethodSubject: "testuser",
 				Permissions: []auth.Permission{
+					{Action: auth.PermissionActionRead, ResourcePattern: "io.github.testuser/*"},
 					{Action: auth.PermissionActionEdit, ResourcePattern: "io.github.testuser/*"},
 				},
 			},
@@ -289,6 +298,7 @@ func TestEditServerEndpoint(t *testing.T) {
 				AuthMethod:        auth.MethodGitHubAT,
 				AuthMethodSubject: "testuser",
 				Permissions: []auth.Permission{
+					{Action: auth.PermissionActionRead, ResourcePattern: "io.github.testuser/*"},
 					{Action: auth.PermissionActionEdit, ResourcePattern: "io.github.testuser/*"},
 				},
 			},
@@ -309,6 +319,7 @@ func TestEditServerEndpoint(t *testing.T) {
 				AuthMethod:        auth.MethodGitHubAT,
 				AuthMethodSubject: "testuser",
 				Permissions: []auth.Permission{
+					{Action: auth.PermissionActionRead, ResourcePattern: "io.github.testuser/*"},
 					{Action: auth.PermissionActionEdit, ResourcePattern: "io.github.testuser/*"},
 				},
 			},
@@ -329,6 +340,7 @@ func TestEditServerEndpoint(t *testing.T) {
 				AuthMethod:        auth.MethodGitHubAT,
 				AuthMethodSubject: "testuser",
 				Permissions: []auth.Permission{
+					{Action: auth.PermissionActionRead, ResourcePattern: "io.github.testuser/*"},
 					{Action: auth.PermissionActionEdit, ResourcePattern: "io.github.testuser/*"},
 				},
 			},
@@ -350,6 +362,7 @@ func TestEditServerEndpoint(t *testing.T) {
 				AuthMethod:        auth.MethodGitHubAT,
 				AuthMethodSubject: "testuser",
 				Permissions: []auth.Permission{
+					{Action: auth.PermissionActionRead, ResourcePattern: "io.github.testuser/*"},
 					{Action: auth.PermissionActionEdit, ResourcePattern: "io.github.testuser/*"},
 				},
 			},
