@@ -1219,7 +1219,7 @@ paths:
                 - servers
                 - admin
             summary: Edit MCP server
-            description: Update a specific version of an existing MCP server (admin only).
+            description: Update a specific version of an existing MCP server.
             operationId: edit-server-v0
             parameters:
                 - name: serverName
@@ -1796,6 +1796,8 @@ components:
             properties:
                 aregistry.ai/deployments:
                     $ref: '#/components/schemas/ResourceDeploymentsMeta'
+                aregistry.ai/ownership:
+                    $ref: '#/components/schemas/OwnershipMeta'
                 aregistry.ai/semantic:
                     $ref: '#/components/schemas/AgentSemanticMeta'
                 io.modelcontextprotocol.registry/official:
@@ -2143,6 +2145,8 @@ components:
             type: object
             additionalProperties: false
             properties:
+                anonymous_auth_enabled:
+                    type: boolean
                 api_base_url:
                     type: string
                 gateway_base_url:
@@ -2157,6 +2161,7 @@ components:
                 - keycloak_url
                 - keycloak_realm
                 - keycloak_client_id
+                - anonymous_auth_enabled
         GitHubOIDCTokenExchangeInputBody:
             type: object
             additionalProperties: false
@@ -2400,6 +2405,18 @@ components:
             required:
                 - type
                 - name
+        OwnershipMeta:
+            type: object
+            additionalProperties: false
+            properties:
+                authMethod:
+                    type: string
+                displayName:
+                    type: string
+                subject:
+                    type: string
+            required:
+                - subject
         Package:
             type: object
             additionalProperties: false
@@ -2560,6 +2577,8 @@ components:
             type: object
             additionalProperties: false
             properties:
+                aregistry.ai/ownership:
+                    $ref: '#/components/schemas/OwnershipMeta'
                 io.modelcontextprotocol.registry/official:
                     $ref: '#/components/schemas/PromptRegistryExtensions'
         Provider:
@@ -2876,6 +2895,8 @@ components:
             properties:
                 aregistry.ai/deployments:
                     $ref: '#/components/schemas/ResourceDeploymentsMeta'
+                aregistry.ai/ownership:
+                    $ref: '#/components/schemas/OwnershipMeta'
                 aregistry.ai/semantic:
                     $ref: '#/components/schemas/ServerSemanticMeta'
                 io.modelcontextprotocol.registry/official:
@@ -3062,6 +3083,8 @@ components:
             type: object
             additionalProperties: false
             properties:
+                aregistry.ai/ownership:
+                    $ref: '#/components/schemas/OwnershipMeta'
                 io.modelcontextprotocol.registry/official:
                     $ref: '#/components/schemas/SkillRegistryExtensions'
         TokenResponse:

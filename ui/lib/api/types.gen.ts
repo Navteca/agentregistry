@@ -64,6 +64,7 @@ export type AgentResponse = {
 
 export type AgentResponseMeta = {
     'aregistry.ai/deployments'?: ResourceDeploymentsMeta;
+    'aregistry.ai/ownership'?: OwnershipMeta;
     'aregistry.ai/semantic'?: AgentSemanticMeta;
     'io.modelcontextprotocol.registry/official'?: AgentRegistryExtensions;
 };
@@ -282,6 +283,7 @@ export type ErrorModel = {
 };
 
 export type FrontendConfigBody = {
+    anonymous_auth_enabled: boolean;
     api_base_url?: string;
     gateway_base_url?: string;
     keycloak_client_id: string;
@@ -451,6 +453,12 @@ export type McpServerType = {
     url?: string;
 };
 
+export type OwnershipMeta = {
+    authMethod?: string;
+    displayName?: string;
+    subject: string;
+};
+
 export type Package = {
     /**
      * A mapping of environment variables to be set when running the package.
@@ -538,6 +546,7 @@ export type PromptResponse = {
 };
 
 export type PromptResponseMeta = {
+    'aregistry.ai/ownership'?: OwnershipMeta;
     'io.modelcontextprotocol.registry/official'?: PromptRegistryExtensions;
 };
 
@@ -706,6 +715,7 @@ export type ServerResponse = {
 
 export type ServerResponseMeta = {
     'aregistry.ai/deployments'?: ResourceDeploymentsMeta;
+    'aregistry.ai/ownership'?: OwnershipMeta;
     'aregistry.ai/semantic'?: ServerSemanticMeta;
     'io.modelcontextprotocol.registry/official'?: RegistryExtensions;
 };
@@ -793,6 +803,7 @@ export type SkillResponse = {
 };
 
 export type SkillResponseMeta = {
+    'aregistry.ai/ownership'?: OwnershipMeta;
     'io.modelcontextprotocol.registry/official'?: SkillRegistryExtensions;
 };
 
