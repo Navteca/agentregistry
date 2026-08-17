@@ -581,6 +581,61 @@ Conventions:
   last-modified exclusive to the detail view and do not add URL handling unless
   prompt cards gain artifact-supplied URLs.
 
+## AR-1B Task 6 — Conditional catalog controls
+
+### `ui/lib/capabilities.ts`
+- **Change:** Added the exported strict `capabilityFlags` mapper, which turns
+  the optional response capability block into the three existing catalog-card
+  control flags and hides controls unless each field is exactly `true`.
+- **Reason:** Centralizes the response-to-control mapping so page and component
+  tests exercise the same rule without duplicating it.
+- **Reapply after bump:** Preserve the strict `=== true` mapping for update,
+  delete, and deploy.
+
+### `ui/app/page.tsx`
+- **Change:** Server card Edit, Remove, and Deploy props, plus agent card
+  Deploy props, now use the shared strict `capabilityFlags` mapper.
+- **Reason:** Makes catalog controls reflect backend-provided caller
+  capabilities without deriving permissions client-side. Existing deploy
+  artifact-content checks and disabled-state messages remain in the cards.
+- **Reapply after bump:** Gate only the existing server and agent card props
+  with `capabilities?.can_update === true`,
+  `capabilities?.can_delete === true`, and
+  `capabilities?.can_deploy === true`; do not wire dormant skill controls.
+
+### `ui/components/__tests__/server-card.test.tsx`
+- **Change:** Added coverage for all capability combinations, absent metadata,
+  permitted deploy without an OCI package, and denied deploy without an OCI
+  package.
+- **Reason:** Verifies permission absence hides Deploy while permitted but
+  content-ineligible artifacts retain the existing disabled Deploy affordance.
+- **Reapply after bump:** Preserve the explicit capability and OCI
+  permission/content state assertions.
+
+### `ui/components/__tests__/agent-card.test.tsx`
+- **Change:** Added coverage that agent Deploy renders only when
+  `can_deploy` is true.
+- **Reason:** Verifies agent deployment controls use the response capability.
+- **Reapply after bump:** Preserve the true/false deploy capability cases.
+
+### `ui/app/__tests__/page-edit-flow.test.tsx`
+- **Change:** Updated the page card mock to honor control props and added
+  coverage for forwarding all server capability flags and hiding controls when
+  the capability block is absent. The test uses the shared mapper for expected
+  flags.
+- **Reason:** Verifies page-level wiring, including the required unknown-means
+  hidden behavior.
+- **Reapply after bump:** Keep the mock prop behavior and page wiring tests
+  synchronized with catalog capability gating.
+
+### `ui/lib/__tests__/capabilities.test.ts`
+- **Change:** Added direct coverage for all-true, all-false, mixed, absent,
+  empty, and partially populated capability metadata.
+- **Reason:** Locks down strict explicit-true behavior at the single mapping
+  seam.
+- **Reapply after bump:** Preserve the direct mapper cases, especially missing
+  fields.
+
 ## AR-1B Task 5B — Deploy capability
 
 ### `pkg/models/capabilities.go`

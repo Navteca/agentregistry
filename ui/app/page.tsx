@@ -43,6 +43,7 @@ import { AddPromptDialog } from "@/components/add-prompt-dialog"
 import { DeployDialog } from "@/components/deploy-dialog"
 import { EditServerDialog } from "@/components/edit-server-dialog"
 import { deleteServerVersionV0, listServersV0, listSkillsV0, listAgentsV0, listPromptsV0, ServerResponse, SkillResponse, AgentResponse, PromptResponse } from "@/lib/admin-api"
+import { capabilityFlags } from "@/lib/capabilities"
 import { toast } from "sonner"
 import MCPIcon from "@/components/icons/mcp"
 import {
@@ -681,11 +682,9 @@ export default function AdminPage() {
                     server={server}
                     versionCount={server.versionCount}
                     onClick={() => setSelectedServer(server)}
-                    showDeploy
-                    showEdit
+                    {...capabilityFlags(server._meta?.['aregistry.ai/capabilities'])}
                     onDeploy={(s) => setDeployServerTarget(s)}
                     onEdit={(s) => setEditServerTarget(s)}
-                    showDelete
                     onDelete={() => setServerToRemove(server)}
                   />
                 ))}
@@ -739,7 +738,7 @@ export default function AdminPage() {
                     agent={agent}
                     versionCount={agent.versionCount}
                     onClick={() => setSelectedAgent(agent)}
-                    showDeploy
+                    showDeploy={capabilityFlags(agent._meta?.['aregistry.ai/capabilities']).showDeploy}
                     onDeploy={(a) => setDeployAgentTarget(a)}
                   />
                 ))}
