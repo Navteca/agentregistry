@@ -713,3 +713,44 @@ Conventions:
   reviewer identity snapshots, and the two query-supporting indexes. If
   upstream later adds migrations in this namespace, choose the next unused base
   version without renumbering the fork-owned migrations.
+
+## AR-2 Task 2 — Configured review vocabulary
+
+### `.env.example`
+- **Change:** Documented the review type and outcome environment variables and
+  their shipped defaults.
+- **Reason:** Makes the deployment configuration surface discoverable without
+  changing the defaults or validation behavior.
+- **Reapply after bump:** Preserve the `REVIEW_TYPES` and `REVIEW_OUTCOMES`
+  examples alongside the other application settings.
+
+### `internal/registry/config/config.go`
+- **Change:** Added environment-configured review type and outcome lists with
+  defaults of `security,scientific` and `pass,fail`. Added in-place
+  normalization during validation and the single `ReviewConfig()` accessor with
+  ordered list and membership methods.
+- **Reason:** Makes the review vocabulary deployment-configurable while keeping
+  downstream consumers off the raw configuration slices. The service already
+  receives `*config.Config` at construction, so the accessor is available to
+  certification and API logic.
+- **Reapply after bump:** Preserve the `REVIEW_TYPES` and `REVIEW_OUTCOMES`
+  fields, defaults, and `ReviewConfig()` accessor.
+
+### `internal/registry/config/validate.go`
+- **Change:** Added startup validation for non-empty, unique review types and
+  outcomes. Entries are trimmed and must match the ASCII identifier pattern
+  `[A-Za-z][A-Za-z0-9_-]*`.
+- **Reason:** Rejects malformed review vocabulary during the existing
+  fail-fast configuration validation path rather than at request time.
+  The pattern deliberately excludes dots and slashes so configured values stay safe to use as JSON keys and URL segments, which rules out namespaced names like nasa.export-control.
+- **Reapply after bump:** Preserve first-error validation behavior and the
+  identifier allowlist.
+
+### `internal/registry/config/config_test.go`
+- **Change:** Added coverage for default and configured ordering, accessor
+  membership, explicit default values, in-place normalization, empty lists,
+  duplicates, whitespace-only values, and malformed entries.
+- **Reason:** Locks validation to startup configuration behavior and ensures
+  invalid vocabularies cannot reach downstream review logic.
+- **Reapply after bump:** Preserve the default, ordering, membership, and
+  invalid-input cases.

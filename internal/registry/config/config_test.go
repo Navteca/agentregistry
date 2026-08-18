@@ -73,3 +73,100 @@ func TestNewConfig_OIDCRolePatternsDefaultToEmpty(t *testing.T) {
 			cfg.OIDCUserPatterns, cfg.OIDCCuratorPatterns, cfg.OIDCAdminPatterns)
 	}
 }
+
+func TestNewConfig_ExplicitReviewDefaults(t *testing.T) {
+	t.Setenv("AGENT_REGISTRY_REVIEW_TYPES", "security,scientific")
+	t.Setenv("AGENT_REGISTRY_REVIEW_OUTCOMES", "pass,fail")
+
+	cfg := NewConfig()
+	if got := cfg.ReviewConfig().Types(); !equalStrings(got, []string{"security", "scientific"}) {
+		t.Fatalf("review types default = %v, want [security scientific]", got)
+	}
+	if got := cfg.ReviewConfig().Outcomes(); !equalStrings(got, []string{"pass", "fail"}) {
+		t.Fatalf("review outcomes default = %v, want [pass fail]", got)
+	}
+}
+
+func TestReviewConfig_ConfiguredValuesPreserveOrder(t *testing.T) {
+	t.Setenv("AGENT_REGISTRY_REVIEW_TYPES", "security,scientific,export-control")
+	t.Setenv("AGENT_REGISTRY_REVIEW_OUTCOMES", "pass,fail,conditional")
+
+	cfg := NewConfig()
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	settings := cfg.ReviewConfig()
+	if got := settings.Types(); !equalStrings(got, []string{"security", "scientific", "export-control"}) {
+		t.Fatalf("review types = %v, want configured order", got)
+	}
+	if got := settings.Outcomes(); !equalStrings(got, []string{"pass", "fail", "conditional"}) {
+		t.Fatalf("review outcomes = %v, want configured order", got)
+	}
+	if !settings.HasType("scientific") || settings.HasType("missing") {
+		t.Fatal("HasType() did not match configured values")
+	}
+	if !settings.HasOutcome("pass") || settings.HasOutcome("pending") {
+		t.Fatal("HasOutcome() did not match configured values")
+	}
+}
+
+func TestValidate_NormalizesReviewValuesInPlace(t *testing.T) {
+	cfg := &Config{
+		ReviewTypes:    []string{" security ", "scientific"},
+		ReviewOutcomes: []string{" pass ", "fail"},
+	}
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	if !equalStrings(cfg.ReviewTypes, []string{"security", "scientific"}) {
+		t.Fatalf("normalized review types = %v", cfg.ReviewTypes)
+	}
+	if !equalStrings(cfg.ReviewOutcomes, []string{"pass", "fail"}) {
+		t.Fatalf("normalized review outcomes = %v", cfg.ReviewOutcomes)
+	}
+	if got := cfg.ReviewConfig().Types(); !equalStrings(got, cfg.ReviewTypes) {
+		t.Fatalf("accessor review types = %v, fields = %v", got, cfg.ReviewTypes)
+	}
+	if got := cfg.ReviewConfig().Outcomes(); !equalStrings(got, cfg.ReviewOutcomes) {
+		t.Fatalf("accessor review outcomes = %v, fields = %v", got, cfg.ReviewOutcomes)
+	}
+}
+
+func TestValidate_ReviewValues(t *testing.T) {
+	tests := []struct {
+		name     string
+		types    []string
+		outcomes []string
+	}{
+		{name: "empty review types", types: []string{}, outcomes: []string{"pass"}},
+		{name: "empty outcomes", types: []string{"security"}, outcomes: []string{}},
+		{name: "duplicate review type", types: []string{"security", "security"}, outcomes: []string{"pass"}},
+		{name: "duplicate outcome", types: []string{"security"}, outcomes: []string{"pass", "pass"}},
+		{name: "whitespace-only review type", types: []string{"   "}, outcomes: []string{"pass"}},
+		{name: "malformed outcome", types: []string{"security"}, outcomes: []string{"not valid"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{ReviewTypes: tt.types, ReviewOutcomes: tt.outcomes}
+			if err := Validate(cfg); err == nil {
+				t.Fatal("Validate() error = nil, want validation failure")
+			}
+		})
+	}
+}
+
+func equalStrings(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}

@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"os"
+	"slices"
+	"strings"
 
 	env "github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
@@ -28,6 +30,11 @@ type Config struct {
 	EnableRegistryValidation       bool   `env:"ENABLE_REGISTRY_VALIDATION" envDefault:"true"`
 	ValidateRepositoryReachability bool   `env:"VALIDATE_REPOSITORY_REACHABILITY" envDefault:"true"`
 	LogLevel                       string `env:"LOG_LEVEL" envDefault:"info"`
+
+	// Review configuration. Values are ASCII identifiers beginning with a
+	// letter and continuing with letters, digits, hyphens, or underscores.
+	ReviewTypes    []string `env:"REVIEW_TYPES" envDefault:"security,scientific"`
+	ReviewOutcomes []string `env:"REVIEW_OUTCOMES" envDefault:"pass,fail"`
 
 	// Frontend OIDC Configuration (served at runtime via GET /v0/config/frontend)
 	KeycloakURL        string `env:"KEYCLOAK_URL" envDefault:""`
@@ -105,6 +112,49 @@ type EmbeddingsConfig struct {
 	OpenAIBaseURL string `env:"OPENAI_BASE_URL" envDefault:"https://api.openai.com/v1"`
 	OpenAIOrg     string `env:"OPENAI_ORG" envDefault:""`
 	OnPublish     bool   `env:"EMBEDDINGS_ON_PUBLISH" envDefault:"false"`
+}
+
+// ReviewSettings exposes the validated review vocabulary to downstream
+// services without exposing the raw configuration slices.
+type ReviewSettings struct {
+	reviewTypes []string
+	outcomes    []string
+}
+
+// Types returns the configured review types in their configured order.
+func (s ReviewSettings) Types() []string {
+	return slices.Clone(s.reviewTypes)
+}
+
+// Outcomes returns the configured outcomes in their configured order.
+func (s ReviewSettings) Outcomes() []string {
+	return slices.Clone(s.outcomes)
+}
+
+// HasType reports whether reviewType is configured.
+func (s ReviewSettings) HasType(reviewType string) bool {
+	return slices.Contains(s.reviewTypes, reviewType)
+}
+
+// HasOutcome reports whether outcome is configured.
+func (s ReviewSettings) HasOutcome(outcome string) bool {
+	return slices.Contains(s.outcomes, outcome)
+}
+
+// ReviewConfig returns the configured review vocabulary in stable order.
+func (cfg *Config) ReviewConfig() ReviewSettings {
+	return ReviewSettings{
+		reviewTypes: slices.Clone(cfg.ReviewTypes),
+		outcomes:    slices.Clone(cfg.ReviewOutcomes),
+	}
+}
+
+func normalizeReviewValues(values []string) []string {
+	normalized := make([]string, len(values))
+	for i, value := range values {
+		normalized[i] = strings.TrimSpace(value)
+	}
+	return normalized
 }
 
 // NewConfig creates a new configuration with default values
