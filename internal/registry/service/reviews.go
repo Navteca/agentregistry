@@ -99,6 +99,44 @@ func (s *registryServiceImpl) GetReviewState(
 	})
 }
 
+func (s *registryServiceImpl) GetReviews(
+	ctx context.Context,
+	artifactType,
+	artifactName,
+	artifactVersion string,
+) ([]models.Review, error) {
+	_, normalizedArtifactType, err := reviewResourceType(artifactType)
+	if err != nil {
+		return nil, err
+	}
+
+	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) ([]models.Review, error) {
+		updatedAt, err := s.reviewArtifactUpdatedAt(ctx, tx, normalizedArtifactType, artifactName, artifactVersion)
+		if err != nil {
+			return nil, err
+		}
+		reviews, err := s.db.ListReviews(ctx, tx, normalizedArtifactType, artifactName, artifactVersion)
+		if err != nil {
+			return nil, err
+		}
+		if reviews == nil {
+			reviews = make([]models.Review, 0)
+		}
+
+		currentIDs := make(map[int64]struct{})
+		for _, review := range ResolveCurrentReviews(reviews, updatedAt) {
+			currentIDs[review.ID] = struct{}{}
+		}
+		for i := range reviews {
+			_, current := currentIDs[reviews[i].ID]
+			stale := reviews[i].CreatedAt.Before(updatedAt)
+			reviews[i].IsCurrent = &current
+			reviews[i].IsStale = &stale
+		}
+		return reviews, nil
+	})
+}
+
 func (s *registryServiceImpl) reviewStateForUpdatedAt(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -258,6 +296,34 @@ func ResolveReviewState(
 		CurrentReviews: current,
 		PerType:        perType,
 	}
+}
+
+// SummarizeReviewState removes findings and sensitive reviewer identity from
+// derived state before it is attached to an artifact response.
+func SummarizeReviewState(state models.ReviewState) models.ReviewSummary {
+	status := models.ReviewStatusPending
+	if state.Certified {
+		status = "certified"
+	} else if state.Rejected {
+		status = "rejected"
+	}
+
+	perType := make([]models.ReviewTypeSummary, 0, len(state.PerType))
+	for _, typeState := range state.PerType {
+		displayNames := make([]string, 0, len(typeState.CurrentReviews))
+		for _, review := range typeState.CurrentReviews {
+			if review.ReviewerDisplayName != "" {
+				displayNames = append(displayNames, review.ReviewerDisplayName)
+			}
+		}
+		perType = append(perType, models.ReviewTypeSummary{
+			ReviewType:           typeState.ReviewType,
+			Status:               typeState.Status,
+			Outcome:              typeState.Outcome,
+			ReviewerDisplayNames: displayNames,
+		})
+	}
+	return models.ReviewSummary{Status: status, PerType: perType}
 }
 
 func reviewIsLater(candidate, current models.Review) bool {

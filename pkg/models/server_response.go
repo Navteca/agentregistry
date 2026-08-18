@@ -16,6 +16,7 @@ type ServerResponseMeta struct {
 	Deployments  *ResourceDeploymentsMeta  `json:"aregistry.ai/deployments,omitempty"`
 	Ownership    *OwnershipMeta            `json:"aregistry.ai/ownership,omitempty"`
 	Capabilities *CapabilitiesMeta         `json:"aregistry.ai/capabilities,omitempty"`
+	Review       *ReviewSummary            `json:"aregistry.ai/review,omitempty"`
 }
 
 // ServerResponse is the server API shape with registry-managed metadata.

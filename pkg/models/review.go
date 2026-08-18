@@ -15,6 +15,8 @@ type Review struct {
 	ReviewerDisplayName string    `json:"reviewer_display_name"`
 	Notes               string    `json:"notes"`
 	CreatedAt           time.Time `json:"created_at"`
+	IsCurrent           *bool     `json:"is_current,omitempty"`
+	IsStale             *bool     `json:"is_stale,omitempty"`
 }
 
 const (
@@ -31,11 +33,28 @@ type ReviewTypeStatus struct {
 	CurrentReviews []Review `json:"current_reviews"`
 }
 
-// ReviewState contains the derived review state for one artifact version.
+// ReviewState contains the internal derived review state for one artifact
+// version. Do not serialize it directly in an API response; use
+// ReviewSummary to avoid exposing findings or sensitive reviewer identity.
 type ReviewState struct {
 	Certified      bool               `json:"certified"`
 	Rejected       bool               `json:"rejected"`
 	Pending        bool               `json:"pending"`
 	CurrentReviews []Review           `json:"current_reviews"`
 	PerType        []ReviewTypeStatus `json:"per_type"`
+}
+
+// ReviewSummary is the sanitized review state exposed with artifact metadata.
+type ReviewSummary struct {
+	Status  string              `json:"status"`
+	PerType []ReviewTypeSummary `json:"per_type"`
+}
+
+// ReviewTypeSummary contains the status and non-sensitive reviewer display
+// names for one configured review type.
+type ReviewTypeSummary struct {
+	ReviewType           string   `json:"review_type"`
+	Status               string   `json:"status"`
+	Outcome              string   `json:"outcome,omitempty"`
+	ReviewerDisplayNames []string `json:"reviewer_display_names,omitempty"`
 }

@@ -19,6 +19,7 @@ import (
 	servicetesting "github.com/agentregistry-dev/agentregistry/internal/registry/service/testing"
 	"github.com/agentregistry-dev/agentregistry/pkg/models"
 	"github.com/agentregistry-dev/agentregistry/pkg/registry/auth"
+	"github.com/agentregistry-dev/agentregistry/pkg/registry/database"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/stretchr/testify/assert"
@@ -72,6 +73,75 @@ func reviewRequest(t *testing.T, path, body string, ctx context.Context) *http.R
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	return req.WithContext(ctx)
+}
+
+func reviewGetRequest(t *testing.T, path string, ctx context.Context) *http.Request {
+	t.Helper()
+
+	return httptest.NewRequest(http.MethodGet, path, nil).WithContext(ctx)
+}
+
+func TestListReviewsEndpointReturnsAllRowsAndMarkers(t *testing.T) {
+	cfg := &config.Config{
+		ReviewTypes:    []string{"security"},
+		ReviewOutcomes: []string{"pass"},
+	}
+	fake := servicetesting.NewFakeRegistry()
+	current := true
+	stale := false
+	fake.GetReviewsFn = func(ctx context.Context, artifactType, artifactName, artifactVersion string) ([]models.Review, error) {
+		assert.Equal(t, "server", artifactType)
+		assert.Equal(t, "com.example/review-target", artifactName)
+		assert.Equal(t, "1.0.0", artifactVersion)
+		return []models.Review{{
+			ID:                  1,
+			ArtifactType:        artifactType,
+			ArtifactName:        artifactName,
+			ArtifactVersion:     artifactVersion,
+			ReviewType:          "security",
+			Outcome:             "pass",
+			ReviewerSubject:     "subject",
+			ReviewerAuthMethod:  "oidc",
+			ReviewerDisplayName: "Reviewer",
+			Notes:               "finding",
+			IsCurrent:           &current,
+			IsStale:             &stale,
+		}}, nil
+	}
+
+	mux := newReviewEndpoint(t, cfg, fake)
+	req := reviewGetRequest(
+		t,
+		"/v0/reviews/server/"+url.PathEscape("com.example/review-target")+"/versions/1.0.0",
+		context.Background(),
+	)
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	require.Equal(t, http.StatusOK, resp.Code)
+	var reviews []models.Review
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&reviews))
+	require.Len(t, reviews, 1)
+	assert.Equal(t, "finding", reviews[0].Notes)
+	assert.True(t, *reviews[0].IsCurrent)
+}
+
+func TestListReviewsEndpointMapsMissingArtifactToNotFound(t *testing.T) {
+	cfg := &config.Config{
+		ReviewTypes:    []string{"security"},
+		ReviewOutcomes: []string{"pass"},
+	}
+	fake := servicetesting.NewFakeRegistry()
+	fake.GetReviewsFn = func(context.Context, string, string, string) ([]models.Review, error) {
+		return nil, database.ErrNotFound
+	}
+
+	mux := newReviewEndpoint(t, cfg, fake)
+	req := reviewGetRequest(t, "/v0/reviews/server/missing/versions/1.0.0", context.Background())
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusNotFound, resp.Code)
 }
 
 func TestCreateReviewEndpointRejectsUnconfiguredValues(t *testing.T) {

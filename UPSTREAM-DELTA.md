@@ -1012,3 +1012,90 @@ Conventions:
 - **Reason:** Keeps generated UI API types synchronized. No UI rendering logic
   was changed; existing `can_update` behavior now reflects the server freeze.
 - **Reapply after bump:** Run `make gen-client`.
+
+## AR-2 Task 6 — Review reads and artifact review summaries
+
+### `internal/registry/api/handlers/v0/reviews.go`
+- **Change:** Added a public-read GET operation beside the existing review
+  creation route. It returns every raw review row with current/stale markers and
+  maps missing artifact versions to 404.
+- **Reason:** Findings remain restricted to the dedicated review resource while
+  artifact reads expose only the derived summary.
+- **Reapply after bump:** Preserve artifact read authorization, deterministic
+  row retrieval, and the separate GET resource.
+
+### `internal/registry/api/handlers/v0/reviews_test.go`
+- **Change:** Added endpoint coverage for complete rows, markers, and missing
+  artifact errors.
+- **Reason:** Locks down the review read contract independently from creation.
+- **Reapply after bump:** Preserve the GET route and error mapping assertions.
+
+### `internal/registry/service/service.go`
+- **Change:** Added the service operation for artifact-scoped review reads.
+- **Reason:** Keeps review retrieval behind service authorization and database
+  boundaries.
+- **Reapply after bump:** Preserve the non-review-permission read path.
+
+### `internal/registry/service/reviews.go`
+- **Change:** Added review-row current/stale derivation and a sanitized summary
+  projection built from `ResolveReviewState`.
+- **Reason:** Callers receive enough context to distinguish stale and current
+  rows, while artifact metadata cannot leak notes, subjects, or auth methods.
+- **Reapply after bump:** Reuse the existing resolver and retain configured
+  pending entries for every review type.
+
+### `internal/registry/service/registry_service.go`
+- **Change:** Added review summaries to server, agent, skill, and prompt
+  create, read, list, and all-version responses. Catalog and version paths load
+  all review rows through one batched query per result set.
+- **Reason:** Makes the summary consistent across every artifact family without
+  introducing an N+1 review query.
+- **Reapply after bump:** Preserve identity-bearing snapshots, one-query batch
+  loading, and summary-only artifact metadata.
+
+### `internal/registry/service/testing/fake_registry.go`
+- **Change:** Added the fake service hook for full review reads.
+- **Reason:** Keeps endpoint tests compatible with the expanded service
+  interface.
+- **Reapply after bump:** Keep the fake synchronized with `RegistryService`.
+
+### `pkg/models/review.go`
+- **Change:** Added optional current/stale row markers and sanitized
+  `ReviewSummary`/`ReviewTypeSummary` models.
+- **Reason:** Separates the findings-bearing review resource from the safe
+  artifact metadata projection.
+- **Reapply after bump:** Preserve the marker fields and exclude sensitive row
+  fields from summaries.
+
+### `pkg/models/server_response.go`
+### `pkg/models/agent.go`
+### `pkg/models/skill.go`
+### `pkg/models/prompt.go`
+- **Change:** Added pointer-plus-`omitempty` `aregistry.ai/review` metadata.
+- **Reason:** Exposes the same derived summary shape for all four artifact
+  response families.
+- **Reapply after bump:** Preserve the metadata key and pointer semantics.
+
+### `internal/registry/service/reviews_test.go`
+- **Change:** Added service coverage for read-only review access, empty and
+  missing artifact behavior, all overall statuses, all artifact types, and
+  serialized summary redaction.
+- **Reason:** Verifies resolution reuse, no-findings behavior, and the
+  no-sensitive-fields contract at the JSON boundary.
+- **Reapply after bump:** Preserve the real-authorizer integration sequences
+  and serialization assertions.
+
+### `openapi.yaml`
+- **Change:** Regenerated the review GET operation, row marker fields, summary
+  schemas, and four artifact metadata schemas.
+- **Reason:** Keeps the checked-in API contract synchronized.
+- **Reapply after bump:** Run `make gen-client`.
+
+### `ui/lib/api/index.ts`
+### `ui/lib/api/sdk.gen.ts`
+### `ui/lib/api/types.gen.ts`
+- **Change:** Regenerated TypeScript exports, the list-reviews operation, review
+  markers, and review summary types.
+- **Reason:** Keeps generated frontend API consumers synchronized without
+  changing UI behavior.
+- **Reapply after bump:** Run `make gen-client`.

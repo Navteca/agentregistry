@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -170,6 +171,108 @@ func TestCreateReview_RequiresExistingArtifactVersion(t *testing.T) {
 	assert.ErrorIs(t, err, database.ErrNotFound)
 }
 
+func TestGetReviewsReturnsRowsAndAllowsReadOnlyCallers(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	cfg := &config.Config{
+		EnableRegistryValidation: false,
+		ReviewTypes:              []string{"security"},
+		ReviewOutcomes:           []string{"pass", "fail"},
+		ReviewFailureOutcome:     "fail",
+	}
+	registry := NewRegistryService(db, cfg, nil, realCapabilityTestAuthorizer(t))
+	server := newOwnershipTestServer("review-read")
+	ownerCtx := ownershipPermissionContext("review-owner", "Owner", ownerEditPermissions())
+	_, err := registry.CreateServer(ownerCtx, server)
+	require.NoError(t, err)
+	updateServerForReviewState(t, registry, ownerCtx, server, "baseline")
+	createStateReview(t, registry, server, "security", "pass", "visible finding")
+
+	readerCtx := ownershipPermissionContext("read-only", "Reader", []auth.Permission{
+		{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+	})
+	reviews, err := registry.GetReviews(readerCtx, "server", server.Name, server.Version)
+	require.NoError(t, err)
+	require.Len(t, reviews, 1)
+	assert.Equal(t, "visible finding", reviews[0].Notes)
+	require.NotNil(t, reviews[0].IsCurrent)
+	require.NotNil(t, reviews[0].IsStale)
+	assert.True(t, *reviews[0].IsCurrent)
+	assert.False(t, *reviews[0].IsStale)
+}
+
+func TestGetReviewsReturnsEmptyForExistingArtifactAndNotFoundForMissingVersion(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	cfg := &config.Config{
+		EnableRegistryValidation: false,
+		ReviewTypes:              []string{"security"},
+		ReviewOutcomes:           []string{"pass"},
+		ReviewFailureOutcome:     "fail",
+	}
+	registry := NewRegistryService(db, cfg, nil, realCapabilityTestAuthorizer(t))
+	server := newOwnershipTestServer("review-empty")
+	ctx := ownershipPermissionContext("reader", "Reader", []auth.Permission{
+		{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+		{Action: auth.PermissionActionPublish, ResourcePattern: "*"},
+	})
+	_, err := registry.CreateServer(ctx, server)
+	require.NoError(t, err)
+
+	reviews, err := registry.GetReviews(ctx, "server", server.Name, server.Version)
+	require.NoError(t, err)
+	assert.NotNil(t, reviews)
+	assert.Empty(t, reviews)
+
+	_, err = registry.GetReviews(ctx, "server", server.Name, "9.9.9")
+	assert.ErrorIs(t, err, database.ErrNotFound)
+}
+
+func TestArtifactReviewSummaryIsSanitizedJSON(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	cfg := &config.Config{
+		EnableRegistryValidation: false,
+		ReviewTypes:              []string{"security", "scientific"},
+		ReviewOutcomes:           []string{"pass", "fail"},
+		ReviewFailureOutcome:     "fail",
+	}
+	registry := NewRegistryService(db, cfg, nil, realCapabilityTestAuthorizer(t))
+	server := newOwnershipTestServer("review-summary")
+	ownerCtx := ownershipPermissionContext("owner", "Owner", ownerEditPermissions())
+	_, err := registry.CreateServer(ownerCtx, server)
+	require.NoError(t, err)
+	updateServerForReviewState(t, registry, ownerCtx, server, "baseline")
+	createStateReview(t, registry, server, "security", "pass", "do not expose this finding")
+	createStateReview(t, registry, server, "scientific", "pass", "another private finding")
+
+	readerCtx := ownershipPermissionContext("reader", "Reader", []auth.Permission{
+		{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+	})
+	response, err := registry.GetServerByNameAndVersion(readerCtx, server.Name, server.Version)
+	require.NoError(t, err)
+	require.NotNil(t, response.Meta.Review)
+	assert.Equal(t, "certified", response.Meta.Review.Status)
+	require.Len(t, response.Meta.Review.PerType, 2)
+
+	serialized, err := json.Marshal(response)
+	require.NoError(t, err)
+	body := string(serialized)
+	assert.NotContains(t, body, "do not expose this finding")
+	assert.NotContains(t, body, "another private finding")
+	assert.NotContains(t, body, `"reviewer_subject"`)
+	assert.NotContains(t, body, `"reviewer_auth_method"`)
+
+	var wire map[string]any
+	require.NoError(t, json.Unmarshal(serialized, &wire))
+	meta, ok := wire["_meta"].(map[string]any)
+	require.True(t, ok)
+	summary, ok := meta["aregistry.ai/review"].(map[string]any)
+	require.True(t, ok)
+	summaryJSON, err := json.Marshal(summary)
+	require.NoError(t, err)
+	assert.NotContains(t, string(summaryJSON), `"notes"`)
+	assert.NotContains(t, string(summaryJSON), `"subject"`)
+	assert.NotContains(t, string(summaryJSON), `"auth_method"`)
+}
+
 func TestResolveReviewState_DerivesConfiguredStatuses(t *testing.T) {
 	updatedAt := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	settings := (&config.Config{
@@ -185,11 +288,13 @@ func TestResolveReviewState_DerivesConfiguredStatuses(t *testing.T) {
 		rejected       bool
 		pending        bool
 		expectedStatus []string
+		overallStatus  string
 	}{
 		{
 			name:           "no reviews",
 			expectedStatus: []string{"pending", "pending"},
 			pending:        true,
+			overallStatus:  "pending",
 		},
 		{
 			name: "partial review",
@@ -198,6 +303,7 @@ func TestResolveReviewState_DerivesConfiguredStatuses(t *testing.T) {
 			},
 			expectedStatus: []string{"pass", "pending"},
 			pending:        true,
+			overallStatus:  "pending",
 		},
 		{
 			name: "all pass",
@@ -207,6 +313,7 @@ func TestResolveReviewState_DerivesConfiguredStatuses(t *testing.T) {
 			},
 			expectedStatus: []string{"pass", "pass"},
 			certified:      true,
+			overallStatus:  "certified",
 		},
 		{
 			name: "one fail rejects",
@@ -216,6 +323,7 @@ func TestResolveReviewState_DerivesConfiguredStatuses(t *testing.T) {
 			},
 			expectedStatus: []string{"fail", "pass"},
 			rejected:       true,
+			overallStatus:  "rejected",
 		},
 		{
 			name: "independent current reviewers",
@@ -226,6 +334,7 @@ func TestResolveReviewState_DerivesConfiguredStatuses(t *testing.T) {
 			},
 			expectedStatus: []string{"fail", "pass"},
 			rejected:       true,
+			overallStatus:  "rejected",
 		},
 		{
 			name: "later revision wins",
@@ -236,6 +345,7 @@ func TestResolveReviewState_DerivesConfiguredStatuses(t *testing.T) {
 			},
 			expectedStatus: []string{"fail", "pass"},
 			rejected:       true,
+			overallStatus:  "rejected",
 		},
 	}
 
@@ -245,12 +355,51 @@ func TestResolveReviewState_DerivesConfiguredStatuses(t *testing.T) {
 			assert.Equal(t, tt.certified, state.Certified)
 			assert.Equal(t, tt.rejected, state.Rejected)
 			assert.Equal(t, tt.pending, state.Pending)
+			assert.Equal(t, tt.overallStatus, SummarizeReviewState(state).Status)
 			require.Len(t, state.PerType, len(tt.expectedStatus))
 			for i, expected := range tt.expectedStatus {
 				assert.Equal(t, expected, state.PerType[i].Status)
 			}
 		})
 	}
+}
+
+func TestAllArtifactTypesCarryPendingReviewSummary(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	cfg := &config.Config{
+		EnableRegistryValidation: false,
+		ReviewTypes:              []string{"security"},
+		ReviewOutcomes:           []string{"pass", "fail"},
+		ReviewFailureOutcome:     "fail",
+	}
+	registry := NewRegistryService(db, cfg, nil, realCapabilityTestAuthorizer(t))
+	ctx := ownershipPermissionContext("summary-owner", "Owner", ownerEditPermissions())
+
+	server, err := registry.CreateServer(ctx, newOwnershipTestServer("summary-server"))
+	require.NoError(t, err)
+	agent, err := registry.CreateAgent(ctx, newOwnershipTestAgent("summary-agent"))
+	require.NoError(t, err)
+	skill, err := registry.CreateSkill(ctx, newOwnershipTestSkill("summary-skill"))
+	require.NoError(t, err)
+	prompt, err := registry.CreatePrompt(ctx, newOwnershipTestPrompt("summary-prompt", "1.0.0"))
+	require.NoError(t, err)
+
+	require.NotNil(t, server.Meta.Review)
+	assert.Equal(t, "pending", server.Meta.Review.Status)
+	require.Len(t, server.Meta.Review.PerType, 1)
+	assert.Equal(t, "pending", server.Meta.Review.PerType[0].Status)
+	require.NotNil(t, agent.Meta.Review)
+	assert.Equal(t, "pending", agent.Meta.Review.Status)
+	require.Len(t, agent.Meta.Review.PerType, 1)
+	assert.Equal(t, "pending", agent.Meta.Review.PerType[0].Status)
+	require.NotNil(t, skill.Meta.Review)
+	assert.Equal(t, "pending", skill.Meta.Review.Status)
+	require.Len(t, skill.Meta.Review.PerType, 1)
+	assert.Equal(t, "pending", skill.Meta.Review.PerType[0].Status)
+	require.NotNil(t, prompt.Meta.Review)
+	assert.Equal(t, "pending", prompt.Meta.Review.Status)
+	require.Len(t, prompt.Meta.Review.PerType, 1)
+	assert.Equal(t, "pending", prompt.Meta.Review.PerType[0].Status)
 }
 
 func TestResolveCurrentReviews_UsesStalenessAndIDTieBreak(t *testing.T) {

@@ -24,6 +24,13 @@ type CreateReviewInput struct {
 	Body            CreateReviewBody `body:""`
 }
 
+// ListReviewsInput identifies one artifact version whose review rows are read.
+type ListReviewsInput struct {
+	ArtifactType    string `path:"artifactType" json:"artifactType"`
+	ArtifactName    string `path:"artifactName" json:"artifactName"`
+	ArtifactVersion string `path:"version" json:"version"`
+}
+
 // CreateReviewBody contains client-supplied review content. Optional reviewer
 // identity fields are accepted for compatibility but always ignored; identity
 // is taken from the authenticated session.
@@ -36,8 +43,48 @@ type CreateReviewBody struct {
 	ReviewerDisplayName string `json:"reviewer_display_name,omitempty"`
 }
 
-// RegisterReviewsEndpoint registers POST /reviews/{artifactType}/{artifactName}/versions/{version}.
+// RegisterReviewsEndpoint registers review read and create operations.
 func RegisterReviewsEndpoint(api huma.API, pathPrefix string, cfg *config.Config, registry service.RegistryService) {
+	huma.Register(api, huma.Operation{
+		OperationID: "list-reviews" + strings.ReplaceAll(pathPrefix, "/", "-"),
+		Method:      http.MethodGet,
+		Path:        pathPrefix + "/reviews/{artifactType}/{artifactName}/versions/{version}",
+		Summary:     "List artifact reviews",
+		Description: "List all reviews for a specific artifact version, including current and stale markers.",
+		Tags:        []string{"reviews"},
+	}, func(ctx context.Context, input *ListReviewsInput) (*types.Response[[]models.Review], error) {
+		artifactType, err := url.PathUnescape(input.ArtifactType)
+		if err != nil {
+			return nil, huma.Error400BadRequest("Invalid artifact type encoding", err)
+		}
+		artifactName, err := url.PathUnescape(input.ArtifactName)
+		if err != nil {
+			return nil, huma.Error400BadRequest("Invalid artifact name encoding", err)
+		}
+		version, err := url.PathUnescape(input.ArtifactVersion)
+		if err != nil {
+			return nil, huma.Error400BadRequest("Invalid artifact version encoding", err)
+		}
+
+		reviews, err := registry.GetReviews(ctx, artifactType, artifactName, version)
+		if err != nil {
+			switch {
+			case errors.Is(err, database.ErrInvalidInput):
+				return nil, huma.Error400BadRequest("Invalid review request", err)
+			case errors.Is(err, database.ErrNotFound):
+				return nil, huma.Error404NotFound("Artifact version not found")
+			case errors.Is(err, auth.ErrUnauthenticated):
+				return nil, huma.Error401Unauthorized("Authentication required")
+			case errors.Is(err, auth.ErrForbidden):
+				return nil, huma.Error403Forbidden("Forbidden")
+			default:
+				return nil, huma.Error500InternalServerError("Failed to list reviews", err)
+			}
+		}
+
+		return &types.Response[[]models.Review]{Body: reviews}, nil
+	})
+
 	huma.Register(api, huma.Operation{
 		OperationID: "create-review" + strings.ReplaceAll(pathPrefix, "/", "-"),
 		Method:      http.MethodPost,

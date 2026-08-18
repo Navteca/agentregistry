@@ -44,6 +44,18 @@ type ServerReadme struct {
 	FetchedAt   time.Time
 }
 
+// ReviewArtifact identifies an artifact version when loading reviews in batch.
+type ReviewArtifact struct {
+	ArtifactType    string
+	ArtifactName    string
+	ArtifactVersion string
+}
+
+// ReviewArtifactKey returns the stable map key for an artifact version.
+func ReviewArtifactKey(artifactType, artifactName, artifactVersion string) string {
+	return artifactType + "\x00" + artifactName + "\x00" + artifactVersion
+}
+
 // SkillFilter defines filtering options for skill queries (mirrors ServerFilter)
 type SkillFilter struct {
 	Name          *string    // for finding versions of same skill
@@ -150,6 +162,8 @@ type Database interface {
 	CreateReview(ctx context.Context, tx pgx.Tx, review *models.Review) (*models.Review, error)
 	// ListReviews returns all reviews for one artifact version.
 	ListReviews(ctx context.Context, tx pgx.Tx, artifactType, artifactName, artifactVersion string) ([]models.Review, error)
+	// ListReviewsForArtifacts returns reviews for multiple artifact versions in one query.
+	ListReviewsForArtifacts(ctx context.Context, tx pgx.Tx, artifacts []ReviewArtifact) (map[string][]models.Review, error)
 	// InTransaction executes a function within a database transaction
 	InTransaction(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx) error) error
 	// Close closes the database connection

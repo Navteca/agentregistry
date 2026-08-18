@@ -45,6 +45,7 @@ type AgentResponseMeta struct {
 	Deployments  *ResourceDeploymentsMeta `json:"aregistry.ai/deployments,omitempty"`
 	Ownership    *OwnershipMeta           `json:"aregistry.ai/ownership,omitempty"`
 	Capabilities *CapabilitiesMeta        `json:"aregistry.ai/capabilities,omitempty"`
+	Review       *ReviewSummary           `json:"aregistry.ai/review,omitempty"`
 }
 
 type AgentResponse struct {

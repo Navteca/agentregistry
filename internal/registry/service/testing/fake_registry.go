@@ -46,6 +46,7 @@ type FakeRegistry struct {
 	GetServerReadmeByVersionFn    func(ctx context.Context, serverName, version string) (*database.ServerReadme, error)
 	CreateReviewFn                func(ctx context.Context, artifactType, artifactName, artifactVersion, reviewType, outcome, notes string) (*models.Review, error)
 	GetReviewStateFn              func(ctx context.Context, artifactType, artifactName, artifactVersion string) (*models.ReviewState, error)
+	GetReviewsFn                  func(ctx context.Context, artifactType, artifactName, artifactVersion string) ([]models.Review, error)
 	DeleteServerFn                func(ctx context.Context, serverName, version string) error
 	UpsertServerEmbeddingFn       func(ctx context.Context, serverName, version string, embedding *database.SemanticEmbedding) error
 	GetServerEmbeddingMetadataFn  func(ctx context.Context, serverName, version string) (*database.SemanticEmbeddingMetadata, error)
@@ -170,6 +171,19 @@ func (f *FakeRegistry) GetReviewState(ctx context.Context, artifactType, artifac
 		return nil, database.ErrNotFound
 	}
 	return f.ReviewState, nil
+}
+
+func (f *FakeRegistry) GetReviews(ctx context.Context, artifactType, artifactName, artifactVersion string) ([]models.Review, error) {
+	if f.GetReviewsFn != nil {
+		return f.GetReviewsFn(ctx, artifactType, artifactName, artifactVersion)
+	}
+	reviews := make([]models.Review, 0, len(f.Reviews))
+	for _, review := range f.Reviews {
+		if review != nil {
+			reviews = append(reviews, *review)
+		}
+	}
+	return reviews, nil
 }
 
 func (f *FakeRegistry) UpdateServer(ctx context.Context, serverName, version string, req *apiv0.ServerJSON, newStatus *string) (*models.ServerResponse, error) {

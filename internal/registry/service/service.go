@@ -39,6 +39,8 @@ type RegistryService interface {
 	CreateReview(ctx context.Context, artifactType, artifactName, artifactVersion, reviewType, outcome, notes string) (*models.Review, error)
 	// GetReviewState derives current reviews and certification for one artifact version.
 	GetReviewState(ctx context.Context, artifactType, artifactName, artifactVersion string) (*models.ReviewState, error)
+	// GetReviews returns all reviews for one artifact version with current/stale markers.
+	GetReviews(ctx context.Context, artifactType, artifactName, artifactVersion string) ([]models.Review, error)
 
 	// Agents APIs
 	// ListAgents retrieve all agents with optional filtering

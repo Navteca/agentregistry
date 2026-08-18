@@ -1008,6 +1008,43 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ErrorModel'
     /v0/reviews/{artifactType}/{artifactName}/versions/{version}:
+        get:
+            tags:
+                - reviews
+            summary: List artifact reviews
+            description: List all reviews for a specific artifact version, including current and stale markers.
+            operationId: list-reviews-v0
+            parameters:
+                - name: artifactType
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: artifactName
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: version
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/Review'
+                default:
+                    description: Error
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorModel'
         post:
             tags:
                 - reviews
@@ -1862,6 +1899,8 @@ components:
                     $ref: '#/components/schemas/ResourceDeploymentsMeta'
                 aregistry.ai/ownership:
                     $ref: '#/components/schemas/OwnershipMeta'
+                aregistry.ai/review:
+                    $ref: '#/components/schemas/ReviewSummary'
                 aregistry.ai/semantic:
                     $ref: '#/components/schemas/AgentSemanticMeta'
                 io.modelcontextprotocol.registry/official:
@@ -2696,6 +2735,8 @@ components:
                     $ref: '#/components/schemas/CapabilitiesMeta'
                 aregistry.ai/ownership:
                     $ref: '#/components/schemas/OwnershipMeta'
+                aregistry.ai/review:
+                    $ref: '#/components/schemas/ReviewSummary'
                 io.modelcontextprotocol.registry/official:
                     $ref: '#/components/schemas/PromptRegistryExtensions'
         Provider:
@@ -2818,6 +2859,10 @@ components:
                 id:
                     type: integer
                     format: int64
+                is_current:
+                    type: boolean
+                is_stale:
+                    type: boolean
                 notes:
                     type: string
                 outcome:
@@ -2842,6 +2887,36 @@ components:
                 - reviewer_display_name
                 - notes
                 - created_at
+        ReviewSummary:
+            type: object
+            additionalProperties: false
+            properties:
+                per_type:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ReviewTypeSummary'
+                status:
+                    type: string
+            required:
+                - status
+                - per_type
+        ReviewTypeSummary:
+            type: object
+            additionalProperties: false
+            properties:
+                outcome:
+                    type: string
+                review_type:
+                    type: string
+                reviewer_display_names:
+                    type: array
+                    items:
+                        type: string
+                status:
+                    type: string
+            required:
+                - review_type
+                - status
         Rule:
             type: object
             additionalProperties: false
@@ -3056,6 +3131,8 @@ components:
                     $ref: '#/components/schemas/ResourceDeploymentsMeta'
                 aregistry.ai/ownership:
                     $ref: '#/components/schemas/OwnershipMeta'
+                aregistry.ai/review:
+                    $ref: '#/components/schemas/ReviewSummary'
                 aregistry.ai/semantic:
                     $ref: '#/components/schemas/ServerSemanticMeta'
                 io.modelcontextprotocol.registry/official:
@@ -3246,6 +3323,8 @@ components:
                     $ref: '#/components/schemas/CapabilitiesMeta'
                 aregistry.ai/ownership:
                     $ref: '#/components/schemas/OwnershipMeta'
+                aregistry.ai/review:
+                    $ref: '#/components/schemas/ReviewSummary'
                 io.modelcontextprotocol.registry/official:
                     $ref: '#/components/schemas/SkillRegistryExtensions'
         TokenResponse:

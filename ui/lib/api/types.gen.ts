@@ -66,6 +66,7 @@ export type AgentResponseMeta = {
     'aregistry.ai/capabilities'?: CapabilitiesMeta;
     'aregistry.ai/deployments'?: ResourceDeploymentsMeta;
     'aregistry.ai/ownership'?: OwnershipMeta;
+    'aregistry.ai/review'?: ReviewSummary;
     'aregistry.ai/semantic'?: AgentSemanticMeta;
     'io.modelcontextprotocol.registry/official'?: AgentRegistryExtensions;
 };
@@ -571,6 +572,7 @@ export type PromptResponse = {
 export type PromptResponseMeta = {
     'aregistry.ai/capabilities'?: CapabilitiesMeta;
     'aregistry.ai/ownership'?: OwnershipMeta;
+    'aregistry.ai/review'?: ReviewSummary;
     'io.modelcontextprotocol.registry/official'?: PromptRegistryExtensions;
 };
 
@@ -639,12 +641,26 @@ export type Review = {
     artifact_version: string;
     created_at: string;
     id: number;
+    is_current?: boolean;
+    is_stale?: boolean;
     notes: string;
     outcome: string;
     review_type: string;
     reviewer_auth_method: string;
     reviewer_display_name: string;
     reviewer_subject: string;
+};
+
+export type ReviewSummary = {
+    per_type: Array<ReviewTypeSummary>;
+    status: string;
+};
+
+export type ReviewTypeSummary = {
+    outcome?: string;
+    review_type: string;
+    reviewer_display_names?: Array<string>;
+    status: string;
 };
 
 export type Rule = {
@@ -755,6 +771,7 @@ export type ServerResponseMeta = {
     'aregistry.ai/capabilities'?: CapabilitiesMeta;
     'aregistry.ai/deployments'?: ResourceDeploymentsMeta;
     'aregistry.ai/ownership'?: OwnershipMeta;
+    'aregistry.ai/review'?: ReviewSummary;
     'aregistry.ai/semantic'?: ServerSemanticMeta;
     'io.modelcontextprotocol.registry/official'?: RegistryExtensions;
 };
@@ -844,6 +861,7 @@ export type SkillResponse = {
 export type SkillResponseMeta = {
     'aregistry.ai/capabilities'?: CapabilitiesMeta;
     'aregistry.ai/ownership'?: OwnershipMeta;
+    'aregistry.ai/review'?: ReviewSummary;
     'io.modelcontextprotocol.registry/official'?: SkillRegistryExtensions;
 };
 
@@ -1789,6 +1807,35 @@ export type UpdateProviderResponses = {
 };
 
 export type UpdateProviderResponse = UpdateProviderResponses[keyof UpdateProviderResponses];
+
+export type ListReviewsV0Data = {
+    body?: never;
+    path: {
+        artifactType: string;
+        artifactName: string;
+        version: string;
+    };
+    query?: never;
+    url: '/v0/reviews/{artifactType}/{artifactName}/versions/{version}';
+};
+
+export type ListReviewsV0Errors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListReviewsV0Error = ListReviewsV0Errors[keyof ListReviewsV0Errors];
+
+export type ListReviewsV0Responses = {
+    /**
+     * OK
+     */
+    200: Array<Review>;
+};
+
+export type ListReviewsV0Response = ListReviewsV0Responses[keyof ListReviewsV0Responses];
 
 export type CreateReviewV0Data = {
     body: CreateReviewBody;
