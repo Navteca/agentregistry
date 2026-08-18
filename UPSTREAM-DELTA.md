@@ -692,3 +692,24 @@ Conventions:
   exposes required `can_deploy: boolean`.
 - **Reason:** Keeps frontend consumers synchronized with the API response shape.
 - **Reapply after bump:** Run `make gen-client` after regenerating OpenAPI.
+
+## AR-2 Task 1 — Typed reviews migration
+
+### `internal/registry/database/migrations/013_reviews_table.sql`
+- **Change:** Added the fork-owned append-only `reviews` table for typed,
+  outcome-bearing reviews attached to a specific artifact version. Added a
+  surrogate primary key for deterministic current-review ordering and indexes
+  for reviewer history and current-review/artifact-state resolution.
+- **Reason:** AR-2 needs a single cross-artifact review store. The migration is
+  additive and intentionally has no foreign keys because artifact identity spans
+  four existing tables; orphaned reviews after deletion are accepted. Review
+  types and outcomes remain plain strings and are validated by configuration and
+  the API rather than duplicated as schema constraints. Reviewer identity fields
+  remain `TEXT`, matching the ownership columns added by AR-1.
+- **Reapply after bump:** Preserve migration version `013` in the fork's base
+  migration namespace. Migrations `011`, `012`, and `013` are fork-owned; the
+  upstream `origin/main` tree has no `internal/registry/database/migrations/`
+  directory. Keep the artifact-type structural check, append-only timestamp,
+  reviewer identity snapshots, and the two query-supporting indexes. If
+  upstream later adds migrations in this namespace, choose the next unused base
+  version without renumbering the fork-owned migrations.
