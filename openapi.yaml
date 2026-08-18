@@ -2873,6 +2873,8 @@ components:
                     type: boolean
                 is_stale:
                     type: boolean
+                is_superseded:
+                    type: boolean
                 notes:
                     type: string
                 outcome:

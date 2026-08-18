@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ReviewSection } from "@/components/review-section"
 import {
   Package,
   Calendar,
@@ -22,21 +23,23 @@ import {
 interface SkillDetailProps {
   skill: SkillResponse
   allVersions?: SkillResponse[]
+  onReviewSubmitted?: () => void | Promise<void>
 }
 
-export function SkillDetail({ skill, allVersions: allVersionsProp }: SkillDetailProps) {
+export function SkillDetail({ skill, allVersions: allVersionsProp, onReviewSubmitted }: SkillDetailProps) {
   const [activeTab, setActiveTab] = useState("overview")
   const [jsonCopied, setJsonCopied] = useState(false)
-  const [selectedVersion, setSelectedVersion] = useState<SkillResponse>(skill)
+  const [selectedVersionNumber, setSelectedVersionNumber] = useState(skill.skill.version)
 
   const allVersions = allVersionsProp || [skill]
+  const selectedVersion = allVersions.find((version) => version.skill.version === selectedVersionNumber) || skill
 
   const { skill: skillData, _meta } = selectedVersion
   const official = _meta?.['io.modelcontextprotocol.registry/official']
 
   const handleVersionChange = (version: string) => {
     const newVersion = allVersions.find(v => v.skill.version === version)
-    if (newVersion) setSelectedVersion(newVersion)
+    if (newVersion) setSelectedVersionNumber(newVersion.skill.version)
   }
 
   const handleCopyJson = async () => {
@@ -124,6 +127,15 @@ export function SkillDetail({ skill, allVersions: allVersionsProp }: SkillDetail
             </a>
           )}
         </div>
+
+        <ReviewSection
+          artifactType="skill"
+          artifactName={skillData.name}
+          artifactVersion={skillData.version}
+          reviewSummary={_meta?.['aregistry.ai/review']}
+          capabilities={_meta?.['aregistry.ai/capabilities']}
+          onReviewSubmitted={onReviewSubmitted}
+        />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="mb-4">

@@ -1134,3 +1134,102 @@ Conventions:
 - **Reason:** Makes the deployment vocabulary available to subsequent UI work
   through the generated client without changing UI behavior in this task.
 - **Reapply after bump:** Run `make gen-client`.
+
+## AR-2 Task 7 — Detail-view reviews
+
+### `ui/lib/capabilities.ts`
+- **Change:** Added the strict `showReview` capability flag mapped only from
+  `can_review === true`.
+- **Reason:** Keeps review-form visibility based solely on the server-provided
+  capability block rather than client-side permission derivation.
+- **Reapply after bump:** Preserve the explicit-true `can_review` mapping.
+
+### `ui/lib/__tests__/capabilities.test.ts`
+- **Change:** Extended capability mapping coverage for review visibility,
+  including absent and false values.
+- **Reason:** Locks the form-gating contract to the artifact capability flag.
+- **Reapply after bump:** Preserve the explicit-true and absent-capability cases.
+
+### `ui/components/review-section.tsx`
+- **Change:** Added shared detail-view review status, findings, stale-row
+  presentation, vocabulary-driven submission form, and independent loading and
+  error handling for review/config fetches.
+- **Reason:** Gives all four artifact details consistent review UX while keeping
+  findings readable as escaped React text and review reads available to any
+  signed-in viewer.
+- **Reapply after bump:** Preserve selected-version endpoint paths, configured
+  type/outcome inputs, `can_review` gating, summary-authoritative per-type
+  statuses, distinct Passed/Failed/Pending versus Certified/Rejected labels,
+  stale distinction, and visible failure states.
+
+### `ui/components/__tests__/review-section.test.tsx`
+- **Change:** Added coverage for certified/rejected/pending statuses, pending
+  unreviewed types, no-review placeholder, capability gating, findings,
+  current/stale distinction, escaped markup, submission errors, and failed
+  findings fetches.
+- **Reason:** Verifies the detail-view acceptance criteria at rendered output.
+- **Reapply after bump:** Preserve the rendered-output escaping assertion and
+  non-permission/error cases.
+
+### `ui/components/server-detail.tsx`
+### `ui/components/skill-detail.tsx`
+### `ui/components/agent-detail.tsx`
+### `ui/components/prompt-detail.tsx`
+- **Change:** Placed the shared review section after quick-info pills and
+  before tabs for each selected artifact version, with a submission refresh
+  callback.
+- **Reason:** Keeps status and findings visible across tabs and ensures review
+  submissions trigger the catalog refresh path.
+- **Reapply after bump:** Preserve the artifact type/name/version wiring and
+  placement in all four detail components.
+
+### `ui/app/page.tsx`
+- **Change:** Passed the existing list `fetchData` callback into all detail
+  review sections so successful submissions refresh artifact summaries.
+- **Reason:** Reuses the established page refresh path without moving
+  selected-version review fetching into the catalog page.
+- **Reapply after bump:** Preserve the callback wiring for all four artifact
+  detail views.
+
+### `ui/app/__tests__/page-edit-flow.test.tsx`
+- **Change:** Updated capability flag expectations for the new `showReview`
+  field.
+- **Reason:** Keeps the existing page-level capability mapping test aligned
+  with the centralized review flag.
+- **Reapply after bump:** Preserve the explicit false expectation when the
+  fixture omits `can_review`.
+
+## AR-2 Task 8 — Superseded review markers
+
+### `pkg/models/review.go`
+- **Change:** Added the optional `is_superseded` review-row field alongside
+  `is_current` and `is_stale`.
+- **Reason:** Exposes the resolver's independent revision result without
+  requiring clients to reconstruct review resolution.
+- **Reapply after bump:** Preserve the pointer boolean type, JSON name, and
+  `omitempty` behavior.
+
+### `internal/registry/service/reviews.go`
+- **Change:** Populated `IsSuperseded` from the latest row per artifact,
+  review type, and reviewer subject while leaving current/stale resolution
+  unchanged.
+- **Reason:** Distinguishes revised rows from rows that are only stale,
+  including rows that are both superseded and stale.
+- **Reapply after bump:** Preserve created-at/ID ordering and independent
+  current, stale, and superseded calculations.
+
+### `internal/registry/service/reviews_test.go`
+- **Change:** Added real-JWT-authorizer integration coverage for single
+  reviews, revisions, independent reviewers, stale revisions, unrevised
+  stale rows, and latest stale rows.
+- **Reason:** Locks the row-level resolution semantics and prevents deriving
+  supersession from current or stale flags.
+- **Reapply after bump:** Preserve real subject identities and both-flag edge
+  coverage.
+
+### `openapi.yaml`
+### `ui/lib/api/types.gen.ts`
+- **Change:** Regenerated the API contract and TypeScript client for the
+  optional `is_superseded` review-row field.
+- **Reason:** Keeps generated consumers synchronized with the review endpoint.
+- **Reapply after bump:** Run `make gen-client`.

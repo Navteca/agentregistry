@@ -4,6 +4,7 @@ export type ArtifactControlFlags = {
   showEdit: boolean
   showDelete: boolean
   showDeploy: boolean
+  showReview: boolean
 }
 
 export function capabilityFlags(capabilities?: Partial<CapabilitiesMeta>): ArtifactControlFlags {
@@ -11,5 +12,6 @@ export function capabilityFlags(capabilities?: Partial<CapabilitiesMeta>): Artif
     showEdit: capabilities?.can_update === true,
     showDelete: capabilities?.can_delete === true,
     showDeploy: capabilities?.can_deploy === true,
+    showReview: capabilities?.can_review === true,
   }
 }

@@ -645,6 +645,7 @@ export type Review = {
     id: number;
     is_current?: boolean;
     is_stale?: boolean;
+    is_superseded?: boolean;
     notes: string;
     outcome: string;
     review_type: string;

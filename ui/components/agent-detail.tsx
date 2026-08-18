@@ -5,6 +5,7 @@ import { AgentResponse } from "@/lib/admin-api"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ReviewSection } from "@/components/review-section"
 import {
   Calendar,
   Bot,
@@ -22,20 +23,22 @@ import {
 interface AgentDetailProps {
   agent: AgentResponse
   allVersions?: AgentResponse[]
+  onReviewSubmitted?: () => void | Promise<void>
 }
 
-export function AgentDetail({ agent, allVersions: allVersionsProp }: AgentDetailProps) {
+export function AgentDetail({ agent, allVersions: allVersionsProp, onReviewSubmitted }: AgentDetailProps) {
   const [activeTab, setActiveTab] = useState("overview")
-  const [selectedVersion, setSelectedVersion] = useState<AgentResponse>(agent)
+  const [selectedVersionNumber, setSelectedVersionNumber] = useState(agent.agent.version)
 
   const allVersions = allVersionsProp || [agent]
+  const selectedVersion = allVersions.find((version) => version.agent.version === selectedVersionNumber) || agent
 
   const { agent: agentData, _meta } = selectedVersion
   const official = _meta?.['io.modelcontextprotocol.registry/official']
 
   const handleVersionChange = (version: string) => {
     const newVersion = allVersions.find(v => v.agent.version === version)
-    if (newVersion) setSelectedVersion(newVersion)
+    if (newVersion) setSelectedVersionNumber(newVersion.agent.version)
   }
 
   const formatDate = (dateString: string) => {
@@ -116,6 +119,15 @@ export function AgentDetail({ agent, allVersions: allVersionsProp }: AgentDetail
             </span>
           )}
         </div>
+
+        <ReviewSection
+          artifactType="agent"
+          artifactName={agentData.name}
+          artifactVersion={agentData.version}
+          reviewSummary={_meta?.['aregistry.ai/review']}
+          capabilities={_meta?.['aregistry.ai/capabilities']}
+          onReviewSubmitted={onReviewSubmitted}
+        />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="mb-4">

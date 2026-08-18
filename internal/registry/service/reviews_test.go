@@ -200,6 +200,77 @@ func TestGetReviewsReturnsRowsAndAllowsReadOnlyCallers(t *testing.T) {
 	assert.False(t, *reviews[0].IsStale)
 }
 
+func TestGetReviewsSetsSupersededMarkers(t *testing.T) {
+	t.Run("single review is not superseded", func(t *testing.T) {
+		registry, ownerCtx, server := newReviewStateFixture(t, "superseded-single")
+		createReviewAs(t, registry, server, "reviewer-one", "Reviewer One", "security", "pass", "single")
+
+		reviews, err := registry.GetReviews(ownerCtx, "server", server.Name, server.Version)
+		require.NoError(t, err)
+		require.Len(t, reviews, 1)
+		assertReviewMarkers(t, reviews[0], true, false, false)
+	})
+
+	t.Run("revision supersedes the older review", func(t *testing.T) {
+		registry, ownerCtx, server := newReviewStateFixture(t, "superseded-revision")
+		createReviewAs(t, registry, server, "reviewer-one", "Reviewer One", "security", "pass", "older")
+		createReviewAs(t, registry, server, "reviewer-one", "Reviewer One", "security", "fail", "newer")
+
+		reviews, err := registry.GetReviews(ownerCtx, "server", server.Name, server.Version)
+		require.NoError(t, err)
+		require.Len(t, reviews, 2)
+		assertReviewMarkers(t, reviewWithNotes(t, reviews, "older"), false, false, true)
+		assertReviewMarkers(t, reviewWithNotes(t, reviews, "newer"), true, false, false)
+	})
+
+	t.Run("independent reviewers are not superseded", func(t *testing.T) {
+		registry, ownerCtx, server := newReviewStateFixture(t, "superseded-independent")
+		createReviewAs(t, registry, server, "reviewer-one", "Reviewer One", "security", "pass", "one")
+		createReviewAs(t, registry, server, "reviewer-two", "Reviewer Two", "security", "fail", "two")
+
+		reviews, err := registry.GetReviews(ownerCtx, "server", server.Name, server.Version)
+		require.NoError(t, err)
+		require.Len(t, reviews, 2)
+		assertReviewMarkers(t, reviewWithNotes(t, reviews, "one"), true, false, false)
+		assertReviewMarkers(t, reviewWithNotes(t, reviews, "two"), true, false, false)
+	})
+
+	t.Run("revised review can be both superseded and stale", func(t *testing.T) {
+		registry, ownerCtx, server := newReviewStateFixture(t, "superseded-stale")
+		createReviewAs(t, registry, server, "reviewer-one", "Reviewer One", "security", "pass", "older")
+		updateServerForReviewState(t, registry, auth.WithSystemContext(context.Background()), server, "edited content")
+		createReviewAs(t, registry, server, "reviewer-one", "Reviewer One", "security", "pass", "newer")
+
+		reviews, err := registry.GetReviews(ownerCtx, "server", server.Name, server.Version)
+		require.NoError(t, err)
+		require.Len(t, reviews, 2)
+		assertReviewMarkers(t, reviewWithNotes(t, reviews, "older"), false, true, true)
+		assertReviewMarkers(t, reviewWithNotes(t, reviews, "newer"), true, false, false)
+	})
+
+	t.Run("stale review that was never revised is not superseded", func(t *testing.T) {
+		registry, ownerCtx, server := newReviewStateFixture(t, "superseded-stale-only")
+		createReviewAs(t, registry, server, "reviewer-one", "Reviewer One", "security", "pass", "stale")
+		updateServerForReviewState(t, registry, auth.WithSystemContext(context.Background()), server, "edited content")
+
+		reviews, err := registry.GetReviews(ownerCtx, "server", server.Name, server.Version)
+		require.NoError(t, err)
+		require.Len(t, reviews, 1)
+		assertReviewMarkers(t, reviews[0], false, true, false)
+	})
+
+	t.Run("latest stale review is not superseded", func(t *testing.T) {
+		registry, ownerCtx, server := newReviewStateFixture(t, "superseded-latest-stale")
+		createReviewAs(t, registry, server, "reviewer-one", "Reviewer One", "security", "pass", "latest")
+		updateServerForReviewState(t, registry, auth.WithSystemContext(context.Background()), server, "edited content")
+
+		reviews, err := registry.GetReviews(ownerCtx, "server", server.Name, server.Version)
+		require.NoError(t, err)
+		require.Len(t, reviews, 1)
+		assertReviewMarkers(t, reviews[0], false, true, false)
+	})
+}
+
 func TestGetReviewsReturnsEmptyForExistingArtifactAndNotFoundForMissingVersion(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	cfg := &config.Config{
@@ -703,8 +774,22 @@ func newReviewStateFixture(t *testing.T, name string) (RegistryService, context.
 
 func createStateReview(t *testing.T, registry RegistryService, server *apiv0.ServerJSON, reviewType, outcome, notes string) {
 	t.Helper()
+	createReviewAs(t, registry, server, "reviewer-"+reviewType, "Reviewer", reviewType, outcome, notes)
+}
+
+func createReviewAs(
+	t *testing.T,
+	registry RegistryService,
+	server *apiv0.ServerJSON,
+	subject,
+	displayName,
+	reviewType,
+	outcome,
+	notes string,
+) {
+	t.Helper()
 	_, err := registry.CreateReview(
-		ownershipPermissionContext("reviewer-"+reviewType, "Reviewer", []auth.Permission{
+		ownershipPermissionContext(subject, displayName, []auth.Permission{
 			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
 			{Action: auth.PermissionActionReview, ResourcePattern: "*"},
 		}),
@@ -716,6 +801,27 @@ func createStateReview(t *testing.T, registry RegistryService, server *apiv0.Ser
 		notes,
 	)
 	require.NoError(t, err)
+}
+
+func reviewWithNotes(t *testing.T, reviews []models.Review, notes string) models.Review {
+	t.Helper()
+	for _, review := range reviews {
+		if review.Notes == notes {
+			return review
+		}
+	}
+	t.Fatalf("review with notes %q not found", notes)
+	return models.Review{}
+}
+
+func assertReviewMarkers(t *testing.T, review models.Review, current, stale, superseded bool) {
+	t.Helper()
+	require.NotNil(t, review.IsCurrent)
+	require.NotNil(t, review.IsStale)
+	require.NotNil(t, review.IsSuperseded)
+	assert.Equal(t, current, *review.IsCurrent)
+	assert.Equal(t, stale, *review.IsStale)
+	assert.Equal(t, superseded, *review.IsSuperseded)
 }
 
 func updateServerForReviewState(t *testing.T, registry RegistryService, editCtx context.Context, server *apiv0.ServerJSON, description string) {

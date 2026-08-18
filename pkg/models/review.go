@@ -17,6 +17,7 @@ type Review struct {
 	CreatedAt           time.Time `json:"created_at"`
 	IsCurrent           *bool     `json:"is_current,omitempty"`
 	IsStale             *bool     `json:"is_stale,omitempty"`
+	IsSuperseded        *bool     `json:"is_superseded,omitempty"`
 }
 
 const (

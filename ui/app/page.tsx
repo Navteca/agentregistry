@@ -354,6 +354,26 @@ export default function AdminPage() {
 
       const grouped = groupServersByName(allServers)
       setGroupedServers(grouped)
+      setSelectedServer((current) => {
+        if (!current) return current
+        return allServers.find(
+          (server) =>
+            server.server.name === current.server.name &&
+            server.server.version === current.server.version,
+        ) ?? current
+      })
+      setSelectedSkill((current) => {
+        if (!current) return current
+        return groupedS.find((skill) => skill.skill.name === current.skill.name) ?? current
+      })
+      setSelectedAgent((current) => {
+        if (!current) return current
+        return groupedA.find((agent) => agent.agent.name === current.agent.name) ?? current
+      })
+      setSelectedPrompt((current) => {
+        if (!current) return current
+        return groupedP.find((prompt) => prompt.prompt.name === current.prompt.name) ?? current
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data")
     } finally {
@@ -813,11 +833,30 @@ export default function AdminPage() {
             <ServerDetail
               server={selectedServer as ServerResponse & { allVersions?: ServerResponse[] }}
               onServerCopied={fetchData}
+              onReviewSubmitted={fetchData}
             />
           )}
-          {selectedSkill && <SkillDetail skill={selectedSkill} allVersions={selectedSkill.allVersions} />}
-          {selectedAgent && <AgentDetail agent={selectedAgent} allVersions={selectedAgent.allVersions} />}
-          {selectedPrompt && <PromptDetail prompt={selectedPrompt} allVersions={selectedPrompt.allVersions} />}
+          {selectedSkill && (
+            <SkillDetail
+              skill={selectedSkill}
+              allVersions={selectedSkill.allVersions}
+              onReviewSubmitted={fetchData}
+            />
+          )}
+          {selectedAgent && (
+            <AgentDetail
+              agent={selectedAgent}
+              allVersions={selectedAgent.allVersions}
+              onReviewSubmitted={fetchData}
+            />
+          )}
+          {selectedPrompt && (
+            <PromptDetail
+              prompt={selectedPrompt}
+              allVersions={selectedPrompt.allVersions}
+              onReviewSubmitted={fetchData}
+            />
+          )}
         </SheetContent>
       </Sheet>
 

@@ -127,11 +127,22 @@ func (s *registryServiceImpl) GetReviews(
 		for _, review := range ResolveCurrentReviews(reviews, updatedAt) {
 			currentIDs[review.ID] = struct{}{}
 		}
+		latestByReviewer := make(map[string]models.Review)
+		for _, review := range reviews {
+			key := reviewResolutionKey(review)
+			current, exists := latestByReviewer[key]
+			if !exists || reviewIsLater(review, current) {
+				latestByReviewer[key] = review
+			}
+		}
 		for i := range reviews {
 			_, current := currentIDs[reviews[i].ID]
 			stale := reviews[i].CreatedAt.Before(updatedAt)
+			latest, exists := latestByReviewer[reviewResolutionKey(reviews[i])]
+			superseded := exists && latest.ID != reviews[i].ID
 			reviews[i].IsCurrent = &current
 			reviews[i].IsStale = &stale
+			reviews[i].IsSuperseded = &superseded
 		}
 		return reviews, nil
 	})
@@ -213,13 +224,7 @@ func ResolveCurrentReviews(reviews []models.Review, updatedAt time.Time) []model
 			continue
 		}
 
-		key := strings.Join([]string{
-			review.ArtifactType,
-			review.ArtifactName,
-			review.ArtifactVersion,
-			review.ReviewType,
-			review.ReviewerSubject,
-		}, "\x00")
+		key := reviewResolutionKey(review)
 		current, exists := latest[key]
 		if !exists || reviewIsLater(review, current) {
 			latest[key] = review
@@ -232,6 +237,16 @@ func ResolveCurrentReviews(reviews []models.Review, updatedAt time.Time) []model
 	}
 	slices.SortFunc(current, compareReviews)
 	return current
+}
+
+func reviewResolutionKey(review models.Review) string {
+	return strings.Join([]string{
+		review.ArtifactType,
+		review.ArtifactName,
+		review.ArtifactVersion,
+		review.ReviewType,
+		review.ReviewerSubject,
+	}, "\x00")
 }
 
 // ResolveReviewState derives certification, rejection, and per-type status
