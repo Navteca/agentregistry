@@ -455,6 +455,77 @@ func (db *PostgreSQL) ListReviews(
 	return reviews, nil
 }
 
+// ListReviewsForArtifacts returns reviews for multiple artifact versions in one query.
+func (db *PostgreSQL) ListReviewsForArtifacts(
+	ctx context.Context,
+	tx pgx.Tx,
+	artifacts []database.ReviewArtifact,
+) (map[string][]models.Review, error) {
+	result := make(map[string][]models.Review, len(artifacts))
+	if len(artifacts) == 0 {
+		return result, nil
+	}
+
+	for _, artifact := range artifacts {
+		if err := db.authz.Check(ctx, auth.PermissionActionRead, auth.Resource{
+			Name: artifact.ArtifactName,
+			Type: auth.PermissionArtifactType(artifact.ArtifactType),
+		}); err != nil {
+			return nil, err
+		}
+		result[database.ReviewArtifactKey(artifact.ArtifactType, artifact.ArtifactName, artifact.ArtifactVersion)] = nil
+	}
+
+	placeholders := make([]string, len(artifacts))
+	args := make([]any, 0, len(artifacts)*3)
+	for i, artifact := range artifacts {
+		offset := i * 3
+		placeholders[i] = fmt.Sprintf("($%d, $%d, $%d)", offset+1, offset+2, offset+3)
+		args = append(args, artifact.ArtifactType, artifact.ArtifactName, artifact.ArtifactVersion)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, artifact_type, artifact_name, artifact_version, review_type,
+			outcome, reviewer_subject, reviewer_auth_method, reviewer_display_name,
+			notes, created_at
+		FROM reviews
+		WHERE (artifact_type, artifact_name, artifact_version) IN (%s)
+		ORDER BY created_at DESC, id DESC
+	`, strings.Join(placeholders, ", "))
+
+	rows, err := db.getExecutor(tx).Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list reviews for artifacts: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var review models.Review
+		if err := rows.Scan(
+			&review.ID,
+			&review.ArtifactType,
+			&review.ArtifactName,
+			&review.ArtifactVersion,
+			&review.ReviewType,
+			&review.Outcome,
+			&review.ReviewerSubject,
+			&review.ReviewerAuthMethod,
+			&review.ReviewerDisplayName,
+			&review.Notes,
+			&review.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan batched review: %w", err)
+		}
+		key := database.ReviewArtifactKey(review.ArtifactType, review.ArtifactName, review.ArtifactVersion)
+		result[key] = append(result[key], review)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read batched reviews: %w", err)
+	}
+
+	return result, nil
+}
+
 // GetServerByNameAndVersion retrieves a specific version of a server by server name and version
 func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName string, version string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {

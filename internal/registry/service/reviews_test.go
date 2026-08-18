@@ -351,7 +351,7 @@ func TestReviewStateSequence_EditMakesBothPassesStale(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, state.Certified)
 
-	updateServerForReviewState(t, registry, ownerCtx, server, "edited content")
+	updateServerForReviewState(t, registry, auth.WithSystemContext(context.Background()), server, "edited content")
 	state, err = registry.GetReviewState(ownerCtx, "server", server.Name, server.Version)
 	require.NoError(t, err)
 	assert.False(t, state.Certified)
@@ -375,7 +375,7 @@ func TestReviewStateSequence_ReopenCannotRecertifyWithStaleSecurity(t *testing.T
 	require.NoError(t, err)
 	require.True(t, state.Rejected)
 
-	updateServerForReviewState(t, registry, ownerCtx, server, "reopened content")
+	updateServerForReviewState(t, registry, auth.WithSystemContext(context.Background()), server, "reopened content")
 	createStateReview(t, registry, server, "scientific", "pass", "scientific-repair")
 
 	state, err = registry.GetReviewState(ownerCtx, "server", server.Name, server.Version)
@@ -385,6 +385,139 @@ func TestReviewStateSequence_ReopenCannotRecertifyWithStaleSecurity(t *testing.T
 	assert.True(t, state.Pending)
 	assert.Equal(t, models.ReviewStatusPending, state.PerType[0].Status)
 	assert.Equal(t, models.ReviewStatusPass, state.PerType[1].Status)
+}
+
+func TestAuthorizeServerUpdate_UserRules(t *testing.T) {
+	t.Run("owner can edit before any review", func(t *testing.T) {
+		registry, ownerCtx, server := newReviewStateFixture(t, "user-unreviewed")
+		_, err := updateReviewFixture(registry, ownerCtx, server, "owner edit")
+		require.NoError(t, err)
+	})
+
+	for _, outcome := range []string{"pass", "fail"} {
+		t.Run("owner is blocked after "+outcome, func(t *testing.T) {
+			registry, ownerCtx, server := newReviewStateFixture(t, "user-"+outcome)
+			createStateReview(t, registry, server, "security", outcome, outcome+" review")
+
+			_, err := updateReviewFixture(registry, ownerCtx, server, "blocked edit")
+			assert.ErrorIs(t, err, auth.ErrForbidden)
+		})
+	}
+
+	t.Run("stale review still blocks owner", func(t *testing.T) {
+		registry, ownerCtx, server := newReviewStateFixture(t, "user-stale")
+		createStateReview(t, registry, server, "security", "pass", "stale review")
+		updateServerForReviewState(t, registry, auth.WithSystemContext(context.Background()), server, "system edit")
+
+		_, err := updateReviewFixture(registry, ownerCtx, server, "owner edit")
+		assert.ErrorIs(t, err, auth.ErrForbidden)
+	})
+
+	t.Run("owner cannot edit someone else's artifact", func(t *testing.T) {
+		registry, _, server := newReviewStateFixture(t, "other-owner")
+		otherCtx := ownershipPermissionContext("other-subject", "Other", ownerEditPermissions())
+
+		_, err := updateReviewFixture(registry, otherCtx, server, "unreviewed attempt")
+		assert.ErrorIs(t, err, auth.ErrForbidden)
+
+		createStateReview(t, registry, server, "security", "pass", "review")
+		_, err = updateReviewFixture(registry, otherCtx, server, "reviewed attempt")
+		assert.ErrorIs(t, err, auth.ErrForbidden)
+	})
+}
+
+func TestAuthorizeServerUpdate_CertifiedFreeze(t *testing.T) {
+	registry, _, server := newReviewStateFixture(t, "certified-freeze")
+	createStateReview(t, registry, server, "security", "pass", "security")
+	createStateReview(t, registry, server, "scientific", "pass", "scientific")
+
+	curatorCtx := ownershipPermissionContext("curator-subject", "Curator", curatorEditPermissions())
+	adminCtx := ownershipPermissionContext("admin-subject", "Admin", []auth.Permission{
+		{Action: auth.PermissionActionAdmin, ResourcePattern: "*"},
+	})
+
+	_, err := updateReviewFixture(registry, curatorCtx, server, "curator attempt")
+	assert.ErrorIs(t, err, auth.ErrForbidden)
+	_, err = updateReviewFixture(registry, adminCtx, server, "admin attempt")
+	assert.ErrorIs(t, err, auth.ErrForbidden)
+
+	response, err := registry.GetServerByNameAndVersion(adminCtx, server.Name, server.Version)
+	require.NoError(t, err)
+	require.NotNil(t, response.Meta.Capabilities)
+	assert.False(t, response.Meta.Capabilities.CanUpdate)
+
+	_, err = updateReviewFixture(registry, auth.WithSystemContext(context.Background()), server, "system reconciliation")
+	require.NoError(t, err)
+}
+
+func TestAuthorizeServerUpdate_RejectionAndPendingReopenForCurator(t *testing.T) {
+	t.Run("pending type remains editable", func(t *testing.T) {
+		registry, _, server := newReviewStateFixture(t, "curator-pending")
+		createStateReview(t, registry, server, "security", "pass", "security")
+		curatorCtx := ownershipPermissionContext("curator-subject", "Curator", curatorEditPermissions())
+
+		_, err := updateReviewFixture(registry, curatorCtx, server, "pending edit")
+		require.NoError(t, err)
+	})
+
+	t.Run("rejected version reopens for curator", func(t *testing.T) {
+		registry, _, server := newReviewStateFixture(t, "curator-rejected")
+		createStateReview(t, registry, server, "security", "fail", "security failure")
+		curatorCtx := ownershipPermissionContext("curator-subject", "Curator", curatorEditPermissions())
+
+		_, err := updateReviewFixture(registry, curatorCtx, server, "rejected edit")
+		require.NoError(t, err)
+	})
+}
+
+func TestServerCapabilitiesReviewAction(t *testing.T) {
+	registry, _, server := newReviewStateFixture(t, "review-capability")
+	reviewerCtx := ownershipPermissionContext("reviewer-subject", "Reviewer", []auth.Permission{
+		{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+		{Action: auth.PermissionActionReview, ResourcePattern: "*"},
+	})
+	readOnlyCtx := ownershipPermissionContext("reader-subject", "Reader", []auth.Permission{
+		{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+	})
+
+	reviewerResponse, err := registry.GetServerByNameAndVersion(reviewerCtx, server.Name, server.Version)
+	require.NoError(t, err)
+	readOnlyResponse, err := registry.GetServerByNameAndVersion(readOnlyCtx, server.Name, server.Version)
+	require.NoError(t, err)
+	assert.True(t, reviewerResponse.Meta.Capabilities.CanReview)
+	assert.False(t, readOnlyResponse.Meta.Capabilities.CanReview)
+}
+
+func TestAuthorizeServerUpdateRejectsMismatchedReviewSnapshot(t *testing.T) {
+	svc := &registryServiceImpl{
+		cfg: &config.Config{
+			ReviewTypes:          []string{"security"},
+			ReviewOutcomes:       []string{"pass", "fail"},
+			ReviewFailureOutcome: "fail",
+		},
+	}
+	current := &models.ServerResponse{
+		Server: apiv0.ServerJSON{
+			Name:    "com.example/current",
+			Version: "1.0.0",
+		},
+		Meta: models.ServerResponseMeta{
+			Official: &apiv0.RegistryExtensions{
+				UpdatedAt: time.Now(),
+			},
+		},
+	}
+
+	err := svc.authorizeServerUpdateWithReviews(
+		ownershipPermissionContext("owner", "Owner", ownerEditPermissions()),
+		current.Server.Name,
+		current,
+		serverReviewSnapshot{
+			serverName: "com.example/other",
+			version:    current.Server.Version,
+		},
+	)
+	assert.ErrorIs(t, err, database.ErrInvalidInput)
 }
 
 func testReview(id int64, reviewType, outcome, subject string, createdAt time.Time) models.Review {
@@ -436,10 +569,14 @@ func createStateReview(t *testing.T, registry RegistryService, server *apiv0.Ser
 	require.NoError(t, err)
 }
 
-func updateServerForReviewState(t *testing.T, registry RegistryService, ownerCtx context.Context, server *apiv0.ServerJSON, description string) {
+func updateServerForReviewState(t *testing.T, registry RegistryService, editCtx context.Context, server *apiv0.ServerJSON, description string) {
 	t.Helper()
+	_, err := updateReviewFixture(registry, editCtx, server, description)
+	require.NoError(t, err)
+}
+
+func updateReviewFixture(registry RegistryService, editCtx context.Context, server *apiv0.ServerJSON, description string) (*models.ServerResponse, error) {
 	updated := *server
 	updated.Description = description
-	_, err := registry.UpdateServer(ownerCtx, server.Name, server.Version, &updated, nil)
-	require.NoError(t, err)
+	return registry.UpdateServer(editCtx, server.Name, server.Version, &updated, nil)
 }

@@ -170,7 +170,7 @@ func TestServerCapabilitiesWithNilAuthorizerProviderCannotDelete(t *testing.T) {
 	service.annotateServerCapabilities(ctx, "com.example/server", response)
 
 	require.NotNil(t, response.Meta.Capabilities)
-	assert.True(t, response.Meta.Capabilities.CanUpdate)
+	assert.False(t, response.Meta.Capabilities.CanUpdate, "missing official metadata must fail closed")
 	assert.False(t, response.Meta.Capabilities.CanDelete)
 	assert.False(t, response.Meta.Capabilities.CanDeploy)
 }

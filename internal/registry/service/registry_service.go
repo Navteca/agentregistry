@@ -32,6 +32,12 @@ const (
 	originDiscovered  = "discovered"
 )
 
+type serverReviewSnapshot struct {
+	serverName string
+	version    string
+	reviews    []models.Review
+}
+
 // UnsupportedDeploymentPlatformError is returned when no deployment adapter is
 // registered for a provider platform.
 type UnsupportedDeploymentPlatformError struct {
@@ -131,8 +137,13 @@ func (s *registryServiceImpl) ListServers(ctx context.Context, filter *database.
 		return nil, "", err
 	}
 
+	reviewRows, err := s.listServerReviews(ctx, serverRecords)
+	if err != nil {
+		return nil, "", err
+	}
 	for _, serverRecord := range serverRecords {
-		s.annotateServerCapabilities(ctx, serverRecord.Server.Name, serverRecord)
+		key := database.ReviewArtifactKey("server", serverRecord.Server.Name, serverRecord.Server.Version)
+		s.annotateServerCapabilitiesWithReviews(ctx, serverRecord.Server.Name, serverRecord, reviewRows[key])
 	}
 
 	return serverRecords, nextCursor, nil
@@ -167,14 +178,74 @@ func (s *registryServiceImpl) GetAllVersionsByServerName(ctx context.Context, se
 		return nil, err
 	}
 
+	reviewRows, err := s.listServerReviews(ctx, serverRecords)
+	if err != nil {
+		return nil, err
+	}
 	for _, serverRecord := range serverRecords {
-		s.annotateServerCapabilities(ctx, serverName, serverRecord)
+		key := database.ReviewArtifactKey("server", serverName, serverRecord.Server.Version)
+		s.annotateServerCapabilitiesWithReviews(ctx, serverName, serverRecord, reviewRows[key])
 	}
 
 	return serverRecords, nil
 }
 
+func (s *registryServiceImpl) listServerReviews(ctx context.Context, servers []*models.ServerResponse) (map[string]serverReviewSnapshot, error) {
+	if _, ok := auth.AuthSessionFrom(ctx); !ok || len(servers) == 0 {
+		return map[string]serverReviewSnapshot{}, nil
+	}
+
+	artifacts := make([]database.ReviewArtifact, 0, len(servers))
+	for _, server := range servers {
+		if server == nil {
+			continue
+		}
+		artifacts = append(artifacts, database.ReviewArtifact{
+			ArtifactType:    "server",
+			ArtifactName:    server.Server.Name,
+			ArtifactVersion: server.Server.Version,
+		})
+	}
+	reviewRows, err := s.db.ListReviewsForArtifacts(ctx, nil, artifacts)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshots := make(map[string]serverReviewSnapshot, len(artifacts))
+	for _, artifact := range artifacts {
+		key := database.ReviewArtifactKey(artifact.ArtifactType, artifact.ArtifactName, artifact.ArtifactVersion)
+		snapshots[key] = serverReviewSnapshot{
+			serverName: artifact.ArtifactName,
+			version:    artifact.ArtifactVersion,
+			reviews:    reviewRows[key],
+		}
+	}
+	return snapshots, nil
+}
+
 func (s *registryServiceImpl) annotateServerCapabilities(ctx context.Context, serverName string, serverResponse *models.ServerResponse) {
+	s.populateServerCapabilities(ctx, serverName, serverResponse, func() error {
+		return s.authorizeServerUpdate(ctx, nil, serverName, serverResponse)
+	})
+}
+
+func (s *registryServiceImpl) annotateServerCapabilitiesWithReviews(
+	ctx context.Context,
+	serverName string,
+	serverResponse *models.ServerResponse,
+	reviewSnapshot serverReviewSnapshot,
+) {
+	s.populateServerCapabilities(ctx, serverName, serverResponse, func() error {
+		return s.authorizeServerUpdateWithReviews(ctx, serverName, serverResponse, reviewSnapshot)
+	})
+}
+
+func (s *registryServiceImpl) populateServerCapabilities(
+	ctx context.Context,
+	serverName string,
+	serverResponse *models.ServerResponse,
+	authorizeUpdate func() error,
+) {
 	capabilities := &models.CapabilitiesMeta{}
 	serverResponse.Meta.Capabilities = capabilities
 
@@ -182,9 +253,10 @@ func (s *registryServiceImpl) annotateServerCapabilities(ctx context.Context, se
 		return
 	}
 
-	capabilities.CanUpdate = authorizeServerUpdate(ctx, serverName, serverResponse) == nil
+	capabilities.CanUpdate = authorizeUpdate() == nil
 	capabilities.CanDelete = s.canPerform(ctx, serverName, auth.PermissionArtifactTypeServer, auth.PermissionActionDelete)
 	capabilities.CanDeploy = s.canPerform(ctx, serverName, auth.PermissionArtifactTypeServer, auth.PermissionActionDeploy)
+	capabilities.CanReview = s.canPerform(ctx, serverName, auth.PermissionArtifactTypeServer, auth.PermissionActionReview)
 }
 
 func (s *registryServiceImpl) canPerform(ctx context.Context, name string, resourceType auth.PermissionArtifactType, action auth.PermissionAction) bool {
@@ -204,6 +276,7 @@ func (s *registryServiceImpl) annotateAgentCapabilities(ctx context.Context, age
 		CanUpdate: false,
 		CanDelete: s.canPerform(ctx, agentName, auth.PermissionArtifactTypeAgent, auth.PermissionActionDelete),
 		CanDeploy: s.canPerform(ctx, agentName, auth.PermissionArtifactTypeAgent, auth.PermissionActionDeploy),
+		CanReview: s.canPerform(ctx, agentName, auth.PermissionArtifactTypeAgent, auth.PermissionActionReview),
 	}
 }
 
@@ -214,6 +287,7 @@ func (s *registryServiceImpl) annotateSkillCapabilities(ctx context.Context, ski
 		CanUpdate: false,
 		CanDelete: s.canPerform(ctx, skillName, auth.PermissionArtifactTypeSkill, auth.PermissionActionDelete),
 		CanDeploy: false,
+		CanReview: s.canPerform(ctx, skillName, auth.PermissionArtifactTypeSkill, auth.PermissionActionReview),
 	}
 }
 
@@ -224,6 +298,7 @@ func (s *registryServiceImpl) annotatePromptCapabilities(ctx context.Context, pr
 		CanUpdate: false,
 		CanDelete: s.canPerform(ctx, promptName, auth.PermissionArtifactTypePrompt, auth.PermissionActionDelete),
 		CanDeploy: false,
+		CanReview: s.canPerform(ctx, promptName, auth.PermissionArtifactTypePrompt, auth.PermissionActionReview),
 	}
 }
 
@@ -526,7 +601,7 @@ func (s *registryServiceImpl) updateServerInTransaction(ctx context.Context, tx 
 		return nil, err
 	}
 
-	if err := authorizeServerUpdate(ctx, serverName, currentServer); err != nil {
+	if err := s.authorizeServerUpdate(ctx, tx, serverName, currentServer); err != nil {
 		return nil, err
 	}
 
@@ -570,11 +645,55 @@ func (s *registryServiceImpl) updateServerInTransaction(ctx context.Context, tx 
 	return updatedServerResponse, nil
 }
 
-func authorizeServerUpdate(ctx context.Context, serverName string, currentServer *models.ServerResponse) error {
+func (s *registryServiceImpl) authorizeServerUpdate(ctx context.Context, tx pgx.Tx, serverName string, currentServer *models.ServerResponse) error {
+	if currentServer.Meta.Official == nil {
+		return fmt.Errorf("%w: artifact has no official metadata", database.ErrInvalidInput)
+	}
+	if s.cfg == nil {
+		return fmt.Errorf("%w: review configuration is unavailable", database.ErrInvalidInput)
+	}
+
+	reviews, err := s.db.ListReviews(ctx, tx, string(auth.PermissionArtifactTypeServer), serverName, currentServer.Server.Version)
+	if err != nil {
+		return err
+	}
+	return s.authorizeServerUpdateWithReviews(ctx, serverName, currentServer, serverReviewSnapshot{
+		serverName: serverName,
+		version:    currentServer.Server.Version,
+		reviews:    reviews,
+	})
+}
+
+func (s *registryServiceImpl) authorizeServerUpdateWithReviews(
+	ctx context.Context,
+	serverName string,
+	currentServer *models.ServerResponse,
+	reviewSnapshot serverReviewSnapshot,
+) error {
 	session, ok := auth.AuthSessionFrom(ctx)
 	if !ok || session == nil {
 		return auth.ErrUnauthenticated
 	}
+
+	if reviewSnapshot.serverName != serverName ||
+		reviewSnapshot.version != currentServer.Server.Version {
+		return fmt.Errorf("%w: review snapshot does not match artifact version", database.ErrInvalidInput)
+	}
+	if currentServer.Meta.Official == nil {
+		return fmt.Errorf("%w: artifact has no official metadata", database.ErrInvalidInput)
+	}
+	if s.cfg == nil {
+		return fmt.Errorf("%w: review configuration is unavailable", database.ErrInvalidInput)
+	}
+
+	reviews := reviewSnapshot.reviews
+	reviewState := ResolveReviewState(reviews, currentServer.Meta.Official.UpdatedAt, s.cfg.ReviewConfig())
+	if reviewState.Certified && !auth.IsSystemSession(session) {
+		return auth.ErrForbidden
+	}
+
+	// System sessions are explicitly exempt from the certified freeze because
+	// internal reconciliation and migration paths may need to write.
 	if auth.IsSystemSession(session) {
 		return nil
 	}
@@ -591,7 +710,7 @@ func authorizeServerUpdate(ctx context.Context, serverName string, currentServer
 	if ownership == nil || ownership.Subject == "" || user.Subject == "" || ownership.Subject != user.Subject {
 		return auth.ErrForbidden
 	}
-	if isArtifactReviewed(currentServer) {
+	if isArtifactReviewed(reviews) {
 		return auth.ErrForbidden
 	}
 	return nil
@@ -612,9 +731,8 @@ func hasEffectivePermission(user auth.User, resource string, action auth.Permiss
 	return false
 }
 
-func isArtifactReviewed(_ *models.ServerResponse) bool {
-	// AR-2 insertion point: replace this stub with the review-state predicate.
-	return false
+func isArtifactReviewed(reviews []models.Review) bool {
+	return len(reviews) > 0
 }
 
 func (s *registryServiceImpl) StoreServerReadme(ctx context.Context, serverName, version string, content []byte, contentType string) error {

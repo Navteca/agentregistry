@@ -1975,12 +1975,15 @@ components:
                     type: boolean
                 can_deploy:
                     type: boolean
+                can_review:
+                    type: boolean
                 can_update:
                     type: boolean
             required:
                 - can_update
                 - can_delete
                 - can_deploy
+                - can_review
         CategoryDetail:
             type: object
             additionalProperties: false

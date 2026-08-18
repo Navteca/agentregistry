@@ -16,6 +16,7 @@ func TestCapabilitiesMetaJSON(t *testing.T) {
 				CanUpdate: true,
 				CanDelete: true,
 				CanDeploy: true,
+				CanReview: false,
 			},
 		},
 	})
@@ -24,7 +25,7 @@ func TestCapabilitiesMetaJSON(t *testing.T) {
 	}
 
 	got := string(data)
-	want := `{"_meta":{"aregistry.ai/capabilities":{"can_update":true,"can_delete":true,"can_deploy":true}}}`
+	want := `{"_meta":{"aregistry.ai/capabilities":{"can_update":true,"can_delete":true,"can_deploy":true,"can_review":false}}}`
 	if got != want {
 		t.Fatalf("unexpected capabilities JSON: got %s, want %s", got, want)
 	}

@@ -88,14 +88,32 @@ func (s *registryServiceImpl) GetReviewState(
 		if err != nil {
 			return nil, err
 		}
-		reviews, err := s.db.ListReviews(ctx, tx, normalizedArtifactType, artifactName, artifactVersion)
-		if err != nil {
-			return nil, err
-		}
-
-		state := ResolveReviewState(reviews, updatedAt, s.cfg.ReviewConfig())
-		return &state, nil
+		return s.reviewStateForUpdatedAt(
+			ctx,
+			tx,
+			auth.PermissionArtifactType(normalizedArtifactType),
+			artifactName,
+			artifactVersion,
+			updatedAt,
+		)
 	})
+}
+
+func (s *registryServiceImpl) reviewStateForUpdatedAt(
+	ctx context.Context,
+	tx pgx.Tx,
+	artifactType auth.PermissionArtifactType,
+	artifactName,
+	artifactVersion string,
+	updatedAt time.Time,
+) (*models.ReviewState, error) {
+	reviews, err := s.db.ListReviews(ctx, tx, string(artifactType), artifactName, artifactVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	state := ResolveReviewState(reviews, updatedAt, s.cfg.ReviewConfig())
+	return &state, nil
 }
 
 func (s *registryServiceImpl) reviewArtifactUpdatedAt(
@@ -196,9 +214,10 @@ func ResolveReviewState(
 		}
 	}
 
-	perType := make([]models.ReviewTypeStatus, 0, len(reviewConfig.Types()))
-	allTypesReviewed := true
-	for _, reviewType := range reviewConfig.Types() {
+	configuredTypes := reviewConfig.Types()
+	perType := make([]models.ReviewTypeStatus, 0, len(configuredTypes))
+	allTypesReviewed := len(configuredTypes) > 0
+	for _, reviewType := range configuredTypes {
 		typeReviews := byType[reviewType]
 		slices.SortFunc(typeReviews, compareReviews)
 		status := models.ReviewStatusPending

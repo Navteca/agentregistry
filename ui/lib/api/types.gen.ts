@@ -144,6 +144,7 @@ export type Argument = {
 export type CapabilitiesMeta = {
     can_delete: boolean;
     can_deploy: boolean;
+    can_review: boolean;
     can_update: boolean;
 };
 

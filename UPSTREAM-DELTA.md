@@ -931,3 +931,84 @@ Conventions:
 - **Reapply after bump:** Preserve both sequence tests, custom outcome mapping,
   and the staleness falsification coverage. The edit sequences rely on
   PostgreSQL microsecond timestamps and require no sleep.
+
+## AR-2 Task 5 — Certified edit freeze and review capability
+
+### `internal/registry/service/registry_service.go`
+- **Change:** Replaced `isArtifactReviewed` with an artifact-version review-row
+  lookup and placed the certified freeze before admin and system early returns.
+  System sessions are explicitly exempt for the real builtin-seed and
+  seed-import writes, which wrap `CreateServer`/`UpdateServer` in
+  `auth.WithSystemContext`. Added `CanReview` capability computation through
+  the existing `canPerform` predicate. Server list and all-version capability
+  annotation now uses one batched review query instead of one query per item.
+  Missing official metadata fails closed with an invalid-input error. Review
+  authorization uses separate fetch-and-delegate methods with a required,
+  artifact-identity-checked snapshot; no variadic optional review rows remain.
+- **Reason:** Enforces AR-1 owner edit blocking after any review and freezes
+  certified content for real callers, including admin sentinels, while retaining
+  the explicit system-session exemption. `CanUpdate` now reflects certification
+  automatically because it uses the same authorization path.
+- **Reapply after bump:** Preserve freeze-before-bypass ordering, the
+  all-review-row owner predicate, explicit system write-path exemption, batched
+  list loading, fail-closed metadata handling, required snapshot matching, and
+  review capability action check.
+
+### `pkg/registry/database/database.go`
+- **Change:** Added `ReviewArtifact` keys and a batched review-list repository
+  method.
+- **Reason:** Lets catalog and all-version capability annotations load review
+  rows in one database query rather than introducing an N+1 query.
+- **Reapply after bump:** Preserve the batch artifact key contract and
+  `ListReviewsForArtifacts` method.
+
+### `internal/registry/database/postgres.go`
+- **Change:** Implemented one parameterized tuple query for batched review
+  retrieval, retaining per-artifact read authorization checks.
+- **Reason:** Avoids database round trips per catalog item while keeping review
+  visibility aligned with artifact read permissions.
+- **Reapply after bump:** Preserve the single batched query and deterministic
+  `created_at DESC, id DESC` ordering.
+
+### `internal/registry/service/server_capabilities_test.go`
+- **Change:** Updated missing-metadata capability coverage to assert fail-closed
+  `can_update`.
+- **Reason:** A response without official metadata cannot safely establish
+  review state or edit integrity.
+- **Reapply after bump:** Preserve the false capability assertion.
+
+### `pkg/models/capabilities.go`
+- **Change:** Added the serialized `can_review` capability field.
+- **Reason:** Exposes review permission consistently with the AR-1B capability
+  model.
+- **Reapply after bump:** Add required `CanReview bool` alongside the other
+  capability fields.
+
+### `pkg/models/capabilities_test.go`
+- **Change:** Updated capability JSON coverage for `can_review`.
+- **Reason:** Locks down the new wire field.
+- **Reapply after bump:** Preserve the serialized false-value assertion.
+
+### `internal/registry/service/reviews_test.go`
+- **Change:** Added real-subject tests for owner review blocking, stale-review
+  blocking, certified curator/admin freeze, rejected and pending edit
+  reopening, review capabilities, certified `can_update` behavior, and
+  mismatched review-snapshot rejection.
+- **Reason:** Verifies both stacked edit rules and capability enforcement through
+  the real service authorization path.
+- **Reapply after bump:** Preserve the rule-1, rule-2, sentinel-ordering, and
+  capability cases.
+
+### `openapi.yaml`
+- **Change:** Regenerated capability schemas to include `can_review`.
+- **Reason:** Keeps the API contract synchronized with the capability model.
+- **Reapply after bump:** Regenerate after capability changes.
+
+### `ui/lib/api/index.ts`
+### `ui/lib/api/sdk.gen.ts`
+### `ui/lib/api/types.gen.ts`
+- **Change:** Regenerated TypeScript exports and capability types for
+  `can_review`.
+- **Reason:** Keeps generated UI API types synchronized. No UI rendering logic
+  was changed; existing `can_update` behavior now reflects the server freeze.
+- **Reapply after bump:** Run `make gen-client`.
