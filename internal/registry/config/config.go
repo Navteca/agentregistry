@@ -33,8 +33,9 @@ type Config struct {
 
 	// Review configuration. Values are ASCII identifiers beginning with a
 	// letter and continuing with letters, digits, hyphens, or underscores.
-	ReviewTypes    []string `env:"REVIEW_TYPES" envDefault:"security,scientific"`
-	ReviewOutcomes []string `env:"REVIEW_OUTCOMES" envDefault:"pass,fail"`
+	ReviewTypes          []string `env:"REVIEW_TYPES" envDefault:"security,scientific"`
+	ReviewOutcomes       []string `env:"REVIEW_OUTCOMES" envDefault:"pass,fail"`
+	ReviewFailureOutcome string   `env:"REVIEW_FAILURE_OUTCOME" envDefault:"fail"`
 
 	// Frontend OIDC Configuration (served at runtime via GET /v0/config/frontend)
 	KeycloakURL        string `env:"KEYCLOAK_URL" envDefault:""`
@@ -117,8 +118,9 @@ type EmbeddingsConfig struct {
 // ReviewSettings exposes the validated review vocabulary to downstream
 // services without exposing the raw configuration slices.
 type ReviewSettings struct {
-	reviewTypes []string
-	outcomes    []string
+	reviewTypes    []string
+	outcomes       []string
+	failureOutcome string
 }
 
 // Types returns the configured review types in their configured order.
@@ -141,11 +143,17 @@ func (s ReviewSettings) HasOutcome(outcome string) bool {
 	return slices.Contains(s.outcomes, outcome)
 }
 
+// FailureOutcome returns the configured outcome that rejects an artifact.
+func (s ReviewSettings) FailureOutcome() string {
+	return s.failureOutcome
+}
+
 // ReviewConfig returns the configured review vocabulary in stable order.
 func (cfg *Config) ReviewConfig() ReviewSettings {
 	return ReviewSettings{
-		reviewTypes: slices.Clone(cfg.ReviewTypes),
-		outcomes:    slices.Clone(cfg.ReviewOutcomes),
+		reviewTypes:    slices.Clone(cfg.ReviewTypes),
+		outcomes:       slices.Clone(cfg.ReviewOutcomes),
+		failureOutcome: strings.TrimSpace(cfg.ReviewFailureOutcome),
 	}
 }
 

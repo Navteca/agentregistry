@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -18,11 +19,18 @@ func Validate(cfg *Config) error {
 	}
 	cfg.ReviewTypes = normalizeReviewValues(cfg.ReviewTypes)
 	cfg.ReviewOutcomes = normalizeReviewValues(cfg.ReviewOutcomes)
+	cfg.ReviewFailureOutcome = strings.TrimSpace(cfg.ReviewFailureOutcome)
 	if err := validateReviewValues("review types", cfg.ReviewTypes); err != nil {
 		return err
 	}
 	if err := validateReviewValues("review outcomes", cfg.ReviewOutcomes); err != nil {
 		return err
+	}
+	if cfg.ReviewFailureOutcome == "" {
+		return fmt.Errorf("review failure outcome must not be empty")
+	}
+	if !slices.Contains(cfg.ReviewOutcomes, cfg.ReviewFailureOutcome) {
+		return fmt.Errorf("review failure outcome %q must be one of the configured outcomes", cfg.ReviewFailureOutcome)
 	}
 	if cfg.Embeddings.Enabled {
 		if cfg.Embeddings.Dimensions <= 0 {

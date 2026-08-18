@@ -37,6 +37,8 @@ type RegistryService interface {
 	GetServerEmbeddingMetadata(ctx context.Context, serverName, version string) (*database.SemanticEmbeddingMetadata, error)
 	// CreateReview records an append-only review for a specific artifact version.
 	CreateReview(ctx context.Context, artifactType, artifactName, artifactVersion, reviewType, outcome, notes string) (*models.Review, error)
+	// GetReviewState derives current reviews and certification for one artifact version.
+	GetReviewState(ctx context.Context, artifactType, artifactName, artifactVersion string) (*models.ReviewState, error)
 
 	// Agents APIs
 	// ListAgents retrieve all agents with optional filtering

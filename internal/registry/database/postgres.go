@@ -394,6 +394,67 @@ func (db *PostgreSQL) CreateReview(ctx context.Context, tx pgx.Tx, review *model
 	return &created, nil
 }
 
+// ListReviews returns all reviews for one artifact version in deterministic order.
+func (db *PostgreSQL) ListReviews(
+	ctx context.Context,
+	tx pgx.Tx,
+	artifactType,
+	artifactName,
+	artifactVersion string,
+) ([]models.Review, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	if err := db.authz.Check(ctx, auth.PermissionActionRead, auth.Resource{
+		Name: artifactName,
+		Type: auth.PermissionArtifactType(artifactType),
+	}); err != nil {
+		return nil, err
+	}
+
+	const query = `
+		SELECT id, artifact_type, artifact_name, artifact_version, review_type,
+			outcome, reviewer_subject, reviewer_auth_method, reviewer_display_name,
+			notes, created_at
+		FROM reviews
+		WHERE artifact_type = $1 AND artifact_name = $2 AND artifact_version = $3
+		ORDER BY created_at DESC, id DESC
+	`
+
+	rows, err := db.getExecutor(tx).Query(ctx, query, artifactType, artifactName, artifactVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list reviews: %w", err)
+	}
+	defer rows.Close()
+
+	var reviews []models.Review
+	for rows.Next() {
+		var review models.Review
+		if err := rows.Scan(
+			&review.ID,
+			&review.ArtifactType,
+			&review.ArtifactName,
+			&review.ArtifactVersion,
+			&review.ReviewType,
+			&review.Outcome,
+			&review.ReviewerSubject,
+			&review.ReviewerAuthMethod,
+			&review.ReviewerDisplayName,
+			&review.Notes,
+			&review.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan review: %w", err)
+		}
+		reviews = append(reviews, review)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read reviews: %w", err)
+	}
+
+	return reviews, nil
+}
+
 // GetServerByNameAndVersion retrieves a specific version of a server by server name and version
 func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName string, version string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {

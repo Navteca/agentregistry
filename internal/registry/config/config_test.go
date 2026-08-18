@@ -85,11 +85,15 @@ func TestNewConfig_ExplicitReviewDefaults(t *testing.T) {
 	if got := cfg.ReviewConfig().Outcomes(); !equalStrings(got, []string{"pass", "fail"}) {
 		t.Fatalf("review outcomes default = %v, want [pass fail]", got)
 	}
+	if got := cfg.ReviewConfig().FailureOutcome(); got != "fail" {
+		t.Fatalf("review failure outcome default = %q, want fail", got)
+	}
 }
 
 func TestReviewConfig_ConfiguredValuesPreserveOrder(t *testing.T) {
 	t.Setenv("AGENT_REGISTRY_REVIEW_TYPES", "security,scientific,export-control")
 	t.Setenv("AGENT_REGISTRY_REVIEW_OUTCOMES", "pass,fail,conditional")
+	t.Setenv("AGENT_REGISTRY_REVIEW_FAILURE_OUTCOME", "conditional")
 
 	cfg := NewConfig()
 	if err := Validate(cfg); err != nil {
@@ -109,12 +113,16 @@ func TestReviewConfig_ConfiguredValuesPreserveOrder(t *testing.T) {
 	if !settings.HasOutcome("pass") || settings.HasOutcome("pending") {
 		t.Fatal("HasOutcome() did not match configured values")
 	}
+	if settings.FailureOutcome() != "conditional" {
+		t.Fatalf("failure outcome = %q, want conditional", settings.FailureOutcome())
+	}
 }
 
 func TestValidate_NormalizesReviewValuesInPlace(t *testing.T) {
 	cfg := &Config{
-		ReviewTypes:    []string{" security ", "scientific"},
-		ReviewOutcomes: []string{" pass ", "fail"},
+		ReviewTypes:          []string{" security ", "scientific"},
+		ReviewOutcomes:       []string{" pass ", "fail"},
+		ReviewFailureOutcome: " fail ",
 	}
 
 	if err := Validate(cfg); err != nil {
@@ -126,6 +134,9 @@ func TestValidate_NormalizesReviewValuesInPlace(t *testing.T) {
 	}
 	if !equalStrings(cfg.ReviewOutcomes, []string{"pass", "fail"}) {
 		t.Fatalf("normalized review outcomes = %v", cfg.ReviewOutcomes)
+	}
+	if cfg.ReviewFailureOutcome != "fail" {
+		t.Fatalf("normalized review failure outcome = %q", cfg.ReviewFailureOutcome)
 	}
 	if got := cfg.ReviewConfig().Types(); !equalStrings(got, cfg.ReviewTypes) {
 		t.Fatalf("accessor review types = %v, fields = %v", got, cfg.ReviewTypes)
@@ -140,18 +151,20 @@ func TestValidate_ReviewValues(t *testing.T) {
 		name     string
 		types    []string
 		outcomes []string
+		failure  string
 	}{
-		{name: "empty review types", types: []string{}, outcomes: []string{"pass"}},
-		{name: "empty outcomes", types: []string{"security"}, outcomes: []string{}},
-		{name: "duplicate review type", types: []string{"security", "security"}, outcomes: []string{"pass"}},
-		{name: "duplicate outcome", types: []string{"security"}, outcomes: []string{"pass", "pass"}},
-		{name: "whitespace-only review type", types: []string{"   "}, outcomes: []string{"pass"}},
-		{name: "malformed outcome", types: []string{"security"}, outcomes: []string{"not valid"}},
+		{name: "empty review types", types: []string{}, outcomes: []string{"pass"}, failure: "pass"},
+		{name: "empty outcomes", types: []string{"security"}, outcomes: []string{}, failure: "pass"},
+		{name: "duplicate review type", types: []string{"security", "security"}, outcomes: []string{"pass"}, failure: "pass"},
+		{name: "duplicate outcome", types: []string{"security"}, outcomes: []string{"pass", "pass"}, failure: "pass"},
+		{name: "whitespace-only review type", types: []string{"   "}, outcomes: []string{"pass"}, failure: "pass"},
+		{name: "malformed outcome", types: []string{"security"}, outcomes: []string{"not valid"}, failure: "not valid"},
+		{name: "unconfigured failure outcome", types: []string{"security"}, outcomes: []string{"pass"}, failure: "fail"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &Config{ReviewTypes: tt.types, ReviewOutcomes: tt.outcomes}
+			cfg := &Config{ReviewTypes: tt.types, ReviewOutcomes: tt.outcomes, ReviewFailureOutcome: tt.failure}
 			if err := Validate(cfg); err == nil {
 				t.Fatal("Validate() error = nil, want validation failure")
 			}

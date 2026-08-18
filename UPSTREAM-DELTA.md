@@ -718,38 +718,39 @@ Conventions:
 
 ### `.env.example`
 - **Change:** Documented the review type and outcome environment variables and
-  their shipped defaults.
+  their shipped defaults, including the configured failure outcome.
 - **Reason:** Makes the deployment configuration surface discoverable without
   changing the defaults or validation behavior.
-- **Reapply after bump:** Preserve the `REVIEW_TYPES` and `REVIEW_OUTCOMES`
-  examples alongside the other application settings.
+- **Reapply after bump:** Preserve the `REVIEW_TYPES`, `REVIEW_OUTCOMES`, and
+  `REVIEW_FAILURE_OUTCOME` examples alongside the other application settings.
 
 ### `internal/registry/config/config.go`
 - **Change:** Added environment-configured review type and outcome lists with
   defaults of `security,scientific` and `pass,fail`. Added in-place
-  normalization during validation and the single `ReviewConfig()` accessor with
-  ordered list and membership methods.
+  normalization during validation, an explicit configured failure outcome, and
+  the single `ReviewConfig()` accessor with ordered list and membership methods.
 - **Reason:** Makes the review vocabulary deployment-configurable while keeping
   downstream consumers off the raw configuration slices. The service already
   receives `*config.Config` at construction, so the accessor is available to
   certification and API logic.
-- **Reapply after bump:** Preserve the `REVIEW_TYPES` and `REVIEW_OUTCOMES`
-  fields, defaults, and `ReviewConfig()` accessor.
+- **Reapply after bump:** Preserve the `REVIEW_TYPES`, `REVIEW_OUTCOMES`, and
+  `REVIEW_FAILURE_OUTCOME` fields, defaults, and `ReviewConfig()` accessor.
 
 ### `internal/registry/config/validate.go`
 - **Change:** Added startup validation for non-empty, unique review types and
   outcomes. Entries are trimmed and must match the ASCII identifier pattern
-  `[A-Za-z][A-Za-z0-9_-]*`.
+  `[A-Za-z][A-Za-z0-9_-]*`; the configured failure outcome must be one of the
+  configured outcomes.
 - **Reason:** Rejects malformed review vocabulary during the existing
   fail-fast configuration validation path rather than at request time.
   The pattern deliberately excludes dots and slashes so configured values stay safe to use as JSON keys and URL segments, which rules out namespaced names like nasa.export-control.
-- **Reapply after bump:** Preserve first-error validation behavior and the
-  identifier allowlist.
+- **Reapply after bump:** Preserve first-error validation behavior, the
+  identifier allowlist, and failure-outcome membership validation.
 
 ### `internal/registry/config/config_test.go`
 - **Change:** Added coverage for default and configured ordering, accessor
-  membership, explicit default values, in-place normalization, empty lists,
-  duplicates, whitespace-only values, and malformed entries.
+  membership, explicit failure-outcome selection, in-place normalization, empty
+  lists, duplicates, whitespace-only values, and malformed entries.
 - **Reason:** Locks validation to startup configuration behavior and ensures
   invalid vocabularies cannot reach downstream review logic.
 - **Reapply after bump:** Preserve the default, ordering, membership, and
@@ -870,3 +871,63 @@ Conventions:
   types.
 - **Reason:** Keeps generated frontend API consumers synchronized with OpenAPI.
 - **Reapply after bump:** Run `make gen-client`.
+
+## AR-2 Task 4 — Current-review resolution and certification
+
+### `pkg/models/review.go`
+- **Change:** Added per-type and overall derived review-state models with
+  stable pending, pass, and fail statuses plus the raw per-type outcome.
+- **Reason:** Gives later artifact responses and review endpoints a shared
+  representation of current reviews and certification state.
+- **Reapply after bump:** Preserve the derived-state fields and status values.
+
+### `pkg/registry/database/database.go`
+- **Change:** Added `ListReviews` for one artifact version.
+- **Reason:** Supplies the service resolver with review rows while keeping
+  database access behind the repository interface.
+- **Reapply after bump:** Preserve the artifact-scoped list operation.
+
+### `internal/registry/database/postgres.go`
+- **Change:** Implemented deterministic artifact-scoped review retrieval ordered
+  by `created_at DESC, id DESC`.
+- **Reason:** Uses the review index to fetch source rows; Go applies the shared
+  staleness and reviewer-resolution rules so unit tests can exercise them
+  without HTTP or identity-provider dependencies.
+- **Reapply after bump:** Preserve artifact `updated_at` as a separate caller
+  input and do not perform staleness or certification logic in SQL.
+
+### `internal/registry/service/service.go`
+- **Change:** Added `GetReviewState` to the service interface.
+- **Reason:** Exposes derived state internally for later certification consumers
+  without adding an HTTP surface in this task.
+- **Reapply after bump:** Preserve the artifact-version state evaluation method.
+
+### `internal/registry/service/reviews.go`
+- **Change:** Added one reusable current-review resolver and certification
+  evaluator. It excludes only rows with `created_at < updated_at`, uses `id DESC`
+  for equal timestamps, groups by artifact/review type/reviewer subject, maps
+  the configured failure outcome to stable fail status, and derives certified,
+  rejected, pending, and per-type states from the current config.
+- **Reason:** Centralizes staleness and current-review semantics for all future
+  consumers. Artifact `updated_at` is fetched from the existing artifact record
+  in the same transaction; review rows are fetched separately.
+- **Reapply after bump:** Preserve `ResolveCurrentReviews` as the single
+  resolution seam, literal less-than staleness, equal-timestamp current
+  behavior, configured failure-outcome mapping, and current-config certification.
+
+### `internal/registry/service/testing/fake_registry.go`
+- **Change:** Added a fake `GetReviewState` hook and state field.
+- **Reason:** Keeps service consumers and tests compatible with the expanded
+  internal interface.
+- **Reapply after bump:** Keep the fake synchronized with `RegistryService`.
+
+### `internal/registry/service/reviews_test.go`
+- **Change:** Added pure resolver coverage plus real-PostgreSQL sequence tests
+  for certification, rejection, pending types, revisions, config changes,
+  custom failure outcomes, equal timestamps, stale passes after edits, and the
+  reopen-and-recertify hole.
+- **Reason:** Verifies derived state through actual review/edit sequences rather
+  than constructed end states.
+- **Reapply after bump:** Preserve both sequence tests, custom outcome mapping,
+  and the staleness falsification coverage. The edit sequences rely on
+  PostgreSQL microsecond timestamps and require no sleep.
