@@ -165,6 +165,15 @@ export type CreateProviderInput = {
     platform: string;
 };
 
+export type CreateReviewBody = {
+    notes: string;
+    outcome: string;
+    review_type: string;
+    reviewer_auth_method?: string;
+    reviewer_display_name?: string;
+    reviewer_subject?: string;
+};
+
 export type CurrentPrincipalResponse = {
     auth_method: string;
     display_name: string;
@@ -621,6 +630,20 @@ export type Repository = {
 export type ResourceDeploymentsMeta = {
     count: number;
     deployments: Array<DeploymentSummary>;
+};
+
+export type Review = {
+    artifact_name: string;
+    artifact_type: string;
+    artifact_version: string;
+    created_at: string;
+    id: number;
+    notes: string;
+    outcome: string;
+    review_type: string;
+    reviewer_auth_method: string;
+    reviewer_display_name: string;
+    reviewer_subject: string;
 };
 
 export type Rule = {
@@ -1765,6 +1788,35 @@ export type UpdateProviderResponses = {
 };
 
 export type UpdateProviderResponse = UpdateProviderResponses[keyof UpdateProviderResponses];
+
+export type CreateReviewV0Data = {
+    body: CreateReviewBody;
+    path: {
+        artifactType: string;
+        artifactName: string;
+        version: string;
+    };
+    query?: never;
+    url: '/v0/reviews/{artifactType}/{artifactName}/versions/{version}';
+};
+
+export type CreateReviewV0Errors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateReviewV0Error = CreateReviewV0Errors[keyof CreateReviewV0Errors];
+
+export type CreateReviewV0Responses = {
+    /**
+     * OK
+     */
+    200: Review;
+};
+
+export type CreateReviewV0Response = CreateReviewV0Responses[keyof CreateReviewV0Responses];
 
 export type ListServersV0Data = {
     body?: never;

@@ -334,6 +334,66 @@ func (db *PostgreSQL) GetServerByName(ctx context.Context, tx pgx.Tx, serverName
 	return serverResponse, nil
 }
 
+// CreateReview inserts an append-only review for a specific artifact version.
+func (db *PostgreSQL) CreateReview(ctx context.Context, tx pgx.Tx, review *models.Review) (*models.Review, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if review == nil {
+		return nil, database.ErrInvalidInput
+	}
+
+	if err := db.authz.Check(ctx, auth.PermissionActionReview, auth.Resource{
+		Name: review.ArtifactName,
+		Type: auth.PermissionArtifactType(review.ArtifactType),
+	}); err != nil {
+		return nil, err
+	}
+
+	const query = `
+		INSERT INTO reviews (
+			artifact_type, artifact_name, artifact_version, review_type, outcome,
+			reviewer_subject, reviewer_auth_method, reviewer_display_name, notes
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id, artifact_type, artifact_name, artifact_version, review_type,
+			outcome, reviewer_subject, reviewer_auth_method, reviewer_display_name,
+			notes, created_at
+	`
+
+	var created models.Review
+	err := db.getExecutor(tx).QueryRow(
+		ctx,
+		query,
+		review.ArtifactType,
+		review.ArtifactName,
+		review.ArtifactVersion,
+		review.ReviewType,
+		review.Outcome,
+		review.ReviewerSubject,
+		review.ReviewerAuthMethod,
+		review.ReviewerDisplayName,
+		review.Notes,
+	).Scan(
+		&created.ID,
+		&created.ArtifactType,
+		&created.ArtifactName,
+		&created.ArtifactVersion,
+		&created.ReviewType,
+		&created.Outcome,
+		&created.ReviewerSubject,
+		&created.ReviewerAuthMethod,
+		&created.ReviewerDisplayName,
+		&created.Notes,
+		&created.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create review: %w", err)
+	}
+
+	return &created, nil
+}
+
 // GetServerByNameAndVersion retrieves a specific version of a server by server name and version
 func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName string, version string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {

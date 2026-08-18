@@ -63,6 +63,7 @@ func RegisterRoutes(
 	v0.RegisterSkillsCreateEndpoint(api, pathPrefix, registry)
 	v0.RegisterPromptsEndpoints(api, pathPrefix, registry)
 	v0.RegisterPromptsCreateEndpoint(api, pathPrefix, registry)
+	v0.RegisterReviewsEndpoint(api, pathPrefix, cfg, registry)
 
 	if opts != nil && opts.Indexer != nil && opts.JobManager != nil {
 		v0.RegisterEmbeddingsEndpoints(api, pathPrefix, opts.Indexer, opts.JobManager)

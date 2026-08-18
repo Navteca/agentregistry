@@ -146,6 +146,8 @@ type Database interface {
 	GetServerReadme(ctx context.Context, tx pgx.Tx, serverName, version string) (*ServerReadme, error)
 	// GetLatestServerReadme retrieves the README blob for the latest server version
 	GetLatestServerReadme(ctx context.Context, tx pgx.Tx, serverName string) (*ServerReadme, error)
+	// CreateReview inserts an append-only review for a specific artifact version.
+	CreateReview(ctx context.Context, tx pgx.Tx, review *models.Review) (*models.Review, error)
 	// InTransaction executes a function within a database transaction
 	InTransaction(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx) error) error
 	// Close closes the database connection

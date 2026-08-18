@@ -34,6 +34,7 @@ const (
 	PermissionActionEditOwn PermissionAction = "edit_own"
 	PermissionActionDelete  PermissionAction = "delete"
 	PermissionActionDeploy  PermissionAction = "deploy"
+	PermissionActionReview  PermissionAction = "review"
 
 	// PermissionActionAdmin is a sentinel action that, only when paired with
 	// ResourcePattern "*", grants an unbounded registry-admin bypass (see

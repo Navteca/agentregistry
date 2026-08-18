@@ -23,6 +23,7 @@ type FakeRegistry struct {
 	Deployments  []*models.Deployment
 	Providers    []*models.Provider
 	ServerReadme *database.ServerReadme
+	Reviews      []*models.Review
 
 	// Embedding metadata maps (keyed by "name@version")
 	ServerEmbeddingMeta map[string]*database.SemanticEmbeddingMetadata
@@ -42,6 +43,7 @@ type FakeRegistry struct {
 	StoreServerReadmeFn           func(ctx context.Context, serverName, version string, content []byte, contentType string) error
 	GetServerReadmeLatestFn       func(ctx context.Context, serverName string) (*database.ServerReadme, error)
 	GetServerReadmeByVersionFn    func(ctx context.Context, serverName, version string) (*database.ServerReadme, error)
+	CreateReviewFn                func(ctx context.Context, artifactType, artifactName, artifactVersion, reviewType, outcome, notes string) (*models.Review, error)
 	DeleteServerFn                func(ctx context.Context, serverName, version string) error
 	UpsertServerEmbeddingFn       func(ctx context.Context, serverName, version string, embedding *database.SemanticEmbedding) error
 	GetServerEmbeddingMetadataFn  func(ctx context.Context, serverName, version string) (*database.SemanticEmbeddingMetadata, error)
@@ -145,6 +147,13 @@ func (f *FakeRegistry) CreateServer(ctx context.Context, req *apiv0.ServerJSON) 
 	if f.CreateServerFn != nil {
 		server, err := f.CreateServerFn(ctx, req)
 		return convertServerResponse(server), err
+	}
+	return nil, database.ErrNotFound
+}
+
+func (f *FakeRegistry) CreateReview(ctx context.Context, artifactType, artifactName, artifactVersion, reviewType, outcome, notes string) (*models.Review, error) {
+	if f.CreateReviewFn != nil {
+		return f.CreateReviewFn(ctx, artifactType, artifactName, artifactVersion, reviewType, outcome, notes)
 	}
 	return nil, database.ErrNotFound
 }

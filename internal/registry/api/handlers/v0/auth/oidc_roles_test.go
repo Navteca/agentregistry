@@ -122,6 +122,7 @@ func TestResolveRolePermissions(t *testing.T) {
 		assert.ElementsMatch(t, []auth.PermissionAction{
 			auth.PermissionActionRead, auth.PermissionActionPublish,
 			auth.PermissionActionEditOwn, auth.PermissionActionEdit, auth.PermissionActionDelete,
+			auth.PermissionActionReview,
 		}, actions)
 	})
 
@@ -135,7 +136,7 @@ func TestResolveRolePermissions(t *testing.T) {
 		assert.ElementsMatch(t, []auth.PermissionAction{
 			auth.PermissionActionRead, auth.PermissionActionPublish,
 			auth.PermissionActionEditOwn, auth.PermissionActionEdit,
-			auth.PermissionActionDelete, auth.PermissionActionDeploy,
+			auth.PermissionActionDelete, auth.PermissionActionDeploy, auth.PermissionActionReview,
 		}, actions)
 	})
 

@@ -754,3 +754,119 @@ Conventions:
   invalid vocabularies cannot reach downstream review logic.
 - **Reapply after bump:** Preserve the default, ordering, membership, and
   invalid-input cases.
+
+## AR-2 Task 3 — Create-review endpoint and permission
+
+### `pkg/registry/auth/jwt.go`
+- **Change:** Added `PermissionActionReview` with the existing permission
+  vocabulary.
+- **Reason:** Review creation needs a distinct authorization action rather than
+  reusing edit or publish permissions.
+- **Reapply after bump:** Add the `review` action constant alongside the other
+  permission actions.
+
+### `internal/registry/api/handlers/v0/auth/oidc_roles.go`
+- **Change:** Added review permission to curator and admin role bundles while
+  leaving the user bundle unchanged.
+- **Reason:** Curators and admins may review; users may not. This follows the
+  AR-1 role-bundle source of truth.
+- **Reapply after bump:** Preserve review in curator/admin actions and absent
+  from the user action list.
+
+### `internal/registry/api/handlers/v0/auth/oidc_roles_test.go`
+- **Change:** Updated curator/admin role-bundle expectations for the review
+  action.
+- **Reason:** Keeps role registration tests aligned with the new permission.
+- **Reapply after bump:** Preserve explicit curator/admin review assertions and
+  the user bundle's absence of review.
+
+### `pkg/models/review.go`
+- **Change:** Added the review response model containing the database identity,
+  artifact identity, review content, reviewer snapshot, and creation timestamp.
+- **Reason:** Provides one typed shape for service, database, and API responses.
+- **Reapply after bump:** Preserve the JSON field names and append-only review
+  fields.
+
+### `pkg/registry/database/database.go`
+- **Change:** Added `CreateReview` to the database interface.
+- **Reason:** Keeps review persistence behind the repository boundary.
+- **Reapply after bump:** Retain the transactional append-only insert contract.
+
+### `internal/registry/database/postgres.go`
+- **Change:** Implemented `CreateReview` as an insert returning the complete
+  review row, with review permission enforcement and no artifact update.
+- **Reason:** Persists reviewer identity supplied by the service and leaves
+  artifact `updated_at` untouched.
+- **Reapply after bump:** Preserve the authorization check, `INSERT ... RETURNING`
+  shape, and absence of artifact mutation.
+
+### `internal/registry/service/service.go`
+- **Change:** Added `CreateReview` to the registry service interface.
+- **Reason:** Exposes review creation to API transport without exposing database
+  details.
+- **Reapply after bump:** Preserve the service-level review creation contract.
+
+### `internal/registry/service/reviews.go`
+- **Change:** Added service orchestration for configured-value validation,
+  `HasPermission`-backed review authorization, artifact-version existence
+  checks, token-derived reviewer identity, and transactional persistence.
+- **Reason:** Keeps business rules and server-assigned identity out of the
+  handler and prevents typo-created orphan reviews. The service validation is
+  authoritative for all callers, including non-HTTP callers; the handler repeats
+  it only to return an earlier clean 400 response.
+- **Reapply after bump:** Preserve permission-before-write ordering, all four
+  artifact existence checks, and identity derivation from the authenticated
+  session.
+
+### `internal/registry/service/testing/fake_registry.go`
+- **Change:** Added a configurable fake hook for `CreateReview`.
+- **Reason:** Allows endpoint tests to isolate boundary validation and identity
+  handling without a database.
+- **Reapply after bump:** Keep the fake implementation synchronized with the
+  service interface.
+
+### `internal/registry/service/reviews_test.go`
+- **Change:** Added real-PostgreSQL and real-JWT-authorizer coverage for
+  identity snapshots, independent curators, append-only revisions, permission
+  refusal, configured-value checks, artifact existence, and unchanged
+  `updated_at`.
+- **Reason:** Verifies review persistence and authorization without router or
+  IdP dependencies.
+- **Reapply after bump:** Preserve the real-subject and timestamp assertions.
+
+### `internal/registry/api/handlers/v0/reviews.go`
+- **Change:** Added `POST /v0/reviews/{artifactType}/{artifactName}/versions/{version}`.
+  The handler validates configured type/outcome values before calling the
+  service and accepts but ignores client-supplied reviewer identity fields.
+- **Reason:** The handler-side validation is a transport-level fast path; the
+  service remains authoritative. A reviews namespace supports all four artifact types without
+  duplicating four artifact-specific routes; artifact names retain the existing
+  URL-encoded path convention.
+- **Reapply after bump:** Preserve the POST-only route, boundary validation,
+  error mapping, and token-owned identity behavior.
+
+### `internal/registry/api/handlers/v0/reviews_test.go`
+- **Change:** Added endpoint tests for boundary rejection, ignored payload
+  identity fields, and user permission refusal.
+- **Reason:** Locks down transport-level status codes and the no-write boundary.
+- **Reapply after bump:** Preserve the invalid-config 400 and forbidden 403
+  cases.
+
+### `internal/registry/api/router/v0.go`
+- **Change:** Registered the reviews endpoint in the v0 route set.
+- **Reason:** Wires the new API surface into the application router.
+- **Reapply after bump:** Preserve `RegisterReviewsEndpoint` registration.
+
+### `openapi.yaml`
+- **Change:** Regenerated the API contract for the create-review operation and
+  review schemas.
+- **Reason:** Keeps the checked-in OpenAPI specification synchronized.
+- **Reapply after bump:** Regenerate after API changes.
+
+### `ui/lib/api/index.ts`
+### `ui/lib/api/sdk.gen.ts`
+### `ui/lib/api/types.gen.ts`
+- **Change:** Regenerated the TypeScript client exports, operation, and review
+  types.
+- **Reason:** Keeps generated frontend API consumers synchronized with OpenAPI.
+- **Reapply after bump:** Run `make gen-client`.
