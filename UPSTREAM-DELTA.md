@@ -1099,3 +1099,38 @@ Conventions:
 - **Reason:** Keeps generated frontend API consumers synchronized without
   changing UI behavior.
 - **Reapply after bump:** Run `make gen-client`.
+
+## AR-2 Task 6B — Frontend review vocabulary
+
+### `internal/registry/api/handlers/v0/frontend_config.go`
+- **Change:** Added configured review types and outcomes to the unauthenticated
+  frontend configuration response, sourced through `ReviewConfig()`.
+- **Reason:** The browser needs deployment-wide review vocabulary to populate
+  submission controls. This does not regress AR-1B's unauthenticated endpoint
+  rule: review vocabulary is identical for every caller, like the existing
+  Keycloak configuration, and contains no identity-dependent data.
+- **Reapply after bump:** Preserve the `review_types` and `review_outcomes`
+  fields, their configured order, and the `ReviewConfig()` accessor.
+
+### `internal/registry/api/handlers/v0/frontend_config_test.go`
+- **Change:** Added coverage for configured ordering, non-default vocabulary,
+  unauthenticated access, and the exact serialized public field set.
+- **Reason:** Prevents hardcoded defaults and future identity-dependent fields
+  from entering the public bootstrap response.
+- **Reapply after bump:** Preserve the non-default configuration and exact JSON
+  field-set assertions.
+
+### `openapi.yaml`
+- **Change:** Regenerated the frontend configuration schema and endpoint
+  description with review vocabulary fields.
+- **Reason:** Keeps the checked-in API contract synchronized.
+- **Reapply after bump:** Run `make gen-client`.
+
+### `ui/lib/api/sdk.gen.ts`
+### `ui/lib/api/types.gen.ts`
+- **Change:** Regenerated the TypeScript frontend configuration type with
+  `review_types` and `review_outcomes`, plus the generated operation
+  documentation from the updated OpenAPI description.
+- **Reason:** Makes the deployment vocabulary available to subsequent UI work
+  through the generated client without changing UI behavior in this task.
+- **Reapply after bump:** Run `make gen-client`.

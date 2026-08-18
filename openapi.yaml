@@ -359,8 +359,8 @@ paths:
         get:
             tags:
                 - auth
-            summary: Frontend OIDC configuration
-            description: Returns the Keycloak URL, realm, and client ID required by the browser to initialise OIDC authentication. This endpoint is intentionally unauthenticated.
+            summary: Frontend OIDC and review configuration
+            description: Returns deployment-wide configuration required by the browser to initialise OIDC authentication and render review controls. This endpoint is intentionally unauthenticated; it contains no identity-dependent data.
             operationId: get-frontend-config
             responses:
                 "200":
@@ -2311,11 +2311,21 @@ components:
                     type: string
                 keycloak_url:
                     type: string
+                review_outcomes:
+                    type: array
+                    items:
+                        type: string
+                review_types:
+                    type: array
+                    items:
+                        type: string
             required:
                 - keycloak_url
                 - keycloak_realm
                 - keycloak_client_id
                 - anonymous_auth_enabled
+                - review_types
+                - review_outcomes
         GitHubOIDCTokenExchangeInputBody:
             type: object
             additionalProperties: false

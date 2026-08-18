@@ -124,9 +124,9 @@ export const exchangeHttpTokenV0 = <ThrowOnError extends boolean = false>(option
 export const getCurrentPrincipalV0 = <ThrowOnError extends boolean = false>(options?: Options<GetCurrentPrincipalV0Data, ThrowOnError>) => (options?.client ?? client).get<GetCurrentPrincipalV0Responses, GetCurrentPrincipalV0Errors, ThrowOnError>({ url: '/v0/auth/me', ...options });
 
 /**
- * Frontend OIDC configuration
+ * Frontend OIDC and review configuration
  *
- * Returns the Keycloak URL, realm, and client ID required by the browser to initialise OIDC authentication. This endpoint is intentionally unauthenticated.
+ * Returns deployment-wide configuration required by the browser to initialise OIDC authentication and render review controls. This endpoint is intentionally unauthenticated; it contains no identity-dependent data.
  */
 export const getFrontendConfig = <ThrowOnError extends boolean = false>(options?: Options<GetFrontendConfigData, ThrowOnError>) => (options?.client ?? client).get<GetFrontendConfigResponses, GetFrontendConfigErrors, ThrowOnError>({ url: '/v0/config/frontend', ...options });
 

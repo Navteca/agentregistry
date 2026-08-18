@@ -313,6 +313,8 @@ export type FrontendConfigBody = {
     keycloak_client_id: string;
     keycloak_realm: string;
     keycloak_url: string;
+    review_outcomes: Array<string>;
+    review_types: Array<string>;
 };
 
 export type GitHubOidcTokenExchangeInputBody = {
