@@ -32,6 +32,9 @@ const (
 	ReviewStatusOverridden = "overridden"
 )
 
+// These per-type statuses are a separate vocabulary from configured review
+// outcomes. They must never be compared against a configured outcome.
+
 // ReviewTypeStatus summarizes the current reviews for one configured type.
 type ReviewTypeStatus struct {
 	ReviewType     string   `json:"review_type"`
@@ -52,6 +55,8 @@ type ReviewState struct {
 }
 
 // ReviewSummary is the sanitized review state exposed with artifact metadata.
+// Overall statuses and per-type statuses are separate vocabularies and
+// deliberately do not share a constant block.
 type ReviewSummary struct {
 	Status  string              `json:"status"`
 	PerType []ReviewTypeSummary `json:"per_type"`

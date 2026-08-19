@@ -9,6 +9,10 @@ Conventions:
 - Additive only (new fields, new columns, new functions). No renames, no removed
   functionality, no altered semantics of existing fields.
 - Upstream functionality is hidden behind configuration, never deleted.
+- Fork-owned database migrations are numbered files under
+  `internal/registry/database/migrations/`; upstream `origin/main` currently has
+  no migration directory. Reapply future fork migrations at the next unused
+  version without renumbering existing fork migrations.
 
 ---
 
@@ -270,6 +274,9 @@ Conventions:
   artifact create methods.
 
 ### `internal/registry/service/registry_service.go`
+- **Related entries:** This file is also described under the nested
+  **Additional AR-1B change**, **AR-1B Task 5B**, **AR-2 Task 5**, **AR-2 Task
+  6**, and the server-update review-summary entry at the end of this document.
 - **Change:** Propagated `models.ServerResponse` through server service methods
   and transaction callbacks. Added transactional owner-scoped server update
   authorization that compares stable subjects and rejects unowned or reviewed
@@ -491,6 +498,55 @@ Conventions:
   using the `displayName`/`subject` fallback and `Unknown` placeholder; keep
   last-modified exclusive to the detail view.
 
+### AR-1 — `ui/components/agent-card.tsx`
+- **Change:** Scheme-allowlisted the artifact-supplied repository `href` with
+  `getSafeHttpUrl`; rejected URLs remain visible as text without an anchor. The
+  card also shows registered-by metadata from `aregistry.ai/ownership`,
+  preferring `displayName` and falling back to `subject`, with `Unknown` for
+  unowned artifacts.
+- **Reason:** Closes the AR-1 URL scheme bypass when artifacts are published
+  directly through the API. Ownership is presentation metadata, not an identity
+  input. Last-modified remains on the detail view because adding it to dense
+  catalog rows would make their metadata unscannable; this is a deliberate
+  deviation from the AR-1 ticket wording.
+- **Reapply after bump:** Retain `getSafeHttpUrl` at the repository link and
+  keep rejected URLs text-only. Render registered-by after published date using
+  the `displayName`/subject fallback and `Unknown` placeholder; keep
+  last-modified exclusive to the detail view.
+
+### AR-1 — `ui/components/skill-card.tsx`
+- **Change:** Scheme-allowlisted artifact-supplied repository and website URLs
+  passed to `window.open` with `getSafeHttpUrl`; rejected actions are not
+  rendered and do not open a blank tab. The card also shows registered-by
+  metadata from `aregistry.ai/ownership`, preferring `displayName` and falling
+  back to `subject`, with `Unknown` for unowned artifacts.
+- **Reason:** Closes the AR-1 URL scheme bypass in catalog actions, including the
+  pre-existing `window.open(url, '_blank')` behavior that could execute a
+  `javascript:` URL when artifacts were published directly through the API.
+  Ownership is presentation metadata, not an identity input. Last-modified
+  remains on the detail view because adding it to dense catalog rows would make
+  their metadata unscannable; this is a deliberate deviation from the AR-1
+  ticket wording.
+- **Reapply after bump:** Retain `getSafeHttpUrl` at both `window.open` sites,
+  including the no-op behavior for rejected URLs. Render registered-by after
+  published date using the `displayName`/subject fallback and `Unknown`
+  placeholder; keep last-modified exclusive to the detail view.
+
+### AR-1 — `ui/components/prompt-card.tsx`
+- **Change:** The card shows registered-by metadata from
+  `aregistry.ai/ownership`, preferring `displayName` and falling back to
+  `subject`, with `Unknown` for unowned artifacts. No URL allowlisting was
+  added because prompt cards have no artifact-supplied URLs. Updated-at is not
+  shown on cards.
+- **Reason:** Adds ownership context without treating the presentation
+  `displayName` as identity. Last-modified remains on the detail view because
+  adding it to dense catalog rows would make their metadata unscannable; this is
+  a deliberate deviation from the AR-1 ticket wording.
+- **Reapply after bump:** Render registered-by after published date using the
+  `displayName`/subject fallback and `Unknown` placeholder; keep last-modified
+  exclusive to the detail view and do not add URL handling unless prompt cards
+  gain artifact-supplied URLs.
+
 ## AR-1B — Current principal endpoint
 
 ### `internal/registry/api/handlers/v0/auth/main.go`
@@ -532,54 +588,7 @@ Conventions:
 - **Reapply after bump:** Run `make gen-client` after regenerating the OpenAPI
   specification.
 
-### AR-1 — `ui/components/agent-card.tsx`
-- **Change:** Scheme-allowlisted the artifact-supplied repository `href` with
-  `getSafeHttpUrl`; rejected URLs remain visible as text without an anchor. The
-  card also shows registered-by metadata from `aregistry.ai/ownership`,
-  preferring `displayName` and falling back to `subject`, with `Unknown` for
-  unowned artifacts.
-- **Reason:** Closes the AR-1 URL scheme bypass when artifacts are published
-  directly through the API. Ownership is presentation metadata, not an identity
-  input. Last-modified remains on the detail view because adding it to dense
-  catalog rows would make their metadata unscannable; this is a deliberate
-  deviation from the AR-1 ticket wording.
-- **Reapply after bump:** Retain `getSafeHttpUrl` at the repository link and
-  keep rejected URLs text-only. Render registered-by after published date using
-  the `displayName`/`subject` fallback and `Unknown` placeholder; keep
-  last-modified exclusive to the detail view.
 
-### AR-1 — `ui/components/skill-card.tsx`
-- **Change:** Scheme-allowlisted artifact-supplied repository and website URLs
-  passed to `window.open` with `getSafeHttpUrl`; rejected actions are not
-  rendered and do not open a blank tab. The card also shows registered-by
-  metadata from `aregistry.ai/ownership`, preferring `displayName` and falling
-  back to `subject`, with `Unknown` for unowned artifacts.
-- **Reason:** Closes the AR-1 URL scheme bypass in catalog actions, including the
-  pre-existing `window.open(url, '_blank')` behavior that could execute a
-  `javascript:` URL when artifacts were published directly through the API.
-  Ownership is presentation metadata, not an identity input. Last-modified
-  remains on the detail view because adding it to dense catalog rows would make
-  their metadata unscannable; this is a deliberate deviation from the AR-1
-  ticket wording.
-- **Reapply after bump:** Retain `getSafeHttpUrl` at both `window.open` sites,
-  including the no-op behavior for rejected URLs. Render registered-by after
-  published date using the `displayName`/`subject` fallback and `Unknown`
-  placeholder; keep last-modified exclusive to the detail view.
-
-### AR-1 — `ui/components/prompt-card.tsx`
-- **Change:** The card shows registered-by metadata from
-  `aregistry.ai/ownership`, preferring `displayName` and falling back to
-  `subject`, with `Unknown` for unowned artifacts. No URL allowlisting was
-  added because prompt cards have no artifact-supplied URLs. Updated-at is not
-  shown on cards.
-- **Reason:** Adds ownership context without treating the presentation
-  `displayName` as identity. Last-modified remains on the detail view because
-  adding it to dense catalog rows would make their metadata unscannable; this is
-  a deliberate deviation from the AR-1 ticket wording.
-- **Reapply after bump:** Render registered-by after published date using the
-  `displayName`/`subject` fallback and `Unknown` placeholder; keep
-  last-modified exclusive to the detail view and do not add URL handling unless
-  prompt cards gain artifact-supplied URLs.
 
 ## AR-1B Task 6 — Conditional catalog controls
 
@@ -598,10 +607,9 @@ Conventions:
 - **Reason:** Makes catalog controls reflect backend-provided caller
   capabilities without deriving permissions client-side. Existing deploy
   artifact-content checks and disabled-state messages remain in the cards.
-- **Reapply after bump:** Gate only the existing server and agent card props
-  with `capabilities?.can_update === true`,
-  `capabilities?.can_delete === true`, and
-  `capabilities?.can_deploy === true`; do not wire dormant skill controls.
+- **Reapply after bump:** Keep the shared `capabilityFlags` mapper as the
+  single seam for page and component tests; do not replace it with inline
+  `capabilities?.can_* === true` checks or wire dormant skill controls.
 
 ### `ui/components/__tests__/server-card.test.tsx`
 - **Change:** Added coverage for all capability combinations, absent metadata,
@@ -707,12 +715,11 @@ Conventions:
   the API rather than duplicated as schema constraints. Reviewer identity fields
   remain `TEXT`, matching the ownership columns added by AR-1.
 - **Reapply after bump:** Preserve migration version `013` in the fork's base
-  migration namespace. Migrations `011`, `012`, and `013` are fork-owned; the
-  upstream `origin/main` tree has no `internal/registry/database/migrations/`
-  directory. Keep the artifact-type structural check, append-only timestamp,
-  reviewer identity snapshots, and the two query-supporting indexes. If
-  upstream later adds migrations in this namespace, choose the next unused base
-  version without renumbering the fork-owned migrations.
+  migration namespace. Migrations `011` through `014` are currently fork-owned.
+  Keep the artifact-type structural check, append-only timestamp, reviewer
+  identity snapshots, and the two query-supporting indexes. If upstream later
+  adds migrations in this namespace, choose the next unused base version without
+  renumbering the fork-owned migrations.
 
 ## AR-2 Task 2 — Configured review vocabulary
 
@@ -1103,14 +1110,16 @@ Conventions:
 ## AR-2 Task 6B — Frontend review vocabulary
 
 ### `internal/registry/api/handlers/v0/frontend_config.go`
-- **Change:** Added configured review types and outcomes to the unauthenticated
-  frontend configuration response, sourced through `ReviewConfig()`.
+- **Change:** Added configured review types, outcomes, and failure outcome to
+  the unauthenticated frontend configuration response, sourced through
+  `ReviewConfig()`.
 - **Reason:** The browser needs deployment-wide review vocabulary to populate
   submission controls. This does not regress AR-1B's unauthenticated endpoint
   rule: review vocabulary is identical for every caller, like the existing
   Keycloak configuration, and contains no identity-dependent data.
-- **Reapply after bump:** Preserve the `review_types` and `review_outcomes`
-  fields, their configured order, and the `ReviewConfig()` accessor.
+- **Reapply after bump:** Preserve the `review_types`, `review_outcomes`, and
+  `review_failure_outcome` fields, their configured order, and the
+  `ReviewConfig()` accessor.
 
 ### `internal/registry/api/handlers/v0/frontend_config_test.go`
 - **Change:** Added coverage for configured ordering, non-default vocabulary,
@@ -1234,7 +1243,7 @@ Conventions:
 - **Reason:** Keeps generated consumers synchronized with the review endpoint.
 - **Reapply after bump:** Run `make gen-client`.
 
-## AR-2 Task 9 — Server update review summaries
+## AR-2 — Server update review summaries
 
 ### `internal/registry/service/registry_service.go`
 - **Change:** Fetches one post-transaction review snapshot in `UpdateServer`,
@@ -1255,3 +1264,153 @@ Conventions:
   different review snapshot than read responses.
 - **Reapply after bump:** Preserve the partially reviewed-before-edit fixture,
   pending per-type assertions, and update/read summary equality check.
+
+## AR-2B — Administrative review overrides
+
+### `.env.example`
+- **Change:** Documented `REVIEW_OVERRIDE_OUTCOME` and its shipped default.
+- **Reason:** Makes the administrative outcome configurable without exposing it
+  through ordinary review submission.
+- **Reapply after bump:** Preserve the override-outcome environment example.
+
+### `internal/registry/database/migrations/014_review_overrides.sql`
+- **Change:** Added the fork-owned nullable `overrides_review_id` column and
+  its partial index for override target lookup.
+- **Reason:** Overrides target a specific review row by ID, not a review type.
+  The migration deliberately has no foreign key, matching migration 013's
+  cross-artifact no-FK decision and accepting orphaned rows after deletion.
+- **Reapply after bump:** Preserve migration version `014`, the nullable column,
+  and the partial index; use the next unused fork migration version for later
+  additions.
+
+### `pkg/registry/auth/jwt.go`
+- **Change:** Added the distinct `PermissionActionOverride` authorization
+  action.
+- **Reason:** Administrative override permission is deliberately separate from
+  the admin sentinel, so a future sentinel bypass cannot silently confer
+  override rights.
+- **Reapply after bump:** Preserve the standalone `override` action.
+
+### `internal/registry/api/handlers/v0/auth/oidc_roles.go`
+### `internal/registry/api/handlers/v0/auth/oidc_roles_test.go`
+- **Change:** Granted override to the admin role bundle only and updated role
+  bundle assertions.
+- **Reason:** The permission is keyed on the admin bundle, deliberately not on
+  the admin sentinel.
+- **Reapply after bump:** Preserve admin-only override registration and the
+  explicit absence of override from other bundles and sentinel handling.
+
+### `internal/registry/config/config.go`
+### `internal/registry/config/validate.go`
+### `internal/registry/config/config_test.go`
+- **Change:** Added `REVIEW_OVERRIDE_OUTCOME`, its accessor, and validation
+  coverage. The value must be non-empty, match the review identifier pattern,
+  differ from the failure outcome, and remain distinct from the configured
+  outcomes list.
+- **Reason:** The override outcome must not be postable through the ordinary
+  review endpoint; configuration rejects that ambiguity at startup.
+- **Reapply after bump:** Preserve the default, accessor, first-error behavior,
+  identifier validation, and both distinctness checks.
+
+### `pkg/models/capabilities.go`
+### `pkg/models/capabilities_test.go`
+- **Change:** Added the serialized `CanOverride`/`can_override` capability and
+  its JSON coverage.
+- **Reason:** Exposes administrative override authorization alongside the other
+  caller-specific artifact capabilities.
+- **Reapply after bump:** Preserve the required `can_override` field.
+
+### `pkg/models/review.go`
+- **Change:** Added nullable `OverridesReviewID` and the derived `IsOverride()`
+  helper to review rows.
+- **Reason:** Keeps the target review identity explicit while preserving the
+  append-only review model.
+- **Reapply after bump:** Preserve the nullable JSON field and helper semantics.
+
+### `pkg/registry/database/database.go`
+### `internal/registry/database/postgres.go`
+- **Change:** Added `GetReviewByID`; extended review row reads and inserts for
+  override targets. `CreateReview` selects `PermissionActionOverride` when
+  `OverridesReviewID` is set.
+- **Reason:** Persistence enforces the action that matches the operation rather
+  than allowing an override to inherit ordinary review permission.
+- **Reapply after bump:** Preserve transactional target lookup, complete row
+  scanning, append-only insert behavior, and action selection.
+
+### `internal/registry/service/service.go`
+### `internal/registry/service/testing/fake_registry.go`
+- **Change:** Added `CreateReviewOverride` to the service contract and fake
+  implementation.
+- **Reason:** Keeps transport tests isolated from the database while exposing
+  the administrative operation through the service boundary.
+- **Reapply after bump:** Keep the fake synchronized with the service interface.
+
+### `internal/registry/service/reviews.go`
+### `internal/registry/service/reviews_test.go`
+- **Change:** Added override orchestration, target identity/type checks,
+  failure-only and non-nested-target validation, reason validation, and
+  override-aware state resolution with integration coverage.
+- **Reason:** Overrides target one specific failed review row, so a reviewer
+  revising into a new failure does not inherit the old override. Overrides
+  stale exactly like reviews, causing an in-place artifact edit to invalidate
+  the override and reassert the underlying failure. Overall status remains
+  plain `certified`, while the affected per-type status is `overridden`
+  because that type was not passed.
+- **Reapply after bump:** Preserve permission-before-write ordering, target
+  artifact matching, failure-only and non-nested constraints, stale-row
+  semantics, and the separate overall/per-type status behavior.
+
+### `internal/registry/api/handlers/v0/reviews.go`
+### `internal/registry/api/handlers/v0/reviews_test.go`
+- **Change:** Added the POST-only administrative override operation, request
+  validation, error mapping, and endpoint coverage.
+- **Reason:** The target review ID and reason are explicit in the append-only
+  request, while reviewer identity remains token-owned. The existing v0
+  reviews route registration already covers this operation; no router edit was
+  required.
+- **Reapply after bump:** Preserve the artifact/version path, target ID,
+  required reason, status mappings, and existing
+  `internal/registry/api/router/v0.go` registration.
+
+### `internal/registry/api/handlers/v0/frontend_config.go`
+### `internal/registry/api/handlers/v0/frontend_config_test.go`
+- **Change:** Added `review_failure_outcome` to the unauthenticated frontend
+  configuration response and its exact-field-set coverage.
+- **Reason:** The UI identifies failing rows from deployment configuration
+  instead of hardcoding `"fail"`.
+- **Reapply after bump:** Preserve the configured failure outcome and its
+  unauthenticated, identity-independent response behavior.
+
+### `openapi.yaml`
+### `ui/lib/api/index.ts`
+### `ui/lib/api/sdk.gen.ts`
+### `ui/lib/api/types.gen.ts`
+- **Change:** Regenerated the API contract and TypeScript client for
+  `can_override`, the override request/operation, the override outcome, and
+  the failure-outcome frontend configuration field.
+- **Reason:** Keeps generated consumers synchronized with the override API and
+  capability response shape.
+- **Reapply after bump:** Regenerate OpenAPI and run `make gen-client`.
+
+### `ui/lib/capabilities.ts`
+### `ui/lib/__tests__/capabilities.test.ts`
+### `ui/app/__tests__/page-edit-flow.test.tsx`
+- **Change:** Added strict `showOverride` capability mapping and updated
+  shared page-level capability expectations.
+- **Reason:** Override controls remain hidden unless the server explicitly
+  grants `can_override`.
+- **Reapply after bump:** Preserve explicit-true mapping and absent/false
+  capability coverage.
+
+### `ui/components/review-section.tsx`
+### `ui/components/review-type-card.tsx`
+### `ui/components/__tests__/review-section.test.tsx`
+- **Change:** Added the administrative override form, target-row handling,
+  reason input, failure-row gating, per-type overridden presentation, and
+  rendered-output/error coverage.
+- **Reason:** Keeps override actions tied to the selected review row and makes
+  configured failure outcomes and override status visible without hardcoded
+  vocabulary or unescaped findings.
+- **Reapply after bump:** Preserve selected-version wiring, strict capability
+  gating, target review IDs, required reasons, stale/current markers, and
+  escaped rendered findings.
