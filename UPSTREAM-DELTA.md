@@ -1233,3 +1233,25 @@ Conventions:
   optional `is_superseded` review-row field.
 - **Reason:** Keeps generated consumers synchronized with the review endpoint.
 - **Reapply after bump:** Run `make gen-client`.
+
+## AR-2 Task 9 — Server update review summaries
+
+### `internal/registry/service/registry_service.go`
+- **Change:** Fetches one post-transaction review snapshot in `UpdateServer`,
+  annotates the response review summary, and reuses that snapshot for capability
+  authorization. Removed the redundant capability helper and documented the
+  deliberate fail-closed handling of capability authorization/read failures.
+- **Reason:** Keeps update responses consistent with subsequent reads while
+  avoiding duplicate review queries; edits correctly report prior reviews as
+  stale and the version as pending.
+- **Reapply after bump:** After a successful server update transaction, fetch
+  `serverReviewArtifacts` once, annotate `Meta.Review`, and pass the same
+  snapshot to `annotateServerCapabilitiesWithReviews`.
+
+### `internal/registry/service/artifact_capabilities_test.go`
+- **Change:** Verifies an edited server response reports a pending review
+  summary after staling a prior review and matches a subsequent read.
+- **Reason:** Prevents update responses from omitting review metadata or using a
+  different review snapshot than read responses.
+- **Reapply after bump:** Preserve the partially reviewed-before-edit fixture,
+  pending per-type assertions, and update/read summary equality check.

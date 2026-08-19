@@ -288,29 +288,52 @@ func TestUpdateServerResponseHasCapabilities(t *testing.T) {
 	registry := NewRegistryService(db, &config.Config{
 		EnableRegistryValidation:       false,
 		ValidateRepositoryReachability: false,
+		ReviewTypes:                    []string{"security", "scientific"},
+		ReviewOutcomes:                 []string{"pass", "fail"},
+		ReviewFailureOutcome:           "fail",
 	}, nil, realCapabilityTestAuthorizer(t))
 	name := "com.example/capability-update-server"
+	server := newOwnershipTestServer("capability-update-server")
 
 	_, err := registry.CreateServer(
 		ownershipTestContext("artifact-owner", "Owner", auth.MethodOIDC),
-		newOwnershipTestServer("capability-update-server"),
+		server,
 	)
 	require.NoError(t, err)
 
-	updateContext := ownershipPermissionContext("artifact-owner", "Owner", []auth.Permission{
-		{Action: auth.PermissionActionRead, ResourcePattern: "*"},
-		{Action: auth.PermissionActionEditOwn, ResourcePattern: "*"},
-	})
+	_, err = registry.CreateReview(
+		ownershipPermissionContext("reviewer", "Reviewer", []auth.Permission{
+			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+			{Action: auth.PermissionActionReview, ResourcePattern: "*"},
+		}),
+		"server",
+		name,
+		"1.0.0",
+		"security",
+		"pass",
+		"baseline review",
+	)
+	require.NoError(t, err)
+
+	updateContext := ownershipPermissionContext("artifact-owner", "Owner", curatorEditPermissions())
 	update := newOwnershipTestServer("capability-update-server")
 	update.Description = "Updated description"
 	updated, err := registry.UpdateServer(updateContext, name, "1.0.0", update, nil)
 	require.NoError(t, err)
 	require.NotNil(t, updated.Meta.Capabilities)
+	require.NotNil(t, updated.Meta.Review)
+	assert.Equal(t, "pending", updated.Meta.Review.Status)
+	require.Len(t, updated.Meta.Review.PerType, 2)
+	for _, reviewType := range updated.Meta.Review.PerType {
+		assert.Equal(t, "pending", reviewType.Status)
+	}
 
 	read, err := registry.GetServerByName(updateContext, name)
 	require.NoError(t, err)
 	require.NotNil(t, read.Meta.Capabilities)
+	require.NotNil(t, read.Meta.Review)
 	assert.Equal(t, read.Meta.Capabilities, updated.Meta.Capabilities)
+	assert.Equal(t, read.Meta.Review, updated.Meta.Review)
 	assert.True(t, updated.Meta.Capabilities.CanUpdate)
-	assert.False(t, updated.Meta.Capabilities.CanDelete)
+	assert.True(t, updated.Meta.Capabilities.CanDelete)
 }

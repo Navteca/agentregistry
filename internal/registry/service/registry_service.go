@@ -319,12 +319,6 @@ func (s *registryServiceImpl) reviewSummary(snapshot reviewSnapshot, updatedAt t
 	return &summary
 }
 
-func (s *registryServiceImpl) annotateServerCapabilities(ctx context.Context, serverName string, serverResponse *models.ServerResponse) {
-	s.populateServerCapabilities(ctx, serverName, serverResponse, func() error {
-		return s.authorizeServerUpdate(ctx, nil, serverName, serverResponse)
-	})
-}
-
 func (s *registryServiceImpl) annotateServerCapabilitiesWithReviews(
 	ctx context.Context,
 	serverName string,
@@ -353,6 +347,7 @@ func (s *registryServiceImpl) populateServerCapabilities(
 		return
 	}
 
+	// Deliberately swallow authorization/read failures because capabilities are a UX affordance.
 	capabilities.CanUpdate = authorizeUpdate() == nil
 	capabilities.CanDelete = s.canPerform(ctx, serverName, auth.PermissionArtifactTypeServer, auth.PermissionActionDelete)
 	capabilities.CanDeploy = s.canPerform(ctx, serverName, auth.PermissionArtifactTypeServer, auth.PermissionActionDeploy)
@@ -749,7 +744,13 @@ func (s *registryServiceImpl) UpdateServer(ctx context.Context, serverName, vers
 		return nil, err
 	}
 
-	s.annotateServerCapabilities(ctx, serverName, updatedServer)
+	reviewRows, err := s.listReviewSnapshots(ctx, serverReviewArtifacts([]*models.ServerResponse{updatedServer}))
+	if err != nil {
+		return nil, err
+	}
+	snapshot := reviewRows[database.ReviewArtifactKey("server", updatedServer.Server.Name, updatedServer.Server.Version)]
+	s.annotateServerReviewSummary(updatedServer, snapshot)
+	s.annotateServerCapabilitiesWithReviews(ctx, serverName, updatedServer, snapshot)
 	return updatedServer, nil
 }
 

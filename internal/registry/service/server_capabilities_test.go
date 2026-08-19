@@ -147,7 +147,7 @@ func TestServerCapabilitiesWithoutSessionAreFalse(t *testing.T) {
 	service := &registryServiceImpl{authz: realCapabilityTestAuthorizer(t)}
 	response := &models.ServerResponse{}
 
-	service.annotateServerCapabilities(context.Background(), "com.example/server", response)
+	service.annotateServerCapabilitiesWithReviews(context.Background(), "com.example/server", response, reviewSnapshot{})
 
 	require.NotNil(t, response.Meta.Capabilities)
 	assert.False(t, response.Meta.Capabilities.CanUpdate)
@@ -167,7 +167,7 @@ func TestServerCapabilitiesWithNilAuthorizerProviderCannotDelete(t *testing.T) {
 		{Action: auth.PermissionActionEditOwn, ResourcePattern: "*"},
 	})
 
-	service.annotateServerCapabilities(ctx, "com.example/server", response)
+	service.annotateServerCapabilitiesWithReviews(ctx, "com.example/server", response, reviewSnapshot{})
 
 	require.NotNil(t, response.Meta.Capabilities)
 	assert.False(t, response.Meta.Capabilities.CanUpdate, "missing official metadata must fail closed")
