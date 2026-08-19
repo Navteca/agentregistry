@@ -198,12 +198,89 @@ describe("ReviewSection", () => {
     const user = userEvent.setup()
     render(<ReviewSection {...baseProps} />)
 
-    expect(await screen.findByText("Stale")).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: "1 earlier review" })).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "1 earlier review" }))
+    expect(screen.getByText("Stale")).toBeInTheDocument()
     expect(screen.getByTestId("review-finding-1")).toHaveClass("border-amber-500/40")
     await user.hover(screen.getByText("Stale"))
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       "The artifact has changed since this review.",
     )
+  })
+
+  it("shows only current findings by default and expands earlier reviews", async () => {
+    vi.mocked(listReviewsV0).mockResolvedValue({
+      data: [
+        review({ id: 1, notes: "current finding", is_current: true }),
+        review({ id: 2, notes: "superseded finding", is_current: false, is_superseded: true }),
+        review({ id: 3, notes: "stale finding", is_current: false, is_stale: true }),
+      ],
+    } as never)
+    const user = userEvent.setup()
+    render(<ReviewSection {...baseProps} />)
+
+    expect(await screen.findByText("current finding")).toBeInTheDocument()
+    expect(screen.queryByText("superseded finding")).not.toBeInTheDocument()
+    expect(screen.queryByText("stale finding")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "2 earlier reviews" })).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "2 earlier reviews" }))
+    expect(screen.getByText("superseded finding")).toBeInTheDocument()
+    expect(screen.getByText("stale finding")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "2 earlier reviews" }))
+    expect(screen.queryByText("superseded finding")).not.toBeInTheDocument()
+    expect(screen.queryByText("stale finding")).not.toBeInTheDocument()
+  })
+
+  it("does not render a toggle when every finding is current", async () => {
+    vi.mocked(listReviewsV0).mockResolvedValue({
+      data: [
+        review({ id: 1, notes: "first current", is_current: true }),
+        review({ id: 2, notes: "second current", is_current: true }),
+      ],
+    } as never)
+    render(<ReviewSection {...baseProps} />)
+
+    expect(await screen.findByText("first current")).toBeInTheDocument()
+    expect(screen.getByText("second current")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /earlier review/ })).not.toBeInTheDocument()
+  })
+
+  it("keeps multiple current reviewers for one review type visible", async () => {
+    vi.mocked(listReviewsV0).mockResolvedValue({
+      data: [
+        review({ id: 1, notes: "passing reviewer", is_current: true, outcome: "pass" }),
+        review({ id: 2, notes: "failing reviewer", is_current: true, outcome: "fail" }),
+      ],
+    } as never)
+    render(<ReviewSection {...baseProps} />)
+
+    expect(await screen.findByText("passing reviewer")).toBeInTheDocument()
+    expect(screen.getByText("failing reviewer")).toBeInTheDocument()
+  })
+
+  it("collapses a finding that is both superseded and stale exactly once", async () => {
+    vi.mocked(listReviewsV0).mockResolvedValue({
+      data: [
+        review({ id: 1, notes: "current finding", is_current: true }),
+        review({
+          id: 2,
+          notes: "superseded and stale finding",
+          is_current: false,
+          is_superseded: true,
+          is_stale: true,
+        }),
+      ],
+    } as never)
+    const user = userEvent.setup()
+    render(<ReviewSection {...baseProps} />)
+
+    expect(await screen.findByText("current finding")).toBeInTheDocument()
+    expect(screen.queryByText("superseded and stale finding")).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "1 earlier review" }))
+    expect(screen.getAllByText("superseded and stale finding")).toHaveLength(1)
   })
 
   it("renders finding markup as escaped text", async () => {

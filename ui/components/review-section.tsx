@@ -12,6 +12,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { ChevronDown, ChevronUp } from "lucide-react"
 import {
   createReviewV0,
   getFrontendConfig,
@@ -127,6 +128,7 @@ export function ReviewSection({
   const [notes, setNotes] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [submissionError, setSubmissionError] = useState<string | null>(null)
+  const [showEarlierReviews, setShowEarlierReviews] = useState(false)
   const reviewsRequest = useRef(0)
 
   const { showReview } = capabilityFlags(capabilities)
@@ -246,6 +248,9 @@ export function ReviewSection({
   }
 
   const overallStatus = overallStatusPresentation(reviewSummary?.status ?? "pending")
+  const currentReviews = reviews.filter((review) => review.is_current === true)
+  const earlierReviews = reviews.filter((review) => review.is_current !== true)
+  const displayedReviews = showEarlierReviews ? reviews : currentReviews
 
   return (
     <TooltipProvider>
@@ -305,7 +310,25 @@ export function ReviewSection({
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Findings
           </h3>
-          {reviews.map((review) => {
+          {earlierReviews.length > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-auto w-full justify-between px-2 py-1.5 text-sm text-muted-foreground"
+              aria-expanded={showEarlierReviews}
+              onClick={() => setShowEarlierReviews((expanded) => !expanded)}
+            >
+              <span>
+                {earlierReviews.length} earlier review{earlierReviews.length === 1 ? "" : "s"}
+              </span>
+              {showEarlierReviews ? (
+                <ChevronUp className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <ChevronDown className="h-4 w-4" aria-hidden="true" />
+              )}
+            </Button>
+          )}
+          {displayedReviews.map((review) => {
             const stale = review.is_stale === true
             return (
               <article
