@@ -6,15 +6,11 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { ReviewTypeCard } from "@/components/review-type-card"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import {
   createReviewV0,
+  createReviewOverrideV0,
   getFrontendConfig,
   listReviewsV0,
   type CapabilitiesMeta,
@@ -23,6 +19,7 @@ import {
   type ReviewSummary,
 } from "@/lib/admin-api"
 import { capabilityFlags } from "@/lib/capabilities"
+import { overallStatusPresentation, type StatusPresentation } from "@/lib/review-status"
 
 interface ReviewSectionProps {
   artifactType: string
@@ -33,29 +30,11 @@ interface ReviewSectionProps {
   onReviewSubmitted?: () => void | Promise<void>
 }
 
-type StatusPresentation = {
-  label: string
-  className: string
-}
-
-const overallStatusPresentation = (status: string): StatusPresentation => {
-  switch (status) {
-    case "certified":
-      return {
-        label: "Certified",
-        className: "border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400",
-      }
-    case "rejected":
-      return {
-        label: "Rejected",
-        className: "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-400",
-      }
-    default:
-      return {
-        label: "Pending",
-        className: "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400",
-      }
-  }
+type ReviewTypeCardEntry = {
+  reviewType: string
+  statusPresentation?: StatusPresentation
+  reviews: Review[]
+  unconfigured?: boolean
 }
 
 const perTypeStatusPresentation = (status: string): StatusPresentation => {
@@ -70,9 +49,14 @@ const perTypeStatusPresentation = (status: string): StatusPresentation => {
         label: "Failed",
         className: "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-400",
       }
+    case "overridden":
+      return {
+        label: "Overridden",
+        className: "border-border bg-muted/20 text-muted-foreground",
+      }
     default:
       return {
-        label: "Pending",
+        label: "Pending review",
         className: "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400",
       }
   }
@@ -96,20 +80,6 @@ function extractErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
-function formatDate(dateString: string): string {
-  const date = new Date(dateString)
-  if (Number.isNaN(date.getTime())) {
-    return dateString
-  }
-  return date.toLocaleString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
 export function ReviewSection({
   artifactType,
   artifactName,
@@ -128,10 +98,18 @@ export function ReviewSection({
   const [notes, setNotes] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [submissionError, setSubmissionError] = useState<string | null>(null)
-  const [showEarlierReviews, setShowEarlierReviews] = useState(false)
+  const [overrideTargetID, setOverrideTargetID] = useState<number | undefined>()
+  const [overrideReason, setOverrideReason] = useState("")
+  const [overrideSubmitting, setOverrideSubmitting] = useState(false)
+  const [overrideError, setOverrideError] = useState<string | null>(null)
+  const [expandedReviewTypes, setExpandedReviewTypes] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(
+      (reviewSummary?.per_type ?? []).map((type) => [type.review_type, type.status === "fail"]),
+    ),
+  )
   const reviewsRequest = useRef(0)
 
-  const { showReview } = capabilityFlags(capabilities)
+  const { showReview, showOverride } = capabilityFlags(capabilities)
 
   const loadReviews = useCallback(async () => {
     const requestId = reviewsRequest.current + 1
@@ -198,10 +176,127 @@ export function ReviewSection({
     return summaryTypes.map((type) => ({
       reviewType: type.review_type,
       status: type.status,
-      outcome: type.outcome,
-      reviewerDisplayNames: type.reviewer_display_names ?? [],
     }))
   }, [reviewSummary])
+
+  const reviewGroups = useMemo(() => {
+    const groups = new Map<string, Review[]>()
+    for (const review of reviews) {
+      const group = groups.get(review.review_type) ?? []
+      group.push(review)
+      groups.set(review.review_type, group)
+    }
+    return groups
+  }, [reviews])
+
+  const overriddenReviewIDs = useMemo(
+    () =>
+      new Set(
+        reviews.flatMap((review) =>
+          review.overrides_review_id !== undefined ? [review.overrides_review_id] : [],
+        ),
+      ),
+    [reviews],
+  )
+
+  const configuredReviewTypeNames = useMemo(
+    () => new Set(statusTypes.map((type) => type.reviewType)),
+    [statusTypes],
+  )
+
+  const unconfiguredReviewTypes = useMemo(
+    () => Array.from(reviewGroups.keys()).filter((reviewType) => !configuredReviewTypeNames.has(reviewType)),
+    [configuredReviewTypeNames, reviewGroups],
+  )
+
+  useEffect(() => {
+    setExpandedReviewTypes((expanded) => {
+      let next = expanded
+      for (const type of statusTypes) {
+        if (!Object.prototype.hasOwnProperty.call(expanded, type.reviewType)) {
+          next = {
+            ...next,
+            [type.reviewType]: type.status === "fail",
+          }
+        }
+      }
+      return next
+    })
+  }, [statusTypes])
+
+  const reviewTypeCards = useMemo<ReviewTypeCardEntry[]>(
+    () => [
+      ...statusTypes.map((type) => ({
+        reviewType: type.reviewType,
+        statusPresentation: perTypeStatusPresentation(type.status),
+        reviews: reviewGroups.get(type.reviewType) ?? [],
+      })),
+      ...unconfiguredReviewTypes.map((reviewType) => ({
+        reviewType,
+        reviews: reviewGroups.get(reviewType) ?? [],
+        unconfigured: true,
+      })),
+    ],
+    [reviewGroups, statusTypes, unconfiguredReviewTypes],
+  )
+
+  const toggleReviewType = (reviewType: string) => {
+    setExpandedReviewTypes((expanded) => ({
+      ...expanded,
+      [reviewType]: !expanded[reviewType],
+    }))
+  }
+
+  const startOverride = (review: Review) => {
+    setOverrideTargetID(review.id)
+    setOverrideReason("")
+    setOverrideError(null)
+  }
+
+  const cancelOverride = () => {
+    if (overrideSubmitting) {
+      return
+    }
+    setOverrideTargetID(undefined)
+    setOverrideReason("")
+    setOverrideError(null)
+  }
+
+  const handleOverride = async (review: Review) => {
+    const reason = overrideReason.trim()
+    if (!reason) {
+      setOverrideError("Override reason is required")
+      return
+    }
+
+    setOverrideSubmitting(true)
+    setOverrideError(null)
+    try {
+      await createReviewOverrideV0({
+        path: {
+          artifactType,
+          artifactName,
+          version: artifactVersion,
+        },
+        body: {
+          review_id: review.id,
+          reason,
+        },
+        throwOnError: true,
+      })
+      toast.success("Review override recorded")
+      setOverrideTargetID(undefined)
+      setOverrideReason("")
+      await loadReviews()
+      await onReviewSubmitted?.()
+    } catch (error) {
+      const message = extractErrorMessage(error, "Unable to record review override")
+      setOverrideError(message)
+      toast.error(message)
+    } finally {
+      setOverrideSubmitting(false)
+    }
+  }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -247,11 +342,7 @@ export function ReviewSection({
     }
   }
 
-  const overallStatus = overallStatusPresentation(reviewSummary?.status ?? "pending")
-  const currentReviews = reviews.filter((review) => review.is_current === true)
-  const earlierReviews = reviews.filter((review) => review.is_current !== true)
-  const displayedReviews = showEarlierReviews ? reviews : currentReviews
-
+  const overallStatus = overallStatusPresentation(reviewSummary?.status ?? "pending", "detail")
   return (
     <TooltipProvider>
       <section aria-labelledby="review-heading" className="space-y-4">
@@ -264,27 +355,30 @@ export function ReviewSection({
         </span>
       </div>
 
-      {statusTypes.length > 0 ? (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {statusTypes.map((type) => {
-            const status = perTypeStatusPresentation(type.status)
-            return (
-              <div key={type.reviewType} className={`rounded-md border p-3 ${status.className}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium">{type.reviewType}</span>
-                  <span className="text-xs font-semibold">{status.label}</span>
-                </div>
-                {type.outcome && (
-                  <p className="mt-1 text-xs opacity-80">Outcome: {type.outcome}</p>
-                )}
-                {type.reviewerDisplayNames.length > 0 && (
-                  <p className="mt-1 text-xs opacity-80">
-                    Reviewed by {type.reviewerDisplayNames.join(", ")}
-                  </p>
-                )}
-              </div>
-            )
-          })}
+      {reviewTypeCards.length > 0 ? (
+        <div className="space-y-3">
+          {reviewTypeCards.map((type) => (
+            <ReviewTypeCard
+              key={type.reviewType}
+              reviewType={type.reviewType}
+              statusPresentation={type.statusPresentation}
+              reviews={type.reviews}
+              unconfigured={type.unconfigured}
+              expanded={expandedReviewTypes[type.reviewType] === true}
+              onToggle={() => toggleReviewType(type.reviewType)}
+              canOverride={showOverride}
+              failureOutcome={frontendConfig?.review_failure_outcome}
+              overriddenReviewIDs={overriddenReviewIDs}
+              overrideTargetID={overrideTargetID}
+              overrideReason={overrideReason}
+              overrideError={overrideError ?? undefined}
+              overrideSubmitting={overrideSubmitting}
+              onStartOverride={startOverride}
+              onOverrideReasonChange={setOverrideReason}
+              onCancelOverride={cancelOverride}
+              onSubmitOverride={handleOverride}
+            />
+          ))}
         </div>
       ) : (
         <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
@@ -300,84 +394,6 @@ export function ReviewSection({
           Findings could not be loaded: {reviewsError}
         </p>
       )}
-      {!reviewsLoading && !reviewsError && reviews.length === 0 && (
-        <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-          No reviews have been submitted for this version.
-        </p>
-      )}
-      {!reviewsLoading && !reviewsError && reviews.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Findings
-          </h3>
-          {earlierReviews.length > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-auto w-full justify-between px-2 py-1.5 text-sm text-muted-foreground"
-              aria-expanded={showEarlierReviews}
-              onClick={() => setShowEarlierReviews((expanded) => !expanded)}
-            >
-              <span>
-                {earlierReviews.length} earlier review{earlierReviews.length === 1 ? "" : "s"}
-              </span>
-              {showEarlierReviews ? (
-                <ChevronUp className="h-4 w-4" aria-hidden="true" />
-              ) : (
-                <ChevronDown className="h-4 w-4" aria-hidden="true" />
-              )}
-            </Button>
-          )}
-          {displayedReviews.map((review) => {
-            const stale = review.is_stale === true
-            return (
-              <article
-                key={review.id}
-                data-testid={`review-finding-${review.id}`}
-                className={`rounded-md border p-3 ${stale
-                  ? "border-amber-500/40 bg-amber-500/5"
-                  : "border-border bg-muted/20"}`}
-              >
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="font-semibold">{review.review_type}</span>
-                  <span className="rounded-full border px-2 py-0.5">{review.outcome}</span>
-                  {stale && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="rounded-full border border-amber-500/50 px-2 py-0.5 text-amber-700 dark:text-amber-400">
-                          Stale
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>The artifact has changed since this review.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                  {!stale && review.is_current === true && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="rounded-full border border-green-500/50 px-2 py-0.5 text-green-700 dark:text-green-400">
-                          Current
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>The artifact hasn&apos;t changed since this review.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  <span>{review.reviewer_display_name || "Unknown reviewer"}</span>
-                  <span aria-hidden="true"> · </span>
-                  <time dateTime={review.created_at}>{formatDate(review.created_at)}</time>
-                </p>
-                <p className="mt-2 whitespace-pre-wrap break-words text-sm">{review.notes}</p>
-              </article>
-            )
-          })}
-        </div>
-      )}
-
       {showReview && (
         <div className="rounded-md border p-4">
           <h3 className="text-sm font-semibold">Submit a review</h3>

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 import { PromptCard } from "../prompt-card"
-import type { PromptResponse } from "@/lib/api/types.gen"
+import type { PromptResponse, ReviewSummary } from "@/lib/api/types.gen"
 
 const mockPrompt: PromptResponse = {
   prompt: {
@@ -21,7 +21,55 @@ const mockPrompt: PromptResponse = {
   },
 }
 
+function promptWithReviewStatus(status: string): PromptResponse {
+  return {
+    ...mockPrompt,
+    _meta: {
+      ...mockPrompt._meta,
+      "aregistry.ai/review": { status, per_type: [] },
+    },
+  }
+}
+
 describe("PromptCard", () => {
+  it.each([
+    ["certified", "Certified"],
+    ["rejected", "Rejected"],
+    ["pending", "Pending Review"],
+  ])("renders the %s certification status", (status, label) => {
+    render(<PromptCard prompt={promptWithReviewStatus(status)} />)
+
+    expect(screen.getByText(label)).toBeInTheDocument()
+  })
+
+  it("renders pending when no review summary is present", () => {
+    render(<PromptCard prompt={mockPrompt} />)
+
+    expect(screen.getByText("Pending Review")).toBeInTheDocument()
+  })
+
+  it("renders only certification status from the review summary", () => {
+    const summary: ReviewSummary = {
+      status: "certified",
+      per_type: [{
+        review_type: "security",
+        status: "pass",
+        outcome: "pass",
+        reviewer_display_names: ["Bob Curator"],
+      }],
+    }
+    const prompt: PromptResponse = {
+      ...mockPrompt,
+      _meta: { ...mockPrompt._meta, "aregistry.ai/review": summary },
+    }
+    render(<PromptCard prompt={prompt} />)
+
+    expect(screen.getByText("Certified")).toBeInTheDocument()
+    expect(screen.queryByText("Findings")).not.toBeInTheDocument()
+    expect(screen.queryByText("Bob Curator")).not.toBeInTheDocument()
+    expect(screen.queryByText("security")).not.toBeInTheDocument()
+  })
+
   it("renders name and description", () => {
     render(<PromptCard prompt={mockPrompt} />)
     expect(screen.getByText("code-explainer")).toBeInTheDocument()

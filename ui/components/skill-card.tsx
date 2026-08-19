@@ -2,6 +2,7 @@
 
 import { SkillResponse } from "@/lib/admin-api"
 import { getSafeHttpUrl } from "@/lib/safe-url"
+import { overallStatusPresentation } from "@/lib/review-status"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -27,6 +28,7 @@ export function SkillCard({ skill, onDelete, showDelete = false, showExternalLin
   const registeredBy = ownership?.displayName || ownership?.subject
   const safeRepositoryUrl = getSafeHttpUrl(skillData.repository?.url)
   const safeWebsiteUrl = getSafeHttpUrl(skillData.websiteUrl)
+  const reviewStatus = overallStatusPresentation(_meta?.['aregistry.ai/review']?.status, "card")
 
   const formatDate = (dateString: string) => {
     try {
@@ -53,6 +55,12 @@ export function SkillCard({ skill, onDelete, showDelete = false, showExternalLin
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
             <h3 className="text-lg font-semibold truncate">{skillData.title || skillData.name}</h3>
+            <span
+              aria-label={`Certification status: ${reviewStatus.label}`}
+              className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${reviewStatus.className}`}
+            >
+              {reviewStatus.label}
+            </span>
           </div>
 
           <p className="text-[15px] text-muted-foreground line-clamp-1 mb-2">

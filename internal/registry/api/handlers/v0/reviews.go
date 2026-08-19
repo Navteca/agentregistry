@@ -43,6 +43,21 @@ type CreateReviewBody struct {
 	ReviewerDisplayName string `json:"reviewer_display_name,omitempty"`
 }
 
+// CreateReviewOverrideInput identifies the artifact and target review to
+// override. The target is supplied in the body so the endpoint remains
+// explicitly POST-only and append-only.
+type CreateReviewOverrideInput struct {
+	ArtifactType    string                   `path:"artifactType" json:"artifactType"`
+	ArtifactName    string                   `path:"artifactName" json:"artifactName"`
+	ArtifactVersion string                   `path:"version" json:"version"`
+	Body            CreateReviewOverrideBody `body:""`
+}
+
+type CreateReviewOverrideBody struct {
+	ReviewID int64  `json:"review_id" required:"true"`
+	Reason   string `json:"reason" required:"true"`
+}
+
 // RegisterReviewsEndpoint registers review read and create operations.
 func RegisterReviewsEndpoint(api huma.API, pathPrefix string, cfg *config.Config, registry service.RegistryService) {
 	huma.Register(api, huma.Operation{
@@ -138,6 +153,64 @@ func RegisterReviewsEndpoint(api huma.API, pathPrefix string, cfg *config.Config
 				return nil, huma.Error403Forbidden("Forbidden")
 			default:
 				return nil, huma.Error500InternalServerError("Failed to create review", err)
+			}
+		}
+
+		return &types.Response[models.Review]{Body: *review}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "create-review-override" + strings.ReplaceAll(pathPrefix, "/", "-"),
+		Method:      http.MethodPost,
+		Path:        pathPrefix + "/reviews/{artifactType}/{artifactName}/versions/{version}/overrides",
+		Summary:     "Override a failed artifact review",
+		Description: "Record an administrative override for a failed review.",
+		Tags:        []string{"reviews"},
+	}, func(ctx context.Context, input *CreateReviewOverrideInput) (*types.Response[models.Review], error) {
+		artifactType, err := url.PathUnescape(input.ArtifactType)
+		if err != nil {
+			return nil, huma.Error400BadRequest("Invalid artifact type encoding", err)
+		}
+		artifactName, err := url.PathUnescape(input.ArtifactName)
+		if err != nil {
+			return nil, huma.Error400BadRequest("Invalid artifact name encoding", err)
+		}
+		version, err := url.PathUnescape(input.ArtifactVersion)
+		if err != nil {
+			return nil, huma.Error400BadRequest("Invalid artifact version encoding", err)
+		}
+		if cfg == nil {
+			return nil, huma.Error500InternalServerError("Review configuration is unavailable", nil)
+		}
+		reviewConfig := cfg.ReviewConfig()
+		if reviewConfig.OverrideOutcome() == "" ||
+			reviewConfig.OverrideOutcome() == reviewConfig.FailureOutcome() {
+			return nil, huma.Error500InternalServerError("Review override configuration is invalid", nil)
+		}
+		if strings.TrimSpace(input.Body.Reason) == "" {
+			return nil, huma.Error400BadRequest("Override reason is required", nil)
+		}
+
+		review, err := registry.CreateReviewOverride(
+			ctx,
+			artifactType,
+			artifactName,
+			version,
+			input.Body.ReviewID,
+			input.Body.Reason,
+		)
+		if err != nil {
+			switch {
+			case errors.Is(err, database.ErrInvalidInput):
+				return nil, huma.Error400BadRequest("Invalid review override request", err)
+			case errors.Is(err, database.ErrNotFound):
+				return nil, huma.Error404NotFound("Review target or artifact version not found")
+			case errors.Is(err, auth.ErrUnauthenticated):
+				return nil, huma.Error401Unauthorized("Authentication required")
+			case errors.Is(err, auth.ErrForbidden):
+				return nil, huma.Error403Forbidden("Forbidden")
+			default:
+				return nil, huma.Error500InternalServerError("Failed to create review override", err)
 			}
 		}
 

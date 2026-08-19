@@ -11,14 +11,16 @@ import (
 
 // FrontendConfigBody holds public frontend bootstrap configuration values.
 type FrontendConfigBody struct {
-	KeycloakURL      string   `json:"keycloak_url"`
-	KeycloakRealm    string   `json:"keycloak_realm"`
-	KeycloakClientID string   `json:"keycloak_client_id"`
-	APIBaseURL       string   `json:"api_base_url,omitempty"`
-	GatewayBaseURL   string   `json:"gateway_base_url,omitempty"`
-	AnonymousAuth    bool     `json:"anonymous_auth_enabled"`
-	ReviewTypes      []string `json:"review_types"`
-	ReviewOutcomes   []string `json:"review_outcomes"`
+	KeycloakURL           string   `json:"keycloak_url"`
+	KeycloakRealm         string   `json:"keycloak_realm"`
+	KeycloakClientID      string   `json:"keycloak_client_id"`
+	APIBaseURL            string   `json:"api_base_url,omitempty"`
+	GatewayBaseURL        string   `json:"gateway_base_url,omitempty"`
+	AnonymousAuth         bool     `json:"anonymous_auth_enabled"`
+	ReviewTypes           []string `json:"review_types"`
+	ReviewOutcomes        []string `json:"review_outcomes"`
+	ReviewFailureOutcome  string   `json:"review_failure_outcome"`
+	ReviewOverrideOutcome string   `json:"review_override_outcome"`
 }
 
 // frontendConfigOutput wraps FrontendConfigBody and adds a Cache-Control response header
@@ -45,14 +47,16 @@ func RegisterFrontendConfigEndpoint(api huma.API, pathPrefix string, cfg *config
 		return &frontendConfigOutput{
 			CacheControl: "public, max-age=300",
 			Body: FrontendConfigBody{
-				KeycloakURL:      cfg.KeycloakURL,
-				KeycloakRealm:    cfg.KeycloakRealm,
-				KeycloakClientID: cfg.KeycloakClientID,
-				APIBaseURL:       cfg.FrontendAPIURL,
-				GatewayBaseURL:   cfg.FrontendGatewayURL,
-				AnonymousAuth:    cfg.EnableAnonymousAuth,
-				ReviewTypes:      reviewConfig.Types(),
-				ReviewOutcomes:   reviewConfig.Outcomes(),
+				KeycloakURL:           cfg.KeycloakURL,
+				KeycloakRealm:         cfg.KeycloakRealm,
+				KeycloakClientID:      cfg.KeycloakClientID,
+				APIBaseURL:            cfg.FrontendAPIURL,
+				GatewayBaseURL:        cfg.FrontendGatewayURL,
+				AnonymousAuth:         cfg.EnableAnonymousAuth,
+				ReviewTypes:           reviewConfig.Types(),
+				ReviewOutcomes:        reviewConfig.Outcomes(),
+				ReviewFailureOutcome:  reviewConfig.FailureOutcome(),
+				ReviewOverrideOutcome: reviewConfig.OverrideOutcome(),
 			},
 		}, nil
 	})

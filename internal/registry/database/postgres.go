@@ -343,7 +343,11 @@ func (db *PostgreSQL) CreateReview(ctx context.Context, tx pgx.Tx, review *model
 		return nil, database.ErrInvalidInput
 	}
 
-	if err := db.authz.Check(ctx, auth.PermissionActionReview, auth.Resource{
+	action := auth.PermissionActionReview
+	if review.OverridesReviewID != nil {
+		action = auth.PermissionActionOverride
+	}
+	if err := db.authz.Check(ctx, action, auth.Resource{
 		Name: review.ArtifactName,
 		Type: auth.PermissionArtifactType(review.ArtifactType),
 	}); err != nil {
@@ -353,12 +357,13 @@ func (db *PostgreSQL) CreateReview(ctx context.Context, tx pgx.Tx, review *model
 	const query = `
 		INSERT INTO reviews (
 			artifact_type, artifact_name, artifact_version, review_type, outcome,
-			reviewer_subject, reviewer_auth_method, reviewer_display_name, notes
+			reviewer_subject, reviewer_auth_method, reviewer_display_name, notes,
+			overrides_review_id
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, artifact_type, artifact_name, artifact_version, review_type,
 			outcome, reviewer_subject, reviewer_auth_method, reviewer_display_name,
-			notes, created_at
+			notes, created_at, overrides_review_id
 	`
 
 	var created models.Review
@@ -374,6 +379,7 @@ func (db *PostgreSQL) CreateReview(ctx context.Context, tx pgx.Tx, review *model
 		review.ReviewerAuthMethod,
 		review.ReviewerDisplayName,
 		review.Notes,
+		review.OverridesReviewID,
 	).Scan(
 		&created.ID,
 		&created.ArtifactType,
@@ -386,11 +392,11 @@ func (db *PostgreSQL) CreateReview(ctx context.Context, tx pgx.Tx, review *model
 		&created.ReviewerDisplayName,
 		&created.Notes,
 		&created.CreatedAt,
+		&created.OverridesReviewID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create review: %w", err)
 	}
-
 	return &created, nil
 }
 
@@ -416,7 +422,7 @@ func (db *PostgreSQL) ListReviews(
 	const query = `
 		SELECT id, artifact_type, artifact_name, artifact_version, review_type,
 			outcome, reviewer_subject, reviewer_auth_method, reviewer_display_name,
-			notes, created_at
+			notes, created_at, overrides_review_id
 		FROM reviews
 		WHERE artifact_type = $1 AND artifact_name = $2 AND artifact_version = $3
 		ORDER BY created_at DESC, id DESC
@@ -443,6 +449,7 @@ func (db *PostgreSQL) ListReviews(
 			&review.ReviewerDisplayName,
 			&review.Notes,
 			&review.CreatedAt,
+			&review.OverridesReviewID,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan review: %w", err)
 		}
@@ -453,6 +460,46 @@ func (db *PostgreSQL) ListReviews(
 	}
 
 	return reviews, nil
+}
+
+// GetReviewByID returns one review by ID.
+func (db *PostgreSQL) GetReviewByID(
+	ctx context.Context,
+	tx pgx.Tx,
+	id int64,
+) (*models.Review, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	const query = `
+		SELECT id, artifact_type, artifact_name, artifact_version, review_type,
+			outcome, reviewer_subject, reviewer_auth_method, reviewer_display_name,
+			notes, created_at, overrides_review_id
+		FROM reviews
+		WHERE id = $1
+	`
+	var review models.Review
+	if err := db.getExecutor(tx).QueryRow(ctx, query, id).Scan(
+		&review.ID,
+		&review.ArtifactType,
+		&review.ArtifactName,
+		&review.ArtifactVersion,
+		&review.ReviewType,
+		&review.Outcome,
+		&review.ReviewerSubject,
+		&review.ReviewerAuthMethod,
+		&review.ReviewerDisplayName,
+		&review.Notes,
+		&review.CreatedAt,
+		&review.OverridesReviewID,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, database.ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get review by id: %w", err)
+	}
+	return &review, nil
 }
 
 // ListReviewsForArtifacts returns reviews for multiple artifact versions in one query.
@@ -487,7 +534,7 @@ func (db *PostgreSQL) ListReviewsForArtifacts(
 	query := fmt.Sprintf(`
 		SELECT id, artifact_type, artifact_name, artifact_version, review_type,
 			outcome, reviewer_subject, reviewer_auth_method, reviewer_display_name,
-			notes, created_at
+			notes, created_at, overrides_review_id
 		FROM reviews
 		WHERE (artifact_type, artifact_name, artifact_version) IN (%s)
 		ORDER BY created_at DESC, id DESC
@@ -513,9 +560,11 @@ func (db *PostgreSQL) ListReviewsForArtifacts(
 			&review.ReviewerDisplayName,
 			&review.Notes,
 			&review.CreatedAt,
+			&review.OverridesReviewID,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan batched review: %w", err)
 		}
+
 		key := database.ReviewArtifactKey(review.ArtifactType, review.ArtifactName, review.ArtifactVersion)
 		result[key] = append(result[key], review)
 	}

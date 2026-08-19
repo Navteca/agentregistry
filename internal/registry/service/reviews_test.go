@@ -90,6 +90,122 @@ func TestCreateReview_PersistsIdentityAndAppendsRevisions(t *testing.T) {
 	assert.Equal(t, before.Meta.Official.UpdatedAt, after.Meta.Official.UpdatedAt)
 }
 
+func TestCreateReviewOverride_PersistsAdminIdentityAndClearsFailure(t *testing.T) {
+	db := internaldb.NewTestDB(t)
+	cfg := &config.Config{
+		EnableRegistryValidation: false,
+		ReviewTypes:              []string{"security"},
+		ReviewOutcomes:           []string{"pass", "fail", "override"},
+		ReviewFailureOutcome:     "fail",
+		ReviewOverrideOutcome:    "override",
+	}
+	registry := NewRegistryService(db, cfg, nil, realCapabilityTestAuthorizer(t))
+	server := newOwnershipTestServer("review-override")
+	ownerCtx := ownershipPermissionContext("owner-subject", "Owner", ownerEditPermissions())
+	_, err := registry.CreateServer(ownerCtx, server)
+	require.NoError(t, err)
+	updateServerForReviewState(t, registry, ownerCtx, server, "baseline")
+
+	target, err := registry.CreateReview(
+		ownershipPermissionContext("reviewer-subject", "Reviewer", []auth.Permission{
+			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+			{Action: auth.PermissionActionReview, ResourcePattern: "*"},
+		}),
+		"server", server.Name, server.Version, "security", "fail", "finding",
+	)
+	require.NoError(t, err)
+
+	_, err = registry.CreateReviewOverride(
+		ownershipPermissionContext("curator-subject", "Curator", []auth.Permission{
+			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+			{Action: auth.PermissionActionReview, ResourcePattern: "*"},
+		}),
+		"server", server.Name, server.Version, target.ID, "curator override",
+	)
+	assert.ErrorIs(t, err, auth.ErrForbidden)
+
+	override, err := registry.CreateReviewOverride(
+		ownershipPermissionContext("admin-subject", "Admin", []auth.Permission{
+			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+			{Action: auth.PermissionActionOverride, ResourcePattern: "*"},
+		}),
+		"server", server.Name, server.Version, target.ID, "accepted risk",
+	)
+	require.NoError(t, err)
+	assert.True(t, override.IsOverride())
+	assert.Equal(t, target.ID, *override.OverridesReviewID)
+	assert.Equal(t, "admin-subject", override.ReviewerSubject)
+	assert.Equal(t, "accepted risk", override.Notes)
+
+	state, err := registry.GetReviewState(ownerCtx, "server", server.Name, server.Version)
+	require.NoError(t, err)
+	assert.True(t, state.Certified)
+	assert.False(t, state.Rejected)
+	assert.Equal(t, models.ReviewStatusOverridden, state.PerType[0].Status)
+
+	reviews, err := registry.GetReviews(ownerCtx, "server", server.Name, server.Version)
+	require.NoError(t, err)
+	require.Len(t, reviews, 2)
+	overrideRow := reviewWithNotes(t, reviews, "accepted risk")
+	assert.True(t, overrideRow.IsOverride())
+	assert.Equal(t, target.ID, *overrideRow.OverridesReviewID)
+
+	_, err = registry.CreateReviewOverride(
+		ownershipPermissionContext("admin-subject", "Admin", []auth.Permission{
+			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+			{Action: auth.PermissionActionOverride, ResourcePattern: "*"},
+		}),
+		"server", server.Name, server.Version, override.ID, "nested override",
+	)
+	assert.ErrorIs(t, err, database.ErrInvalidInput)
+
+	passReview, err := registry.CreateReview(
+		ownershipPermissionContext("reviewer-subject", "Reviewer", []auth.Permission{
+			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+			{Action: auth.PermissionActionReview, ResourcePattern: "*"},
+		}),
+		"server", server.Name, server.Version, "security", "pass", "no finding",
+	)
+	require.NoError(t, err)
+	_, err = registry.CreateReviewOverride(
+		ownershipPermissionContext("admin-subject", "Admin", []auth.Permission{
+			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+			{Action: auth.PermissionActionOverride, ResourcePattern: "*"},
+		}),
+		"server", server.Name, server.Version, passReview.ID, "not a failure",
+	)
+	assert.ErrorIs(t, err, database.ErrInvalidInput)
+
+	_, err = registry.CreateReviewOverride(
+		ownershipPermissionContext("admin-subject", "Admin", []auth.Permission{
+			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+			{Action: auth.PermissionActionOverride, ResourcePattern: "*"},
+		}),
+		"server", server.Name, server.Version, 999999999, "missing target",
+	)
+	assert.ErrorIs(t, err, database.ErrNotFound)
+
+	otherServer := newOwnershipTestServer("review-override-other")
+	_, err = registry.CreateServer(ownerCtx, otherServer)
+	require.NoError(t, err)
+	otherTarget, err := registry.CreateReview(
+		ownershipPermissionContext("reviewer-subject", "Reviewer", []auth.Permission{
+			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+			{Action: auth.PermissionActionReview, ResourcePattern: "*"},
+		}),
+		"server", otherServer.Name, otherServer.Version, "security", "fail", "other finding",
+	)
+	require.NoError(t, err)
+	_, err = registry.CreateReviewOverride(
+		ownershipPermissionContext("admin-subject", "Admin", []auth.Permission{
+			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+			{Action: auth.PermissionActionOverride, ResourcePattern: "*"},
+		}),
+		"server", server.Name, server.Version, otherTarget.ID, "wrong artifact",
+	)
+	assert.ErrorIs(t, err, database.ErrInvalidInput)
+}
+
 func TestCreateReview_UserIsForbiddenByReviewPermission(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	cfg := &config.Config{
@@ -560,6 +676,131 @@ func TestResolveReviewState_MapsConfiguredOutcomesToStableStatuses(t *testing.T)
 	assert.True(t, state.Rejected)
 	assert.Equal(t, models.ReviewStatusFail, state.PerType[0].Status)
 	assert.Equal(t, "reject", state.PerType[0].Outcome)
+}
+
+func TestResolveReviewState_OverrideClearsCurrentFailure(t *testing.T) {
+	updatedAt := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	targetID := int64(1)
+	settings := (&config.Config{
+		ReviewTypes:           []string{"security"},
+		ReviewOutcomes:        []string{"pass", "fail", "override"},
+		ReviewFailureOutcome:  "fail",
+		ReviewOverrideOutcome: "override",
+	}).ReviewConfig()
+
+	state := ResolveReviewState([]models.Review{
+		testReview(targetID, "security", "fail", "reviewer", updatedAt),
+		{
+			ID:                2,
+			ArtifactType:      "server",
+			ArtifactName:      "com.example/review-state",
+			ArtifactVersion:   "1.0.0",
+			ReviewType:        "security",
+			Outcome:           "override",
+			ReviewerSubject:   "admin",
+			CreatedAt:         updatedAt.Add(time.Second),
+			OverridesReviewID: &targetID,
+		},
+	}, updatedAt, settings)
+
+	require.True(t, state.Certified)
+	assert.False(t, state.Rejected)
+	assert.Equal(t, models.ReviewStatusOverridden, state.PerType[0].Status)
+	assert.Equal(t, "override", state.PerType[0].Outcome)
+}
+
+func TestResolveReviewState_StaleOverrideDoesNotClearFailure(t *testing.T) {
+	updatedAt := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	targetID := int64(1)
+	settings := (&config.Config{
+		ReviewTypes:           []string{"security"},
+		ReviewOutcomes:        []string{"pass", "fail", "override"},
+		ReviewFailureOutcome:  "fail",
+		ReviewOverrideOutcome: "override",
+	}).ReviewConfig()
+
+	state := ResolveReviewState([]models.Review{
+		testReview(targetID, "security", "fail", "reviewer", updatedAt),
+		{
+			ID:                2,
+			ArtifactType:      "server",
+			ArtifactName:      "com.example/review-state",
+			ArtifactVersion:   "1.0.0",
+			ReviewType:        "security",
+			Outcome:           "override",
+			ReviewerSubject:   "admin",
+			CreatedAt:         updatedAt.Add(-time.Second),
+			OverridesReviewID: &targetID,
+		},
+	}, updatedAt, settings)
+
+	assert.False(t, state.Certified)
+	assert.True(t, state.Rejected)
+	assert.Equal(t, models.ReviewStatusFail, state.PerType[0].Status)
+}
+
+func TestResolveReviewState_OverrideDoesNotHideOtherFailures(t *testing.T) {
+	updatedAt := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	settings := (&config.Config{
+		ReviewTypes:           []string{"security"},
+		ReviewOutcomes:        []string{"pass", "fail"},
+		ReviewFailureOutcome:  "fail",
+		ReviewOverrideOutcome: "override",
+	}).ReviewConfig()
+
+	t.Run("an admin pass does not clear a curator failure", func(t *testing.T) {
+		state := ResolveReviewState([]models.Review{
+			testReview(1, "security", "fail", "curator", updatedAt),
+			testReview(2, "security", "pass", "admin", updatedAt.Add(time.Second)),
+		}, updatedAt, settings)
+
+		assert.True(t, state.Rejected)
+		assert.Equal(t, models.ReviewStatusFail, state.PerType[0].Status)
+	})
+
+	t.Run("one of two failures can be overridden without certifying", func(t *testing.T) {
+		targetID := int64(1)
+		state := ResolveReviewState([]models.Review{
+			testReview(1, "security", "fail", "curator-one", updatedAt),
+			testReview(2, "security", "fail", "curator-two", updatedAt),
+			{
+				ID:                3,
+				ArtifactType:      "server",
+				ArtifactName:      "com.example/review-state",
+				ArtifactVersion:   "1.0.0",
+				ReviewType:        "security",
+				Outcome:           "override",
+				ReviewerSubject:   "admin",
+				CreatedAt:         updatedAt.Add(time.Second),
+				OverridesReviewID: &targetID,
+			},
+		}, updatedAt, settings)
+
+		assert.True(t, state.Rejected)
+		assert.Equal(t, models.ReviewStatusFail, state.PerType[0].Status)
+	})
+
+	t.Run("an override does not carry to a revised failure", func(t *testing.T) {
+		targetID := int64(1)
+		state := ResolveReviewState([]models.Review{
+			testReview(1, "security", "fail", "curator", updatedAt),
+			{
+				ID:                2,
+				ArtifactType:      "server",
+				ArtifactName:      "com.example/review-state",
+				ArtifactVersion:   "1.0.0",
+				ReviewType:        "security",
+				Outcome:           "override",
+				ReviewerSubject:   "admin",
+				CreatedAt:         updatedAt.Add(time.Second),
+				OverridesReviewID: &targetID,
+			},
+			testReview(3, "security", "fail", "curator", updatedAt.Add(2*time.Second)),
+		}, updatedAt, settings)
+
+		assert.True(t, state.Rejected)
+		assert.Equal(t, models.ReviewStatusFail, state.PerType[0].Status)
+	})
 }
 
 func TestReviewStateSequence_EditMakesBothPassesStale(t *testing.T) {

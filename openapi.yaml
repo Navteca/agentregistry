@@ -1086,6 +1086,48 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/ErrorModel'
+    /v0/reviews/{artifactType}/{artifactName}/versions/{version}/overrides:
+        post:
+            tags:
+                - reviews
+            summary: Override a failed artifact review
+            description: Record an administrative override for a failed review.
+            operationId: create-review-override-v0
+            parameters:
+                - name: artifactType
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: artifactName
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: version
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateReviewOverrideBody'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Review'
+                default:
+                    description: Error
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorModel'
     /v0/servers:
         get:
             tags:
@@ -2014,6 +2056,8 @@ components:
                     type: boolean
                 can_deploy:
                     type: boolean
+                can_override:
+                    type: boolean
                 can_review:
                     type: boolean
                 can_update:
@@ -2023,6 +2067,7 @@ components:
                 - can_delete
                 - can_deploy
                 - can_review
+                - can_override
         CategoryDetail:
             type: object
             additionalProperties: false
@@ -2090,6 +2135,18 @@ components:
                 - review_type
                 - outcome
                 - notes
+        CreateReviewOverrideBody:
+            type: object
+            additionalProperties: false
+            properties:
+                reason:
+                    type: string
+                review_id:
+                    type: integer
+                    format: int64
+            required:
+                - review_id
+                - reason
         CurrentPrincipalResponse:
             type: object
             additionalProperties: false
@@ -2311,10 +2368,14 @@ components:
                     type: string
                 keycloak_url:
                     type: string
+                review_failure_outcome:
+                    type: string
                 review_outcomes:
                     type: array
                     items:
                         type: string
+                review_override_outcome:
+                    type: string
                 review_types:
                     type: array
                     items:
@@ -2326,6 +2387,8 @@ components:
                 - anonymous_auth_enabled
                 - review_types
                 - review_outcomes
+                - review_failure_outcome
+                - review_override_outcome
         GitHubOIDCTokenExchangeInputBody:
             type: object
             additionalProperties: false
@@ -2879,6 +2942,9 @@ components:
                     type: string
                 outcome:
                     type: string
+                overrides_review_id:
+                    type: integer
+                    format: int64
                 review_type:
                     type: string
                 reviewer_auth_method:

@@ -257,3 +257,79 @@ func TestCreateReviewEndpointRefusesUserPermission(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, resp.Code)
 }
+
+func TestCreateReviewOverrideEndpointUsesServerIdentityAndReason(t *testing.T) {
+	cfg := &config.Config{
+		ReviewTypes:           []string{"security"},
+		ReviewOutcomes:        []string{"pass", "fail", "override"},
+		ReviewFailureOutcome:  "fail",
+		ReviewOverrideOutcome: "override",
+	}
+	fake := servicetesting.NewFakeRegistry()
+	fake.CreateReviewOverrideFn = func(ctx context.Context, artifactType, artifactName, artifactVersion string, targetReviewID int64, reason string) (*models.Review, error) {
+		session, ok := auth.AuthSessionFrom(ctx)
+		require.True(t, ok)
+		user := session.Principal().User
+		return &models.Review{
+			ID:                  2,
+			ArtifactType:        artifactType,
+			ArtifactName:        artifactName,
+			ArtifactVersion:     artifactVersion,
+			ReviewType:          "security",
+			Outcome:             "override",
+			ReviewerSubject:     user.Subject,
+			ReviewerAuthMethod:  string(user.AuthMethod),
+			ReviewerDisplayName: user.DisplayName,
+			Notes:               reason,
+			OverridesReviewID:   &targetReviewID,
+		}, nil
+	}
+
+	mux := newReviewEndpoint(t, cfg, fake)
+	req := reviewRequest(
+		t,
+		"/v0/reviews/server/"+url.PathEscape("com.example/review-target")+"/versions/1.0.0/overrides",
+		`{"review_id":1,"reason":"accepted risk"}`,
+		reviewEndpointContext("admin-subject", "Admin", []auth.Permission{
+			{Action: auth.PermissionActionOverride, ResourcePattern: "*"},
+		}),
+	)
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	require.Equal(t, http.StatusOK, resp.Code)
+	var got models.Review
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+	assert.True(t, got.IsOverride())
+	assert.Equal(t, int64(1), *got.OverridesReviewID)
+	assert.Equal(t, "admin-subject", got.ReviewerSubject)
+	assert.Equal(t, "accepted risk", got.Notes)
+}
+
+func TestCreateReviewOverrideEndpointRejectsEmptyReason(t *testing.T) {
+	cfg := &config.Config{
+		ReviewTypes:           []string{"security"},
+		ReviewOutcomes:        []string{"pass", "fail", "override"},
+		ReviewFailureOutcome:  "fail",
+		ReviewOverrideOutcome: "override",
+	}
+	fake := servicetesting.NewFakeRegistry()
+	called := false
+	fake.CreateReviewOverrideFn = func(context.Context, string, string, string, int64, string) (*models.Review, error) {
+		called = true
+		return &models.Review{}, nil
+	}
+
+	mux := newReviewEndpoint(t, cfg, fake)
+	req := reviewRequest(
+		t,
+		"/v0/reviews/server/"+url.PathEscape("com.example/review-target")+"/versions/1.0.0/overrides",
+		`{"review_id":1,"reason":"   "}`,
+		context.Background(),
+	)
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusBadRequest, resp.Code)
+	assert.False(t, called)
+}

@@ -162,6 +162,8 @@ type Database interface {
 	CreateReview(ctx context.Context, tx pgx.Tx, review *models.Review) (*models.Review, error)
 	// ListReviews returns all reviews for one artifact version.
 	ListReviews(ctx context.Context, tx pgx.Tx, artifactType, artifactName, artifactVersion string) ([]models.Review, error)
+	// GetReviewByID returns one review by ID.
+	GetReviewByID(ctx context.Context, tx pgx.Tx, id int64) (*models.Review, error)
 	// ListReviewsForArtifacts returns reviews for multiple artifact versions in one query.
 	ListReviewsForArtifacts(ctx context.Context, tx pgx.Tx, artifacts []ReviewArtifact) (map[string][]models.Review, error)
 	// InTransaction executes a function within a database transaction

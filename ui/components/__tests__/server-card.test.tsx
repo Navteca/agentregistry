@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 import { ServerCard } from "../server-card"
-import type { CapabilitiesMeta, ServerResponse } from "@/lib/api/types.gen"
+import type { CapabilitiesMeta, ReviewSummary, ServerResponse } from "@/lib/api/types.gen"
 import { capabilityFlags } from "@/lib/capabilities"
 
 const mockServer: ServerResponse = {
@@ -65,7 +65,55 @@ function renderWithCapabilities(server: ServerResponse) {
   )
 }
 
+function serverWithReviewStatus(status: string): ServerResponse {
+  return {
+    ...mockServer,
+    _meta: {
+      ...mockServer._meta,
+      "aregistry.ai/review": { status, per_type: [] },
+    },
+  }
+}
+
 describe("ServerCard", () => {
+  it.each([
+    ["certified", "Certified"],
+    ["rejected", "Rejected"],
+    ["pending", "Pending Review"],
+  ])("renders the %s certification status", (status, label) => {
+    render(<ServerCard server={serverWithReviewStatus(status)} />)
+
+    expect(screen.getByText(label)).toBeInTheDocument()
+  })
+
+  it("renders pending when no review summary is present", () => {
+    render(<ServerCard server={mockServer} />)
+
+    expect(screen.getByText("Pending Review")).toBeInTheDocument()
+  })
+
+  it("renders only certification status from the review summary", () => {
+    const summary: ReviewSummary = {
+      status: "certified",
+      per_type: [{
+        review_type: "security",
+        status: "pass",
+        outcome: "pass",
+        reviewer_display_names: ["Bob Curator"],
+      }],
+    }
+    const server: ServerResponse = {
+      ...mockServer,
+      _meta: { ...mockServer._meta, "aregistry.ai/review": summary },
+    }
+    render(<ServerCard server={server} />)
+
+    expect(screen.getByText("Certified")).toBeInTheDocument()
+    expect(screen.queryByText("Findings")).not.toBeInTheDocument()
+    expect(screen.queryByText("Bob Curator")).not.toBeInTheDocument()
+    expect(screen.queryByText("security")).not.toBeInTheDocument()
+  })
+
   it("renders title as heading", () => {
     render(<ServerCard server={mockServer} />)
     expect(screen.getByText("Database Server")).toBeInTheDocument()

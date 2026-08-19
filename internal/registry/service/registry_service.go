@@ -357,6 +357,7 @@ func (s *registryServiceImpl) populateServerCapabilities(
 	capabilities.CanDelete = s.canPerform(ctx, serverName, auth.PermissionArtifactTypeServer, auth.PermissionActionDelete)
 	capabilities.CanDeploy = s.canPerform(ctx, serverName, auth.PermissionArtifactTypeServer, auth.PermissionActionDeploy)
 	capabilities.CanReview = s.canPerform(ctx, serverName, auth.PermissionArtifactTypeServer, auth.PermissionActionReview)
+	capabilities.CanOverride = s.canPerform(ctx, serverName, auth.PermissionArtifactTypeServer, auth.PermissionActionOverride)
 }
 
 func (s *registryServiceImpl) canPerform(ctx context.Context, name string, resourceType auth.PermissionArtifactType, action auth.PermissionAction) bool {
@@ -373,10 +374,11 @@ func (s *registryServiceImpl) canPerform(ctx context.Context, name string, resou
 func (s *registryServiceImpl) annotateAgentCapabilities(ctx context.Context, agentName string, response *models.AgentResponse) {
 	// Agents have no update endpoint, so CanUpdate is always false.
 	response.Meta.Capabilities = &models.CapabilitiesMeta{
-		CanUpdate: false,
-		CanDelete: s.canPerform(ctx, agentName, auth.PermissionArtifactTypeAgent, auth.PermissionActionDelete),
-		CanDeploy: s.canPerform(ctx, agentName, auth.PermissionArtifactTypeAgent, auth.PermissionActionDeploy),
-		CanReview: s.canPerform(ctx, agentName, auth.PermissionArtifactTypeAgent, auth.PermissionActionReview),
+		CanUpdate:   false,
+		CanDelete:   s.canPerform(ctx, agentName, auth.PermissionArtifactTypeAgent, auth.PermissionActionDelete),
+		CanDeploy:   s.canPerform(ctx, agentName, auth.PermissionArtifactTypeAgent, auth.PermissionActionDeploy),
+		CanReview:   s.canPerform(ctx, agentName, auth.PermissionArtifactTypeAgent, auth.PermissionActionReview),
+		CanOverride: s.canPerform(ctx, agentName, auth.PermissionArtifactTypeAgent, auth.PermissionActionOverride),
 	}
 }
 
@@ -384,10 +386,11 @@ func (s *registryServiceImpl) annotateSkillCapabilities(ctx context.Context, ski
 	// Skills have no update endpoint, so CanUpdate is always false.
 	// Skills have no deployment endpoint, so CanDeploy is always false.
 	response.Meta.Capabilities = &models.CapabilitiesMeta{
-		CanUpdate: false,
-		CanDelete: s.canPerform(ctx, skillName, auth.PermissionArtifactTypeSkill, auth.PermissionActionDelete),
-		CanDeploy: false,
-		CanReview: s.canPerform(ctx, skillName, auth.PermissionArtifactTypeSkill, auth.PermissionActionReview),
+		CanUpdate:   false,
+		CanDelete:   s.canPerform(ctx, skillName, auth.PermissionArtifactTypeSkill, auth.PermissionActionDelete),
+		CanDeploy:   false,
+		CanReview:   s.canPerform(ctx, skillName, auth.PermissionArtifactTypeSkill, auth.PermissionActionReview),
+		CanOverride: s.canPerform(ctx, skillName, auth.PermissionArtifactTypeSkill, auth.PermissionActionOverride),
 	}
 }
 
@@ -395,10 +398,11 @@ func (s *registryServiceImpl) annotatePromptCapabilities(ctx context.Context, pr
 	// Prompts have no update endpoint, so CanUpdate is always false.
 	// Prompts have no deployment endpoint, so CanDeploy is always false.
 	response.Meta.Capabilities = &models.CapabilitiesMeta{
-		CanUpdate: false,
-		CanDelete: s.canPerform(ctx, promptName, auth.PermissionArtifactTypePrompt, auth.PermissionActionDelete),
-		CanDeploy: false,
-		CanReview: s.canPerform(ctx, promptName, auth.PermissionArtifactTypePrompt, auth.PermissionActionReview),
+		CanUpdate:   false,
+		CanDelete:   s.canPerform(ctx, promptName, auth.PermissionArtifactTypePrompt, auth.PermissionActionDelete),
+		CanDeploy:   false,
+		CanReview:   s.canPerform(ctx, promptName, auth.PermissionArtifactTypePrompt, auth.PermissionActionReview),
+		CanOverride: s.canPerform(ctx, promptName, auth.PermissionArtifactTypePrompt, auth.PermissionActionOverride),
 	}
 }
 

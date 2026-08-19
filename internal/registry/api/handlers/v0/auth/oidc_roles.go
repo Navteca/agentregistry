@@ -196,7 +196,7 @@ func resolveDisplayName(claims map[string]any, cfg *RoleMappingConfig) string {
 //
 //	user    = read + publish + edit_own
 //	curator = user + edit + delete + review
-//	admin   = curator + deploy + review
+// admin   = curator + deploy + review + override
 //
 // A role with no configured patterns yields an empty bundle - it is never
 // granted the bare "*" resource pattern, which would trip
@@ -219,7 +219,7 @@ func buildRoleBundle(role InternalRole, patterns []string) []auth.Permission {
 	case InternalRoleCurator:
 		actions = append(actions, auth.PermissionActionEdit, auth.PermissionActionDelete, auth.PermissionActionReview)
 	case InternalRoleAdmin:
-		actions = append(actions, auth.PermissionActionEdit, auth.PermissionActionDelete, auth.PermissionActionDeploy, auth.PermissionActionReview)
+		actions = append(actions, auth.PermissionActionEdit, auth.PermissionActionDelete, auth.PermissionActionDeploy, auth.PermissionActionReview, auth.PermissionActionOverride)
 	default:
 		return nil
 	}

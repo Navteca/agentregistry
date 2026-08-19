@@ -145,6 +145,7 @@ export type Argument = {
 export type CapabilitiesMeta = {
     can_delete: boolean;
     can_deploy: boolean;
+    can_override: boolean;
     can_review: boolean;
     can_update: boolean;
 };
@@ -174,6 +175,11 @@ export type CreateReviewBody = {
     reviewer_auth_method?: string;
     reviewer_display_name?: string;
     reviewer_subject?: string;
+};
+
+export type CreateReviewOverrideBody = {
+    reason: string;
+    review_id: number;
 };
 
 export type CurrentPrincipalResponse = {
@@ -313,7 +319,9 @@ export type FrontendConfigBody = {
     keycloak_client_id: string;
     keycloak_realm: string;
     keycloak_url: string;
+    review_failure_outcome: string;
     review_outcomes: Array<string>;
+    review_override_outcome: string;
     review_types: Array<string>;
 };
 
@@ -648,6 +656,7 @@ export type Review = {
     is_superseded?: boolean;
     notes: string;
     outcome: string;
+    overrides_review_id?: number;
     review_type: string;
     reviewer_auth_method: string;
     reviewer_display_name: string;
@@ -1868,6 +1877,35 @@ export type CreateReviewV0Responses = {
 };
 
 export type CreateReviewV0Response = CreateReviewV0Responses[keyof CreateReviewV0Responses];
+
+export type CreateReviewOverrideV0Data = {
+    body: CreateReviewOverrideBody;
+    path: {
+        artifactType: string;
+        artifactName: string;
+        version: string;
+    };
+    query?: never;
+    url: '/v0/reviews/{artifactType}/{artifactName}/versions/{version}/overrides';
+};
+
+export type CreateReviewOverrideV0Errors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateReviewOverrideV0Error = CreateReviewOverrideV0Errors[keyof CreateReviewOverrideV0Errors];
+
+export type CreateReviewOverrideV0Responses = {
+    /**
+     * OK
+     */
+    200: Review;
+};
+
+export type CreateReviewOverrideV0Response = CreateReviewOverrideV0Responses[keyof CreateReviewOverrideV0Responses];
 
 export type ListServersV0Data = {
     body?: never;

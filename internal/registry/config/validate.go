@@ -20,6 +20,7 @@ func Validate(cfg *Config) error {
 	cfg.ReviewTypes = normalizeReviewValues(cfg.ReviewTypes)
 	cfg.ReviewOutcomes = normalizeReviewValues(cfg.ReviewOutcomes)
 	cfg.ReviewFailureOutcome = strings.TrimSpace(cfg.ReviewFailureOutcome)
+	cfg.ReviewOverrideOutcome = strings.TrimSpace(cfg.ReviewOverrideOutcome)
 	if err := validateReviewValues("review types", cfg.ReviewTypes); err != nil {
 		return err
 	}
@@ -31,6 +32,15 @@ func Validate(cfg *Config) error {
 	}
 	if !slices.Contains(cfg.ReviewOutcomes, cfg.ReviewFailureOutcome) {
 		return fmt.Errorf("review failure outcome %q must be one of the configured outcomes", cfg.ReviewFailureOutcome)
+	}
+	if err := validateReviewValues("review override outcome", []string{cfg.ReviewOverrideOutcome}); err != nil {
+		return err
+	}
+	if cfg.ReviewOverrideOutcome == cfg.ReviewFailureOutcome {
+		return fmt.Errorf("review override outcome must differ from review failure outcome")
+	}
+	if slices.Contains(cfg.ReviewOutcomes, cfg.ReviewOverrideOutcome) {
+		return fmt.Errorf("review override outcome %q must be distinct from configured review outcomes", cfg.ReviewOverrideOutcome)
 	}
 	if cfg.Embeddings.Enabled {
 		if cfg.Embeddings.Dimensions <= 0 {

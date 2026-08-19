@@ -3,11 +3,12 @@ import { capabilityFlags } from "../capabilities"
 
 describe("capabilityFlags", () => {
   it("enables all controls when all capabilities are true", () => {
-    expect(capabilityFlags({ can_update: true, can_delete: true, can_deploy: true, can_review: true })).toEqual({
+    expect(capabilityFlags({ can_update: true, can_delete: true, can_deploy: true, can_review: true, can_override: true })).toEqual({
       showEdit: true,
       showDelete: true,
       showDeploy: true,
       showReview: true,
+      showOverride: true,
     })
   })
 
@@ -17,6 +18,7 @@ describe("capabilityFlags", () => {
       showDelete: false,
       showDeploy: false,
       showReview: false,
+      showOverride: false,
     })
   })
 
@@ -26,6 +28,7 @@ describe("capabilityFlags", () => {
       showDelete: false,
       showDeploy: true,
       showReview: false,
+      showOverride: false,
     })
   })
 
@@ -35,6 +38,7 @@ describe("capabilityFlags", () => {
       showDelete: false,
       showDeploy: false,
       showReview: false,
+      showOverride: false,
     })
   })
 
@@ -44,6 +48,7 @@ describe("capabilityFlags", () => {
       showDelete: false,
       showDeploy: false,
       showReview: false,
+      showOverride: false,
     })
   })
 
@@ -53,11 +58,17 @@ describe("capabilityFlags", () => {
       showDelete: true,
       showDeploy: false,
       showReview: false,
+      showOverride: false,
     })
   })
 
   it("enables review only when can_review is explicitly true", () => {
     expect(capabilityFlags({ can_review: true }).showReview).toBe(true)
     expect(capabilityFlags({ can_review: false }).showReview).toBe(false)
+  })
+
+  it("enables override only when can_override is explicitly true", () => {
+    expect(capabilityFlags({ can_override: true }).showOverride).toBe(true)
+    expect(capabilityFlags({ can_override: false }).showOverride).toBe(false)
   })
 })

@@ -15,15 +15,21 @@ type Review struct {
 	ReviewerDisplayName string    `json:"reviewer_display_name"`
 	Notes               string    `json:"notes"`
 	CreatedAt           time.Time `json:"created_at"`
+	OverridesReviewID   *int64    `json:"overrides_review_id,omitempty"`
 	IsCurrent           *bool     `json:"is_current,omitempty"`
 	IsStale             *bool     `json:"is_stale,omitempty"`
 	IsSuperseded        *bool     `json:"is_superseded,omitempty"`
 }
 
+func (r Review) IsOverride() bool {
+	return r.OverridesReviewID != nil
+}
+
 const (
-	ReviewStatusPending = "pending"
-	ReviewStatusPass    = "pass"
-	ReviewStatusFail    = "fail"
+	ReviewStatusPending    = "pending"
+	ReviewStatusPass       = "pass"
+	ReviewStatusFail       = "fail"
+	ReviewStatusOverridden = "overridden"
 )
 
 // ReviewTypeStatus summarizes the current reviews for one configured type.

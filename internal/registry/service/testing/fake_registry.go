@@ -45,6 +45,7 @@ type FakeRegistry struct {
 	GetServerReadmeLatestFn       func(ctx context.Context, serverName string) (*database.ServerReadme, error)
 	GetServerReadmeByVersionFn    func(ctx context.Context, serverName, version string) (*database.ServerReadme, error)
 	CreateReviewFn                func(ctx context.Context, artifactType, artifactName, artifactVersion, reviewType, outcome, notes string) (*models.Review, error)
+	CreateReviewOverrideFn        func(ctx context.Context, artifactType, artifactName, artifactVersion string, targetReviewID int64, reason string) (*models.Review, error)
 	GetReviewStateFn              func(ctx context.Context, artifactType, artifactName, artifactVersion string) (*models.ReviewState, error)
 	GetReviewsFn                  func(ctx context.Context, artifactType, artifactName, artifactVersion string) ([]models.Review, error)
 	DeleteServerFn                func(ctx context.Context, serverName, version string) error
@@ -157,6 +158,13 @@ func (f *FakeRegistry) CreateServer(ctx context.Context, req *apiv0.ServerJSON) 
 func (f *FakeRegistry) CreateReview(ctx context.Context, artifactType, artifactName, artifactVersion, reviewType, outcome, notes string) (*models.Review, error) {
 	if f.CreateReviewFn != nil {
 		return f.CreateReviewFn(ctx, artifactType, artifactName, artifactVersion, reviewType, outcome, notes)
+	}
+	return nil, database.ErrNotFound
+}
+
+func (f *FakeRegistry) CreateReviewOverride(ctx context.Context, artifactType, artifactName, artifactVersion string, targetReviewID int64, reason string) (*models.Review, error) {
+	if f.CreateReviewOverrideFn != nil {
+		return f.CreateReviewOverrideFn(ctx, artifactType, artifactName, artifactVersion, targetReviewID, reason)
 	}
 	return nil, database.ErrNotFound
 }

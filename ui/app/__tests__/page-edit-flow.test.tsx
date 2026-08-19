@@ -157,7 +157,7 @@ describe("AdminPage edit server flow", () => {
     expect(screen.queryByRole("button", { name: "Edit server io.navteca/hello-mcp" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Remove server io.navteca/hello-mcp" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Deploy server io.navteca/hello-mcp" })).toBeInTheDocument()
-    expect(flags).toEqual({ showEdit: true, showDelete: true, showDeploy: true, showReview: false })
+    expect(flags).toEqual({ showEdit: true, showDelete: true, showDeploy: true, showReview: false, showOverride: false })
   })
 
   it("hides all server controls when capabilities are absent", async () => {

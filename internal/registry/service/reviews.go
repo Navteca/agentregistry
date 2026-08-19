@@ -39,6 +39,9 @@ func (s *registryServiceImpl) CreateReview(
 	if !reviewConfig.HasOutcome(outcome) {
 		return nil, fmt.Errorf("%w: unconfigured outcome %q", database.ErrInvalidInput, outcome)
 	}
+	if reviewConfig.OverrideOutcome() != "" && outcome == reviewConfig.OverrideOutcome() {
+		return nil, fmt.Errorf("%w: override outcome requires the override endpoint", database.ErrInvalidInput)
+	}
 
 	session, ok := auth.AuthSessionFrom(ctx)
 	if !ok || session == nil {
@@ -66,6 +69,74 @@ func (s *registryServiceImpl) CreateReview(
 			return nil, err
 		}
 		return s.db.CreateReview(ctx, tx, review)
+	})
+}
+
+func (s *registryServiceImpl) CreateReviewOverride(
+	ctx context.Context,
+	artifactType,
+	artifactName,
+	artifactVersion string,
+	targetReviewID int64,
+	reason string,
+) (*models.Review, error) {
+	resourceType, normalizedArtifactType, err := reviewResourceType(artifactType)
+	if err != nil {
+		return nil, err
+	}
+	if s.cfg == nil {
+		return nil, fmt.Errorf("%w: configuration is unavailable", database.ErrInvalidInput)
+	}
+	reviewConfig := s.cfg.ReviewConfig()
+	if reviewConfig.OverrideOutcome() == "" ||
+		reviewConfig.OverrideOutcome() == reviewConfig.FailureOutcome() {
+		return nil, fmt.Errorf("%w: invalid review override configuration", database.ErrInvalidInput)
+	}
+	if strings.TrimSpace(reason) == "" {
+		return nil, fmt.Errorf("%w: override reason must not be empty", database.ErrInvalidInput)
+	}
+	session, ok := auth.AuthSessionFrom(ctx)
+	if !ok || session == nil {
+		return nil, auth.ErrUnauthenticated
+	}
+	if !s.canPerform(ctx, artifactName, resourceType, auth.PermissionActionOverride) {
+		return nil, auth.ErrForbidden
+	}
+	user := session.Principal().User
+
+	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*models.Review, error) {
+		if err := s.ensureReviewArtifactExists(ctx, tx, normalizedArtifactType, artifactName, artifactVersion); err != nil {
+			return nil, err
+		}
+		target, err := s.db.GetReviewByID(ctx, tx, targetReviewID)
+		if err != nil {
+			return nil, err
+		}
+		if target.ArtifactType != normalizedArtifactType ||
+			target.ArtifactName != artifactName ||
+			target.ArtifactVersion != artifactVersion {
+			return nil, fmt.Errorf("%w: override target belongs to a different artifact", database.ErrInvalidInput)
+		}
+		if target.IsOverride() {
+			return nil, fmt.Errorf("%w: override target is already an override", database.ErrInvalidInput)
+		}
+		if target.Outcome != reviewConfig.FailureOutcome() {
+			return nil, fmt.Errorf("%w: override target is not a failure", database.ErrInvalidInput)
+		}
+
+		override := &models.Review{
+			ArtifactType:        normalizedArtifactType,
+			ArtifactName:        artifactName,
+			ArtifactVersion:     artifactVersion,
+			ReviewType:          target.ReviewType,
+			Outcome:             reviewConfig.OverrideOutcome(),
+			ReviewerSubject:     user.Subject,
+			ReviewerAuthMethod:  string(user.AuthMethod),
+			ReviewerDisplayName: user.DisplayName,
+			Notes:               strings.TrimSpace(reason),
+			OverridesReviewID:   &targetReviewID,
+		}
+		return s.db.CreateReview(ctx, tx, override)
 	})
 }
 
@@ -122,24 +193,11 @@ func (s *registryServiceImpl) GetReviews(
 		if reviews == nil {
 			reviews = make([]models.Review, 0)
 		}
-
-		currentIDs := make(map[int64]struct{})
-		for _, review := range ResolveCurrentReviews(reviews, updatedAt) {
-			currentIDs[review.ID] = struct{}{}
-		}
-		latestByReviewer := make(map[string]models.Review)
-		for _, review := range reviews {
-			key := reviewResolutionKey(review)
-			current, exists := latestByReviewer[key]
-			if !exists || reviewIsLater(review, current) {
-				latestByReviewer[key] = review
-			}
-		}
+		resolved := resolveReviewRows(reviews, updatedAt)
 		for i := range reviews {
-			_, current := currentIDs[reviews[i].ID]
-			stale := reviews[i].CreatedAt.Before(updatedAt)
-			latest, exists := latestByReviewer[reviewResolutionKey(reviews[i])]
-			superseded := exists && latest.ID != reviews[i].ID
+			current := resolved[i].current
+			stale := resolved[i].stale
+			superseded := resolved[i].superseded
 			reviews[i].IsCurrent = &current
 			reviews[i].IsStale = &stale
 			reviews[i].IsSuperseded = &superseded
@@ -218,25 +276,52 @@ func (s *registryServiceImpl) reviewArtifactUpdatedAt(
 // discard rows predating updatedAt, then retain the latest row per artifact,
 // review type, and reviewer subject.
 func ResolveCurrentReviews(reviews []models.Review, updatedAt time.Time) []models.Review {
-	latest := make(map[string]models.Review)
-	for _, review := range reviews {
-		if review.CreatedAt.Before(updatedAt) {
-			continue
+	resolved := resolveReviewRows(reviews, updatedAt)
+	current := make([]models.Review, 0, len(resolved))
+	for _, row := range resolved {
+		if row.current {
+			current = append(current, row.review)
 		}
-
-		key := reviewResolutionKey(review)
-		current, exists := latest[key]
-		if !exists || reviewIsLater(review, current) {
-			latest[key] = review
-		}
-	}
-
-	current := make([]models.Review, 0, len(latest))
-	for _, review := range latest {
-		current = append(current, review)
 	}
 	slices.SortFunc(current, compareReviews)
 	return current
+}
+
+type reviewResolution struct {
+	review     models.Review
+	current    bool
+	stale      bool
+	superseded bool
+}
+
+func resolveReviewRows(reviews []models.Review, updatedAt time.Time) []reviewResolution {
+	resolved := make([]reviewResolution, len(reviews))
+	latestByKey := make(map[string]int, len(reviews))
+	for i, review := range reviews {
+		stale := review.CreatedAt.Before(updatedAt)
+		resolved[i] = reviewResolution{
+			review:  review,
+			current: !stale,
+			stale:   stale,
+		}
+
+		key := reviewResolutionKey(review)
+		latestIndex, exists := latestByKey[key]
+		if !exists {
+			latestByKey[key] = i
+			continue
+		}
+		if !reviewIsLater(review, resolved[latestIndex].review) {
+			resolved[i].current = false
+			resolved[i].superseded = true
+			continue
+		}
+
+		resolved[latestIndex].current = false
+		resolved[latestIndex].superseded = true
+		latestByKey[key] = i
+	}
+	return resolved
 }
 
 func reviewResolutionKey(review models.Review) string {
@@ -258,11 +343,24 @@ func ResolveReviewState(
 ) models.ReviewState {
 	current := ResolveCurrentReviews(reviews, updatedAt)
 	byType := make(map[string][]models.Review)
+	byID := make(map[int64]models.Review, len(current))
+	overrideTargets := make(map[int64]struct{})
+	for _, review := range current {
+		byID[review.ID] = review
+		if review.IsOverride() {
+			if review.OverridesReviewID != nil {
+				overrideTargets[*review.OverridesReviewID] = struct{}{}
+			}
+		}
+	}
 	rejected := false
 	failureOutcome := reviewConfig.FailureOutcome()
 	for _, review := range current {
 		byType[review.ReviewType] = append(byType[review.ReviewType], review)
 		if review.Outcome == failureOutcome {
+			if _, overridden := overrideTargets[review.ID]; overridden {
+				continue
+			}
 			rejected = true
 		}
 	}
@@ -280,17 +378,30 @@ func ResolveReviewState(
 		} else {
 			latestTypeReview := typeReviews[0]
 			hasFailure := false
+			hasOverride := false
 			for _, review := range typeReviews {
 				if reviewIsLater(review, latestTypeReview) {
 					latestTypeReview = review
 				}
 				if review.Outcome == failureOutcome {
-					hasFailure = true
+					if _, overridden := overrideTargets[review.ID]; !overridden {
+						hasFailure = true
+					}
+				}
+				if review.IsOverride() {
+					if targetID := review.OverridesReviewID; targetID != nil {
+						if _, targetCurrent := byID[*targetID]; targetCurrent {
+							hasOverride = true
+						}
+					}
 				}
 			}
 			outcome = latestTypeReview.Outcome
 			if hasFailure {
 				status = models.ReviewStatusFail
+			} else if hasOverride {
+				status = models.ReviewStatusOverridden
+				outcome = reviewConfig.OverrideOutcome()
 			} else {
 				status = models.ReviewStatusPass
 			}

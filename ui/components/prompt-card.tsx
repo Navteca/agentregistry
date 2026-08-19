@@ -1,6 +1,7 @@
 "use client"
 
 import { PromptResponse } from "@/lib/admin-api"
+import { overallStatusPresentation } from "@/lib/review-status"
 import {
   TooltipProvider,
 } from "@/components/ui/tooltip"
@@ -17,6 +18,7 @@ export function PromptCard({ prompt, onClick, versionCount }: PromptCardProps) {
   const official = _meta?.['io.modelcontextprotocol.registry/official']
   const ownership = _meta?.['aregistry.ai/ownership']
   const registeredBy = ownership?.displayName || ownership?.subject
+  const reviewStatus = overallStatusPresentation(_meta?.['aregistry.ai/review']?.status, "card")
 
   const formatDate = (dateString: string) => {
     try {
@@ -43,6 +45,12 @@ export function PromptCard({ prompt, onClick, versionCount }: PromptCardProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
             <h3 className="text-lg font-semibold truncate">{promptData.name}</h3>
+            <span
+              aria-label={`Certification status: ${reviewStatus.label}`}
+              className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${reviewStatus.className}`}
+            >
+              {reviewStatus.label}
+            </span>
           </div>
 
           {promptData.description && (
