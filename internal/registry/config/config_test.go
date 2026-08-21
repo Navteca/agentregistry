@@ -74,17 +74,17 @@ func TestNewConfig_OIDCRolePatternsDefaultToEmpty(t *testing.T) {
 	}
 }
 
-func TestNewConfig_CommunityLinksDefaultToShown(t *testing.T) {
+func TestNewConfig_CommunityLinksDefaultToHidden(t *testing.T) {
 	os.Unsetenv("AGENT_REGISTRY_SHOW_GITHUB_LINK")
 	os.Unsetenv("AGENT_REGISTRY_SHOW_DISCORD_LINK")
 
 	cfg := NewConfig()
 
-	if !cfg.ShowGithubLink {
-		t.Fatal("ShowGithubLink should default to true")
+	if cfg.ShowGithubLink {
+		t.Fatal("ShowGithubLink should default to false")
 	}
-	if !cfg.ShowDiscordLink {
-		t.Fatal("ShowDiscordLink should default to true")
+	if cfg.ShowDiscordLink {
+		t.Fatal("ShowDiscordLink should default to false")
 	}
 }
 
