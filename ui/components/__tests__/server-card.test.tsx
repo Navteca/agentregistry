@@ -2,7 +2,8 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 import { ServerCard } from "../server-card"
-import type { ServerResponse } from "@/lib/api/types.gen"
+import type { CapabilitiesMeta, ReviewSummary, ServerResponse } from "@/lib/api/types.gen"
+import { capabilityFlags } from "@/lib/capabilities"
 
 const mockServer: ServerResponse = {
   server: {
@@ -40,7 +41,79 @@ const mockServer: ServerResponse = {
   },
 }
 
+function serverWithCapabilities(capabilities?: CapabilitiesMeta, packages = mockServer.server.packages): ServerResponse {
+  return {
+    ...mockServer,
+    server: { ...mockServer.server, packages },
+    _meta: {
+      ...mockServer._meta,
+      ...(capabilities ? { "aregistry.ai/capabilities": capabilities } : {}),
+    },
+  }
+}
+
+function renderWithCapabilities(server: ServerResponse) {
+  const flags = capabilityFlags(server._meta["aregistry.ai/capabilities"])
+  return render(
+    <ServerCard
+      server={server}
+      {...flags}
+      onEdit={vi.fn()}
+      onDelete={vi.fn()}
+      onDeploy={vi.fn()}
+    />,
+  )
+}
+
+function serverWithReviewStatus(status: string): ServerResponse {
+  return {
+    ...mockServer,
+    _meta: {
+      ...mockServer._meta,
+      "aregistry.ai/review": { status, per_type: [] },
+    },
+  }
+}
+
 describe("ServerCard", () => {
+  it.each([
+    ["certified", "Certified"],
+    ["rejected", "Rejected"],
+    ["pending", "Pending Review"],
+  ])("renders the %s certification status", (status, label) => {
+    render(<ServerCard server={serverWithReviewStatus(status)} />)
+
+    expect(screen.getByText(label)).toBeInTheDocument()
+  })
+
+  it("renders pending when no review summary is present", () => {
+    render(<ServerCard server={mockServer} />)
+
+    expect(screen.getByText("Pending Review")).toBeInTheDocument()
+  })
+
+  it("renders only certification status from the review summary", () => {
+    const summary: ReviewSummary = {
+      status: "certified",
+      per_type: [{
+        review_type: "security",
+        status: "pass",
+        outcome: "pass",
+        reviewer_display_names: ["Bob Curator"],
+      }],
+    }
+    const server: ServerResponse = {
+      ...mockServer,
+      _meta: { ...mockServer._meta, "aregistry.ai/review": summary },
+    }
+    render(<ServerCard server={server} />)
+
+    expect(screen.getByText("Certified")).toBeInTheDocument()
+    expect(screen.queryByText("Findings")).not.toBeInTheDocument()
+    expect(screen.queryByText("Bob Curator")).not.toBeInTheDocument()
+    expect(screen.queryByText("security")).not.toBeInTheDocument()
+  })
+
   it("renders title as heading", () => {
     render(<ServerCard server={mockServer} />)
     expect(screen.getByText("Database Server")).toBeInTheDocument()
@@ -161,6 +234,53 @@ describe("ServerCard", () => {
     render(<ServerCard server={ociServer} showDeploy onDeploy={onDeploy} />)
     const btn = screen.getByText("Deploy").closest("button")!
     expect(btn).not.toBeDisabled()
+  })
+
+  it("renders all mutating controls when all capabilities are true", () => {
+    renderWithCapabilities(serverWithCapabilities(
+      { can_update: true, can_delete: true, can_deploy: true },
+      [{ registryType: "oci", identifier: "ghcr.io/acme/db", transport: { type: "stdio" } }],
+    ))
+
+    expect(screen.getByRole("button", { name: "Edit server" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Remove server" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Deploy/i })).toBeInTheDocument()
+  })
+
+  it("renders only edit when update is allowed", () => {
+    renderWithCapabilities(serverWithCapabilities({ can_update: true, can_delete: false, can_deploy: false }))
+
+    expect(screen.getByRole("button", { name: "Edit server" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Remove server" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Deploy/i })).not.toBeInTheDocument()
+  })
+
+  it("renders no mutating controls when all capabilities are false", () => {
+    renderWithCapabilities(serverWithCapabilities({ can_update: false, can_delete: false, can_deploy: false }))
+
+    expect(screen.queryByRole("button", { name: "Edit server" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Remove server" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Deploy/i })).not.toBeInTheDocument()
+  })
+
+  it("renders no mutating controls when capabilities are absent", () => {
+    renderWithCapabilities(serverWithCapabilities())
+
+    expect(screen.queryByRole("button", { name: "Edit server" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Remove server" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Deploy/i })).not.toBeInTheDocument()
+  })
+
+  it("renders disabled deploy when permitted but no OCI package is available", () => {
+    renderWithCapabilities(serverWithCapabilities({ can_update: false, can_delete: false, can_deploy: true }, []))
+
+    expect(screen.getByRole("button", { name: /Deploy/i })).toBeDisabled()
+  })
+
+  it("hides deploy when not permitted even without an OCI package", () => {
+    renderWithCapabilities(serverWithCapabilities({ can_update: false, can_delete: false, can_deploy: false }, []))
+
+    expect(screen.queryByRole("button", { name: /Deploy/i })).not.toBeInTheDocument()
   })
 
   it("calls onDeploy without triggering onClick", async () => {

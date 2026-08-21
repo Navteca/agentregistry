@@ -35,6 +35,14 @@ type RegistryService interface {
 	UpsertServerEmbedding(ctx context.Context, serverName, version string, embedding *database.SemanticEmbedding) error
 	// GetServerEmbeddingMetadata retrieves the embedding metadata for a server version
 	GetServerEmbeddingMetadata(ctx context.Context, serverName, version string) (*database.SemanticEmbeddingMetadata, error)
+	// CreateReview records an append-only review for a specific artifact version.
+	CreateReview(ctx context.Context, artifactType, artifactName, artifactVersion, reviewType, outcome, notes string) (*models.Review, error)
+	// GetReviewState derives current reviews and certification for one artifact version.
+	GetReviewState(ctx context.Context, artifactType, artifactName, artifactVersion string) (*models.ReviewState, error)
+	// GetReviews returns all reviews for one artifact version with current/stale markers.
+	GetReviews(ctx context.Context, artifactType, artifactName, artifactVersion string) ([]models.Review, error)
+	// CreateReviewOverride records an administrative override of a failed review.
+	CreateReviewOverride(ctx context.Context, artifactType, artifactName, artifactVersion string, targetReviewID int64, reason string) (*models.Review, error)
 
 	// Agents APIs
 	// ListAgents retrieve all agents with optional filtering

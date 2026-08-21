@@ -31,6 +31,10 @@ import (
 
 const semanticEmbeddingDimensions = 1536
 
+func withTestSession(req *http.Request) *http.Request {
+	return req.WithContext(internaldb.WithTestSession(req.Context()))
+}
+
 func TestListServersEndpoint(t *testing.T) {
 	testSeed := make([]byte, ed25519.SeedSize)
 	_, randErr := rand.Read(testSeed)
@@ -40,8 +44,12 @@ func TestListServersEndpoint(t *testing.T) {
 		EnableRegistryValidation: false, // Disable for unit tests
 	}
 
-	ctx := context.Background()
-	registryService := service.NewRegistryService(internaldb.NewTestDB(t), testConfig, nil)
+	ctx := internaldb.WithTestSession(context.Background())
+	registryService := service.NewRegistryService(internaldb.NewTestDB(t), testConfig, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	// Setup test data
 	_, err := registryService.CreateServer(ctx, &apiv0.ServerJSON{
@@ -49,6 +57,7 @@ func TestListServersEndpoint(t *testing.T) {
 		Name:        "com.example/server-alpha",
 		Description: "Alpha test server",
 		Version:     "1.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -57,6 +66,7 @@ func TestListServersEndpoint(t *testing.T) {
 		Name:        "com.example/server-beta",
 		Description: "Beta test server",
 		Version:     "2.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -107,7 +117,7 @@ func TestListServersEndpoint(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Skip("Skipping servers test")
-			req := httptest.NewRequest(http.MethodGet, "/v0/servers"+tt.queryParams, nil)
+			req := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers"+tt.queryParams, nil))
 			w := httptest.NewRecorder()
 
 			mux.ServeHTTP(w, req)
@@ -135,13 +145,15 @@ func TestListServersEndpoint(t *testing.T) {
 }
 
 func TestListServersSemanticSearch(t *testing.T) {
-	ctx := context.Background()
+	ctx := internaldb.WithTestSession(context.Background())
 	db := internaldb.NewTestDB(t, internaldb.WithVector())
 
 	cfg := config.NewConfig()
 	cfg.Embeddings.Enabled = true
 	cfg.Embeddings.Provider = "stub"
 	cfg.Embeddings.Model = "stub-model"
+	// The fixture repository is deliberately nonexistent; this test must not depend on network access or a third party's uptime.
+	cfg.ValidateRepositoryReachability = false
 
 	testSeed := make([]byte, ed25519.SeedSize)
 	_, randErr := rand.Read(testSeed)
@@ -153,7 +165,11 @@ func TestListServersSemanticSearch(t *testing.T) {
 		"server": {0.1, 0.95, 0.0},
 	})
 
-	registryService := service.NewRegistryService(db, cfg, provider)
+	registryService := service.NewRegistryService(db, cfg, provider, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	// Setup servers
 	backupServer := "com.example/backup-server"
@@ -171,6 +187,7 @@ func TestListServersSemanticSearch(t *testing.T) {
 			Name:        srv.name,
 			Description: srv.description,
 			Version:     "1.0.0",
+			Repository:  fixtureRepository,
 		})
 		require.NoError(t, err)
 	}
@@ -199,7 +216,7 @@ func TestListServersSemanticSearch(t *testing.T) {
 	v0.RegisterServersEndpoints(api, "/v0", registryService)
 
 	t.Run("semantic search ranks by similarity", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v0/servers?search=server&semantic_search=true", nil)
+		req := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers?search=server&semantic_search=true", nil))
 		w := httptest.NewRecorder()
 
 		mux.ServeHTTP(w, req)
@@ -218,7 +235,7 @@ func TestListServersSemanticSearch(t *testing.T) {
 	})
 
 	t.Run("semantic search without search term is rejected", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v0/servers?semantic_search=true", nil)
+		req := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers?semantic_search=true", nil))
 		w := httptest.NewRecorder()
 
 		mux.ServeHTTP(w, req)
@@ -238,8 +255,12 @@ func TestGetLatestServerVersionEndpoint(t *testing.T) {
 		EnableRegistryValidation: false, // Disable for unit tests
 	}
 
-	ctx := context.Background()
-	registryService := service.NewRegistryService(internaldb.NewTestDB(t), testConfig, nil)
+	ctx := internaldb.WithTestSession(context.Background())
+	registryService := service.NewRegistryService(internaldb.NewTestDB(t), testConfig, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	// Setup test data
 	_, err := registryService.CreateServer(ctx, &apiv0.ServerJSON{
@@ -247,6 +268,7 @@ func TestGetLatestServerVersionEndpoint(t *testing.T) {
 		Name:        "com.example/detail-server",
 		Description: "Server for detail testing",
 		Version:     "1.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -278,7 +300,7 @@ func TestGetLatestServerVersionEndpoint(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// URL encode the server name
 			encodedName := url.PathEscape(tt.serverName)
-			req := httptest.NewRequest(http.MethodGet, "/v0/servers/"+encodedName+"/versions/latest", nil)
+			req := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers/"+encodedName+"/versions/latest", nil))
 			w := httptest.NewRecorder()
 
 			mux.ServeHTTP(w, req)
@@ -309,8 +331,12 @@ func TestGetServerVersionEndpoint(t *testing.T) {
 		EnableRegistryValidation: false, // Disable for unit tests
 	}
 
-	ctx := context.Background()
-	registryService := service.NewRegistryService(internaldb.NewTestDB(t), testConfig, nil)
+	ctx := internaldb.WithTestSession(context.Background())
+	registryService := service.NewRegistryService(internaldb.NewTestDB(t), testConfig, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	serverName := "com.example/version-server"
 
@@ -320,6 +346,7 @@ func TestGetServerVersionEndpoint(t *testing.T) {
 		Name:        serverName,
 		Description: "Version test server v1",
 		Version:     "1.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -328,6 +355,7 @@ func TestGetServerVersionEndpoint(t *testing.T) {
 		Name:        serverName,
 		Description: "Version test server v2",
 		Version:     "2.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -337,6 +365,7 @@ func TestGetServerVersionEndpoint(t *testing.T) {
 		Name:        serverName,
 		Description: "Version test server with build metadata",
 		Version:     "1.0.0+20130313144700",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -408,7 +437,7 @@ func TestGetServerVersionEndpoint(t *testing.T) {
 			// URL encode the server name and version
 			encodedName := url.PathEscape(tt.serverName)
 			encodedVersion := url.PathEscape(tt.version)
-			req := httptest.NewRequest(http.MethodGet, "/v0/servers/"+encodedName+"/versions/"+encodedVersion, nil)
+			req := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers/"+encodedName+"/versions/"+encodedVersion, nil))
 			w := httptest.NewRecorder()
 
 			mux.ServeHTTP(w, req)
@@ -444,10 +473,14 @@ func TestDeleteServerVersionEndpoint(t *testing.T) {
 		EnableRegistryValidation: false,
 	}
 
-	ctx := context.Background()
+	ctx := internaldb.WithTestSession(context.Background())
 	db := internaldb.NewTestDB(t)
-	registryService := service.NewRegistryService(db, testConfig, nil)
+	registryService := service.NewRegistryService(db, testConfig, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
 	ctxWithAdmin := auth.WithSystemContext(ctx)
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("Test API", "1.0.0"))
@@ -460,16 +493,17 @@ func TestDeleteServerVersionEndpoint(t *testing.T) {
 			Name:        serverName,
 			Description: "Delete endpoint test server",
 			Version:     "1.0.0",
+			Repository:  fixtureRepository,
 		})
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodDelete, "/v0/servers/"+url.PathEscape(serverName)+"/versions/1.0.0", nil)
+		req := withTestSession(httptest.NewRequest(http.MethodDelete, "/v0/servers/"+url.PathEscape(serverName)+"/versions/1.0.0", nil))
 		req = req.WithContext(auth.WithSystemContext(req.Context()))
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, req)
 		require.Equal(t, http.StatusOK, w.Code)
 
-		getReq := httptest.NewRequest(http.MethodGet, "/v0/servers/"+url.PathEscape(serverName)+"/versions/1.0.0", nil)
+		getReq := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers/"+url.PathEscape(serverName)+"/versions/1.0.0", nil))
 		getReq = getReq.WithContext(auth.WithSystemContext(getReq.Context()))
 		getW := httptest.NewRecorder()
 		mux.ServeHTTP(getW, getReq)
@@ -485,6 +519,7 @@ func TestDeleteServerVersionEndpoint(t *testing.T) {
 			Name:        serverName,
 			Description: "Server that has deployments",
 			Version:     version,
+			Repository:  fixtureRepository,
 		})
 		require.NoError(t, err)
 
@@ -509,7 +544,7 @@ func TestDeleteServerVersionEndpoint(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodDelete, "/v0/servers/"+url.PathEscape(serverName)+"/versions/"+url.PathEscape(version), nil)
+		req := withTestSession(httptest.NewRequest(http.MethodDelete, "/v0/servers/"+url.PathEscape(serverName)+"/versions/"+url.PathEscape(version), nil))
 		req = req.WithContext(auth.WithSystemContext(req.Context()))
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, req)
@@ -579,8 +614,12 @@ func TestGetServerReadmeEndpoints(t *testing.T) {
 		EnableRegistryValidation: false, // Disable for unit tests
 	}
 
-	ctx := context.Background()
-	registryService := service.NewRegistryService(internaldb.NewTestDB(t), testConfig, nil)
+	ctx := internaldb.WithTestSession(context.Background())
+	registryService := service.NewRegistryService(internaldb.NewTestDB(t), testConfig, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	serverName := "com.example/readme-endpoint"
 	_, err := registryService.CreateServer(ctx, &apiv0.ServerJSON{
@@ -588,6 +627,7 @@ func TestGetServerReadmeEndpoints(t *testing.T) {
 		Name:        serverName,
 		Description: "Server with README",
 		Version:     "1.0.0",
+		Repository:  fixtureRepository,
 	})
 	require.NoError(t, err)
 
@@ -600,7 +640,7 @@ func TestGetServerReadmeEndpoints(t *testing.T) {
 	v0.RegisterServersEndpoints(api, "/v0", registryService)
 
 	t.Run("latest readme", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v0/servers/"+url.PathEscape(serverName)+"/readme", nil)
+		req := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers/"+url.PathEscape(serverName)+"/readme", nil))
 		w := httptest.NewRecorder()
 
 		mux.ServeHTTP(w, req)
@@ -616,7 +656,7 @@ func TestGetServerReadmeEndpoints(t *testing.T) {
 	})
 
 	t.Run("version readme", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v0/servers/"+url.PathEscape(serverName)+"/versions/1.0.0/readme", nil)
+		req := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers/"+url.PathEscape(serverName)+"/versions/1.0.0/readme", nil))
 		w := httptest.NewRecorder()
 
 		mux.ServeHTTP(w, req)
@@ -634,10 +674,11 @@ func TestGetServerReadmeEndpoints(t *testing.T) {
 			Name:        otherServer,
 			Description: "Server without README",
 			Version:     "1.0.0",
+			Repository:  fixtureRepository,
 		})
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodGet, "/v0/servers/"+url.PathEscape(otherServer)+"/readme", nil)
+		req := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers/"+url.PathEscape(otherServer)+"/readme", nil))
 		w := httptest.NewRecorder()
 
 		mux.ServeHTTP(w, req)
@@ -656,8 +697,12 @@ func TestGetAllVersionsEndpoint(t *testing.T) {
 		EnableRegistryValidation: false, // Disable for unit tests
 	}
 
-	ctx := context.Background()
-	registryService := service.NewRegistryService(internaldb.NewTestDB(t), testConfig, nil)
+	ctx := internaldb.WithTestSession(context.Background())
+	registryService := service.NewRegistryService(internaldb.NewTestDB(t), testConfig, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	serverName := "com.example/multi-version-server"
 
@@ -669,6 +714,7 @@ func TestGetAllVersionsEndpoint(t *testing.T) {
 			Name:        serverName,
 			Description: "Multi-version test server " + version,
 			Version:     version,
+			Repository:  fixtureRepository,
 		})
 		require.NoError(t, err)
 	}
@@ -703,7 +749,7 @@ func TestGetAllVersionsEndpoint(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// URL encode the server name
 			encodedName := url.PathEscape(tt.serverName)
-			req := httptest.NewRequest(http.MethodGet, "/v0/servers/"+encodedName+"/versions", nil)
+			req := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers/"+encodedName+"/versions", nil))
 			w := httptest.NewRecorder()
 
 			mux.ServeHTTP(w, req)
@@ -756,8 +802,12 @@ func TestServersEndpointEdgeCases(t *testing.T) {
 		EnableRegistryValidation: false, // Disable for unit tests
 	}
 
-	ctx := context.Background()
-	registryService := service.NewRegistryService(internaldb.NewTestDB(t), testConfig, nil)
+	ctx := internaldb.WithTestSession(context.Background())
+	registryService := service.NewRegistryService(internaldb.NewTestDB(t), testConfig, nil, auth.Authorizer{Authz: auth.NewPublicAuthzProvider(nil)})
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	// Setup test data with edge case names that comply with constraints
 	specialServers := []struct {
@@ -776,6 +826,7 @@ func TestServersEndpointEdgeCases(t *testing.T) {
 			Name:        server.name,
 			Description: server.description,
 			Version:     server.version,
+			Repository:  fixtureRepository,
 		})
 		require.NoError(t, err)
 	}
@@ -799,7 +850,7 @@ func TestServersEndpointEdgeCases(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				// Test latest version endpoint
 				encodedName := url.PathEscape(tt.serverName)
-				req := httptest.NewRequest(http.MethodGet, "/v0/servers/"+encodedName+"/versions/latest", nil)
+				req := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers/"+encodedName+"/versions/latest", nil))
 				w := httptest.NewRecorder()
 
 				mux.ServeHTTP(w, req)
@@ -813,6 +864,7 @@ func TestServersEndpointEdgeCases(t *testing.T) {
 				assert.Equal(t, tt.serverName, resp.Servers[0].Server.Name)
 			})
 		}
+
 	})
 
 	t.Run("query parameter edge cases", func(t *testing.T) {
@@ -834,7 +886,7 @@ func TestServersEndpointEdgeCases(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				req := httptest.NewRequest(http.MethodGet, "/v0/servers"+tt.queryParams, nil)
+				req := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers"+tt.queryParams, nil))
 				w := httptest.NewRecorder()
 
 				mux.ServeHTTP(w, req)
@@ -851,10 +903,11 @@ func TestServersEndpointEdgeCases(t *testing.T) {
 				}
 			})
 		}
+
 	})
 
 	t.Run("response structure validation", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v0/servers", nil)
+		req := withTestSession(httptest.NewRequest(http.MethodGet, "/v0/servers", nil))
 		w := httptest.NewRecorder()
 
 		mux.ServeHTTP(w, req)

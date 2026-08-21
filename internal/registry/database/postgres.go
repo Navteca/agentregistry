@@ -334,6 +334,247 @@ func (db *PostgreSQL) GetServerByName(ctx context.Context, tx pgx.Tx, serverName
 	return serverResponse, nil
 }
 
+// CreateReview inserts an append-only review for a specific artifact version.
+func (db *PostgreSQL) CreateReview(ctx context.Context, tx pgx.Tx, review *models.Review) (*models.Review, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if review == nil {
+		return nil, database.ErrInvalidInput
+	}
+
+	action := auth.PermissionActionReview
+	if review.OverridesReviewID != nil {
+		action = auth.PermissionActionOverride
+	}
+	if err := db.authz.Check(ctx, action, auth.Resource{
+		Name: review.ArtifactName,
+		Type: auth.PermissionArtifactType(review.ArtifactType),
+	}); err != nil {
+		return nil, err
+	}
+
+	const query = `
+		INSERT INTO reviews (
+			artifact_type, artifact_name, artifact_version, review_type, outcome,
+			reviewer_subject, reviewer_auth_method, reviewer_display_name, notes,
+			overrides_review_id
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id, artifact_type, artifact_name, artifact_version, review_type,
+			outcome, reviewer_subject, reviewer_auth_method, reviewer_display_name,
+			notes, created_at, overrides_review_id
+	`
+
+	var created models.Review
+	err := db.getExecutor(tx).QueryRow(
+		ctx,
+		query,
+		review.ArtifactType,
+		review.ArtifactName,
+		review.ArtifactVersion,
+		review.ReviewType,
+		review.Outcome,
+		review.ReviewerSubject,
+		review.ReviewerAuthMethod,
+		review.ReviewerDisplayName,
+		review.Notes,
+		review.OverridesReviewID,
+	).Scan(
+		&created.ID,
+		&created.ArtifactType,
+		&created.ArtifactName,
+		&created.ArtifactVersion,
+		&created.ReviewType,
+		&created.Outcome,
+		&created.ReviewerSubject,
+		&created.ReviewerAuthMethod,
+		&created.ReviewerDisplayName,
+		&created.Notes,
+		&created.CreatedAt,
+		&created.OverridesReviewID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create review: %w", err)
+	}
+	return &created, nil
+}
+
+// ListReviews returns all reviews for one artifact version in deterministic order.
+func (db *PostgreSQL) ListReviews(
+	ctx context.Context,
+	tx pgx.Tx,
+	artifactType,
+	artifactName,
+	artifactVersion string,
+) ([]models.Review, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	if err := db.authz.Check(ctx, auth.PermissionActionRead, auth.Resource{
+		Name: artifactName,
+		Type: auth.PermissionArtifactType(artifactType),
+	}); err != nil {
+		return nil, err
+	}
+
+	const query = `
+		SELECT id, artifact_type, artifact_name, artifact_version, review_type,
+			outcome, reviewer_subject, reviewer_auth_method, reviewer_display_name,
+			notes, created_at, overrides_review_id
+		FROM reviews
+		WHERE artifact_type = $1 AND artifact_name = $2 AND artifact_version = $3
+		ORDER BY created_at DESC, id DESC
+	`
+
+	rows, err := db.getExecutor(tx).Query(ctx, query, artifactType, artifactName, artifactVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list reviews: %w", err)
+	}
+	defer rows.Close()
+
+	var reviews []models.Review
+	for rows.Next() {
+		var review models.Review
+		if err := rows.Scan(
+			&review.ID,
+			&review.ArtifactType,
+			&review.ArtifactName,
+			&review.ArtifactVersion,
+			&review.ReviewType,
+			&review.Outcome,
+			&review.ReviewerSubject,
+			&review.ReviewerAuthMethod,
+			&review.ReviewerDisplayName,
+			&review.Notes,
+			&review.CreatedAt,
+			&review.OverridesReviewID,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan review: %w", err)
+		}
+		reviews = append(reviews, review)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read reviews: %w", err)
+	}
+
+	return reviews, nil
+}
+
+// GetReviewByID returns one review by ID.
+func (db *PostgreSQL) GetReviewByID(
+	ctx context.Context,
+	tx pgx.Tx,
+	id int64,
+) (*models.Review, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	const query = `
+		SELECT id, artifact_type, artifact_name, artifact_version, review_type,
+			outcome, reviewer_subject, reviewer_auth_method, reviewer_display_name,
+			notes, created_at, overrides_review_id
+		FROM reviews
+		WHERE id = $1
+	`
+	var review models.Review
+	if err := db.getExecutor(tx).QueryRow(ctx, query, id).Scan(
+		&review.ID,
+		&review.ArtifactType,
+		&review.ArtifactName,
+		&review.ArtifactVersion,
+		&review.ReviewType,
+		&review.Outcome,
+		&review.ReviewerSubject,
+		&review.ReviewerAuthMethod,
+		&review.ReviewerDisplayName,
+		&review.Notes,
+		&review.CreatedAt,
+		&review.OverridesReviewID,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, database.ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get review by id: %w", err)
+	}
+	return &review, nil
+}
+
+// ListReviewsForArtifacts returns reviews for multiple artifact versions in one query.
+func (db *PostgreSQL) ListReviewsForArtifacts(
+	ctx context.Context,
+	tx pgx.Tx,
+	artifacts []database.ReviewArtifact,
+) (map[string][]models.Review, error) {
+	result := make(map[string][]models.Review, len(artifacts))
+	if len(artifacts) == 0 {
+		return result, nil
+	}
+
+	for _, artifact := range artifacts {
+		if err := db.authz.Check(ctx, auth.PermissionActionRead, auth.Resource{
+			Name: artifact.ArtifactName,
+			Type: auth.PermissionArtifactType(artifact.ArtifactType),
+		}); err != nil {
+			return nil, err
+		}
+		result[database.ReviewArtifactKey(artifact.ArtifactType, artifact.ArtifactName, artifact.ArtifactVersion)] = nil
+	}
+
+	placeholders := make([]string, len(artifacts))
+	args := make([]any, 0, len(artifacts)*3)
+	for i, artifact := range artifacts {
+		offset := i * 3
+		placeholders[i] = fmt.Sprintf("($%d, $%d, $%d)", offset+1, offset+2, offset+3)
+		args = append(args, artifact.ArtifactType, artifact.ArtifactName, artifact.ArtifactVersion)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, artifact_type, artifact_name, artifact_version, review_type,
+			outcome, reviewer_subject, reviewer_auth_method, reviewer_display_name,
+			notes, created_at, overrides_review_id
+		FROM reviews
+		WHERE (artifact_type, artifact_name, artifact_version) IN (%s)
+		ORDER BY created_at DESC, id DESC
+	`, strings.Join(placeholders, ", "))
+
+	rows, err := db.getExecutor(tx).Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list reviews for artifacts: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var review models.Review
+		if err := rows.Scan(
+			&review.ID,
+			&review.ArtifactType,
+			&review.ArtifactName,
+			&review.ArtifactVersion,
+			&review.ReviewType,
+			&review.Outcome,
+			&review.ReviewerSubject,
+			&review.ReviewerAuthMethod,
+			&review.ReviewerDisplayName,
+			&review.Notes,
+			&review.CreatedAt,
+			&review.OverridesReviewID,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan batched review: %w", err)
+		}
+
+		key := database.ReviewArtifactKey(review.ArtifactType, review.ArtifactName, review.ArtifactVersion)
+		result[key] = append(result[key], review)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read batched reviews: %w", err)
+	}
+
+	return result, nil
+}
+
 // GetServerByNameAndVersion retrieves a specific version of a server by server name and version
 func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName string, version string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {

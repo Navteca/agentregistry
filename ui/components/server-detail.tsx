@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/tooltip"
 import { RuntimeArgumentsTable } from "@/components/server-detail/runtime-arguments-table"
 import { EnvironmentVariablesTable } from "@/components/server-detail/environment-variables-table"
+import { ReviewSection } from "@/components/review-section"
 import {
   Package,
   Calendar,
@@ -49,14 +50,16 @@ import {
 interface ServerDetailProps {
   server: ServerResponse & { allVersions?: ServerResponse[] }
   onServerCopied?: () => void
+  onReviewSubmitted?: () => void | Promise<void>
 }
 
-export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
+export function ServerDetail({ server, onServerCopied, onReviewSubmitted }: ServerDetailProps) {
   const [activeTab, setActiveTab] = useState("overview")
-  const [selectedVersion, setSelectedVersion] = useState<ServerResponse>(server)
+  const [selectedVersionNumber, setSelectedVersionNumber] = useState(server.server.version)
   const [jsonCopied, setJsonCopied] = useState(false)
 
   const allVersions = server.allVersions || [server]
+  const selectedVersion = allVersions.find((version) => version.server.version === selectedVersionNumber) || server
 
   const { server: serverData, _meta } = selectedVersion
   const official = _meta?.['io.modelcontextprotocol.registry/official']
@@ -82,7 +85,7 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
 
   const handleVersionChange = (version: string) => {
     const newVersion = allVersions.find(v => v.server.version === version)
-    if (newVersion) setSelectedVersion(newVersion)
+    if (newVersion) setSelectedVersionNumber(newVersion.server.version)
   }
 
   const handleCopyJson = async () => {
@@ -206,6 +209,15 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
             )
           )}
         </div>
+
+        <ReviewSection
+          artifactType="server"
+          artifactName={serverData.name}
+          artifactVersion={serverData.version}
+          reviewSummary={_meta?.['aregistry.ai/review']}
+          capabilities={_meta?.['aregistry.ai/capabilities']}
+          onReviewSubmitted={onReviewSubmitted}
+        />
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

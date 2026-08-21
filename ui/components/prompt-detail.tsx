@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ReviewSection } from "@/components/review-section"
 import {
   Calendar,
   FileText,
@@ -19,21 +20,23 @@ import {
 interface PromptDetailProps {
   prompt: PromptResponse
   allVersions?: PromptResponse[]
+  onReviewSubmitted?: () => void | Promise<void>
 }
 
-export function PromptDetail({ prompt, allVersions: allVersionsProp }: PromptDetailProps) {
+export function PromptDetail({ prompt, allVersions: allVersionsProp, onReviewSubmitted }: PromptDetailProps) {
   const [activeTab, setActiveTab] = useState("overview")
   const [jsonCopied, setJsonCopied] = useState(false)
-  const [selectedVersion, setSelectedVersion] = useState<PromptResponse>(prompt)
+  const [selectedVersionNumber, setSelectedVersionNumber] = useState(prompt.prompt.version)
 
   const allVersions = allVersionsProp || [prompt]
+  const selectedVersion = allVersions.find((version) => version.prompt.version === selectedVersionNumber) || prompt
 
   const { prompt: promptData, _meta } = selectedVersion
   const official = _meta?.['io.modelcontextprotocol.registry/official']
 
   const handleVersionChange = (version: string) => {
     const newVersion = allVersions.find(v => v.prompt.version === version)
-    if (newVersion) setSelectedVersion(newVersion)
+    if (newVersion) setSelectedVersionNumber(newVersion.prompt.version)
   }
 
   const handleCopyJson = async () => {
@@ -117,6 +120,15 @@ export function PromptDetail({ prompt, allVersions: allVersionsProp }: PromptDet
             </span>
           )}
         </div>
+
+        <ReviewSection
+          artifactType="prompt"
+          artifactName={promptData.name}
+          artifactVersion={promptData.version}
+          reviewSummary={_meta?.['aregistry.ai/review']}
+          capabilities={_meta?.['aregistry.ai/capabilities']}
+          onReviewSubmitted={onReviewSubmitted}
+        />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="mb-4">

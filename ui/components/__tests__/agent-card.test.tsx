@@ -2,7 +2,8 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 import { AgentCard } from "../agent-card"
-import type { AgentResponse } from "@/lib/api/types.gen"
+import type { AgentResponse, CapabilitiesMeta, ReviewSummary } from "@/lib/api/types.gen"
+import { capabilityFlags } from "@/lib/capabilities"
 
 const mockAgent: AgentResponse = {
   agent: {
@@ -25,7 +26,76 @@ const mockAgent: AgentResponse = {
   },
 }
 
+function agentWithCapabilities(capabilities?: CapabilitiesMeta): AgentResponse {
+  return {
+    ...mockAgent,
+    _meta: {
+      ...mockAgent._meta,
+      ...(capabilities ? { "aregistry.ai/capabilities": capabilities } : {}),
+    },
+  }
+}
+
+function renderWithCapabilities(agent: AgentResponse) {
+  const { showDeploy } = capabilityFlags(agent._meta["aregistry.ai/capabilities"])
+  return render(
+    <AgentCard
+      agent={agent}
+      showDeploy={showDeploy}
+      onDeploy={vi.fn()}
+    />,
+  )
+}
+
+function agentWithReviewStatus(status: string): AgentResponse {
+  return {
+    ...mockAgent,
+    _meta: {
+      ...mockAgent._meta,
+      "aregistry.ai/review": { status, per_type: [] },
+    },
+  }
+}
+
 describe("AgentCard", () => {
+  it.each([
+    ["certified", "Certified"],
+    ["rejected", "Rejected"],
+    ["pending", "Pending Review"],
+  ])("renders the %s certification status", (status, label) => {
+    render(<AgentCard agent={agentWithReviewStatus(status)} />)
+
+    expect(screen.getByText(label)).toBeInTheDocument()
+  })
+
+  it("renders pending when no review summary is present", () => {
+    render(<AgentCard agent={mockAgent} />)
+
+    expect(screen.getByText("Pending Review")).toBeInTheDocument()
+  })
+
+  it("renders only certification status from the review summary", () => {
+    const summary: ReviewSummary = {
+      status: "certified",
+      per_type: [{
+        review_type: "security",
+        status: "pass",
+        outcome: "pass",
+        reviewer_display_names: ["Bob Curator"],
+      }],
+    }
+    const agent: AgentResponse = {
+      ...mockAgent,
+      _meta: { ...mockAgent._meta, "aregistry.ai/review": summary },
+    }
+    render(<AgentCard agent={agent} />)
+
+    expect(screen.getByText("Certified")).toBeInTheDocument()
+    expect(screen.queryByText("Findings")).not.toBeInTheDocument()
+    expect(screen.queryByText("Bob Curator")).not.toBeInTheDocument()
+    expect(screen.queryByText("security")).not.toBeInTheDocument()
+  })
+
   it("renders agent name and description", () => {
     render(<AgentCard agent={mockAgent} />)
     expect(screen.getByText("test-agent")).toBeInTheDocument()
@@ -47,6 +117,18 @@ describe("AgentCard", () => {
     render(<AgentCard agent={mockAgent} />)
     expect(screen.getByText("openai")).toBeInTheDocument()
     expect(screen.getByText("gpt-4")).toBeInTheDocument()
+  })
+
+  it("renders deploy when deployment is allowed", () => {
+    renderWithCapabilities(agentWithCapabilities({ can_update: false, can_delete: false, can_deploy: true }))
+
+    expect(screen.getByRole("button", { name: /Deploy/i })).toBeInTheDocument()
+  })
+
+  it("hides deploy when deployment is not allowed", () => {
+    renderWithCapabilities(agentWithCapabilities({ can_update: false, can_delete: false, can_deploy: false }))
+
+    expect(screen.queryByRole("button", { name: /Deploy/i })).not.toBeInTheDocument()
   })
 
   it("renders the ownership display name instead of the subject", () => {

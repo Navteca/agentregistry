@@ -2,6 +2,7 @@
 
 import { AgentResponse } from "@/lib/admin-api"
 import { getSafeHttpUrl } from "@/lib/safe-url"
+import { overallStatusPresentation } from "@/lib/review-status"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -31,6 +32,7 @@ export function AgentCard({ agent, onDeploy, showDeploy = false, onClick, versio
   const hasImage = !!agentData.image
   const repositoryUrl = agentData.repository?.url
   const safeRepositoryUrl = getSafeHttpUrl(repositoryUrl)
+  const reviewStatus = overallStatusPresentation(_meta?.['aregistry.ai/review']?.status, "card")
 
   const formatDate = (dateString: string) => {
     try {
@@ -57,6 +59,12 @@ export function AgentCard({ agent, onDeploy, showDeploy = false, onClick, versio
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
             <h3 className="text-lg font-semibold truncate">{agentData.name}</h3>
+            <span
+              aria-label={`Certification status: ${reviewStatus.label}`}
+              className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${reviewStatus.className}`}
+            >
+              {reviewStatus.label}
+            </span>
             {agentData.framework && (
               <Badge variant="outline" className="text-[13px] px-2 py-0.5 font-normal">
                 {agentData.framework}

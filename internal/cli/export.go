@@ -51,7 +51,7 @@ var ExportCmd = &cobra.Command{
 			}
 		}()
 
-		registryService := service.NewRegistryService(db, cfg, nil)
+		registryService := service.NewRegistryService(db, cfg, nil, authz)
 		exporterService := exporter.NewService(registryService)
 
 		exportCtx := cmd.Context()

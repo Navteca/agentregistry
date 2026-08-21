@@ -7,6 +7,9 @@ import (
 
 // RegisterAuthEndpoints registers all authentication endpoints with a custom path prefix
 func RegisterAuthEndpoints(api huma.API, pathPrefix string, cfg *config.Config) {
+	// Register the current-principal endpoint
+	RegisterCurrentPrincipalEndpoint(api, pathPrefix)
+
 	// Register GitHub access token authentication endpoint
 	RegisterGitHubATEndpoint(api, pathPrefix, cfg)
 

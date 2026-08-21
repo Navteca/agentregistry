@@ -63,8 +63,10 @@ export type AgentResponse = {
 };
 
 export type AgentResponseMeta = {
+    'aregistry.ai/capabilities'?: CapabilitiesMeta;
     'aregistry.ai/deployments'?: ResourceDeploymentsMeta;
     'aregistry.ai/ownership'?: OwnershipMeta;
+    'aregistry.ai/review'?: ReviewSummary;
     'aregistry.ai/semantic'?: AgentSemanticMeta;
     'io.modelcontextprotocol.registry/official'?: AgentRegistryExtensions;
 };
@@ -140,6 +142,14 @@ export type Argument = {
     };
 };
 
+export type CapabilitiesMeta = {
+    can_delete: boolean;
+    can_deploy: boolean;
+    can_override: boolean;
+    can_review: boolean;
+    can_update: boolean;
+};
+
 export type CategoryDetail = {
     issues: Array<Issue>;
     rules_met: number;
@@ -156,6 +166,26 @@ export type CreateProviderInput = {
     id?: string;
     name: string;
     platform: string;
+};
+
+export type CreateReviewBody = {
+    notes: string;
+    outcome: string;
+    review_type: string;
+    reviewer_auth_method?: string;
+    reviewer_display_name?: string;
+    reviewer_subject?: string;
+};
+
+export type CreateReviewOverrideBody = {
+    reason: string;
+    review_id: number;
+};
+
+export type CurrentPrincipalResponse = {
+    auth_method: string;
+    display_name: string;
+    subject: string;
 };
 
 export type Deployment = {
@@ -289,6 +319,12 @@ export type FrontendConfigBody = {
     keycloak_client_id: string;
     keycloak_realm: string;
     keycloak_url: string;
+    review_failure_outcome: string;
+    review_outcomes: Array<string>;
+    review_override_outcome: string;
+    review_types: Array<string>;
+    show_discord_link: boolean;
+    show_github_link: boolean;
 };
 
 export type GitHubOidcTokenExchangeInputBody = {
@@ -546,7 +582,9 @@ export type PromptResponse = {
 };
 
 export type PromptResponseMeta = {
+    'aregistry.ai/capabilities'?: CapabilitiesMeta;
     'aregistry.ai/ownership'?: OwnershipMeta;
+    'aregistry.ai/review'?: ReviewSummary;
     'io.modelcontextprotocol.registry/official'?: PromptRegistryExtensions;
 };
 
@@ -607,6 +645,36 @@ export type Repository = {
 export type ResourceDeploymentsMeta = {
     count: number;
     deployments: Array<DeploymentSummary>;
+};
+
+export type Review = {
+    artifact_name: string;
+    artifact_type: string;
+    artifact_version: string;
+    created_at: string;
+    id: number;
+    is_current?: boolean;
+    is_stale?: boolean;
+    is_superseded?: boolean;
+    notes: string;
+    outcome: string;
+    overrides_review_id?: number;
+    review_type: string;
+    reviewer_auth_method: string;
+    reviewer_display_name: string;
+    reviewer_subject: string;
+};
+
+export type ReviewSummary = {
+    per_type: Array<ReviewTypeSummary>;
+    status: string;
+};
+
+export type ReviewTypeSummary = {
+    outcome?: string;
+    review_type: string;
+    reviewer_display_names?: Array<string>;
+    status: string;
 };
 
 export type Rule = {
@@ -714,8 +782,10 @@ export type ServerResponse = {
 };
 
 export type ServerResponseMeta = {
+    'aregistry.ai/capabilities'?: CapabilitiesMeta;
     'aregistry.ai/deployments'?: ResourceDeploymentsMeta;
     'aregistry.ai/ownership'?: OwnershipMeta;
+    'aregistry.ai/review'?: ReviewSummary;
     'aregistry.ai/semantic'?: ServerSemanticMeta;
     'io.modelcontextprotocol.registry/official'?: RegistryExtensions;
 };
@@ -803,7 +873,9 @@ export type SkillResponse = {
 };
 
 export type SkillResponseMeta = {
+    'aregistry.ai/capabilities'?: CapabilitiesMeta;
     'aregistry.ai/ownership'?: OwnershipMeta;
+    'aregistry.ai/review'?: ReviewSummary;
     'io.modelcontextprotocol.registry/official'?: SkillRegistryExtensions;
 };
 
@@ -1125,6 +1197,31 @@ export type ExchangeHttpTokenV0Responses = {
 };
 
 export type ExchangeHttpTokenV0Response = ExchangeHttpTokenV0Responses[keyof ExchangeHttpTokenV0Responses];
+
+export type GetCurrentPrincipalV0Data = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v0/auth/me';
+};
+
+export type GetCurrentPrincipalV0Errors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetCurrentPrincipalV0Error = GetCurrentPrincipalV0Errors[keyof GetCurrentPrincipalV0Errors];
+
+export type GetCurrentPrincipalV0Responses = {
+    /**
+     * OK
+     */
+    200: CurrentPrincipalResponse;
+};
+
+export type GetCurrentPrincipalV0Response = GetCurrentPrincipalV0Responses[keyof GetCurrentPrincipalV0Responses];
 
 export type GetFrontendConfigData = {
     body?: never;
@@ -1724,6 +1821,93 @@ export type UpdateProviderResponses = {
 };
 
 export type UpdateProviderResponse = UpdateProviderResponses[keyof UpdateProviderResponses];
+
+export type ListReviewsV0Data = {
+    body?: never;
+    path: {
+        artifactType: string;
+        artifactName: string;
+        version: string;
+    };
+    query?: never;
+    url: '/v0/reviews/{artifactType}/{artifactName}/versions/{version}';
+};
+
+export type ListReviewsV0Errors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListReviewsV0Error = ListReviewsV0Errors[keyof ListReviewsV0Errors];
+
+export type ListReviewsV0Responses = {
+    /**
+     * OK
+     */
+    200: Array<Review>;
+};
+
+export type ListReviewsV0Response = ListReviewsV0Responses[keyof ListReviewsV0Responses];
+
+export type CreateReviewV0Data = {
+    body: CreateReviewBody;
+    path: {
+        artifactType: string;
+        artifactName: string;
+        version: string;
+    };
+    query?: never;
+    url: '/v0/reviews/{artifactType}/{artifactName}/versions/{version}';
+};
+
+export type CreateReviewV0Errors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateReviewV0Error = CreateReviewV0Errors[keyof CreateReviewV0Errors];
+
+export type CreateReviewV0Responses = {
+    /**
+     * OK
+     */
+    200: Review;
+};
+
+export type CreateReviewV0Response = CreateReviewV0Responses[keyof CreateReviewV0Responses];
+
+export type CreateReviewOverrideV0Data = {
+    body: CreateReviewOverrideBody;
+    path: {
+        artifactType: string;
+        artifactName: string;
+        version: string;
+    };
+    query?: never;
+    url: '/v0/reviews/{artifactType}/{artifactName}/versions/{version}/overrides';
+};
+
+export type CreateReviewOverrideV0Errors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateReviewOverrideV0Error = CreateReviewOverrideV0Errors[keyof CreateReviewOverrideV0Errors];
+
+export type CreateReviewOverrideV0Responses = {
+    /**
+     * OK
+     */
+    200: Review;
+};
+
+export type CreateReviewOverrideV0Response = CreateReviewOverrideV0Responses[keyof CreateReviewOverrideV0Responses];
 
 export type ListServersV0Data = {
     body?: never;

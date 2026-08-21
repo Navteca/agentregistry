@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 import { SkillCard } from "../skill-card"
-import type { SkillResponse } from "@/lib/api/types.gen"
+import type { ReviewSummary, SkillResponse } from "@/lib/api/types.gen"
 
 const mockSkill: SkillResponse = {
   skill: {
@@ -31,7 +31,55 @@ const mockSkill: SkillResponse = {
   },
 }
 
+function skillWithReviewStatus(status: string): SkillResponse {
+  return {
+    ...mockSkill,
+    _meta: {
+      ...mockSkill._meta,
+      "aregistry.ai/review": { status, per_type: [] },
+    },
+  }
+}
+
 describe("SkillCard", () => {
+  it.each([
+    ["certified", "Certified"],
+    ["rejected", "Rejected"],
+    ["pending", "Pending Review"],
+  ])("renders the %s certification status", (status, label) => {
+    render(<SkillCard skill={skillWithReviewStatus(status)} />)
+
+    expect(screen.getByText(label)).toBeInTheDocument()
+  })
+
+  it("renders pending when no review summary is present", () => {
+    render(<SkillCard skill={mockSkill} />)
+
+    expect(screen.getByText("Pending Review")).toBeInTheDocument()
+  })
+
+  it("renders only certification status from the review summary", () => {
+    const summary: ReviewSummary = {
+      status: "certified",
+      per_type: [{
+        review_type: "security",
+        status: "pass",
+        outcome: "pass",
+        reviewer_display_names: ["Bob Curator"],
+      }],
+    }
+    const skill: SkillResponse = {
+      ...mockSkill,
+      _meta: { ...mockSkill._meta, "aregistry.ai/review": summary },
+    }
+    render(<SkillCard skill={skill} />)
+
+    expect(screen.getByText("Certified")).toBeInTheDocument()
+    expect(screen.queryByText("Findings")).not.toBeInTheDocument()
+    expect(screen.queryByText("Bob Curator")).not.toBeInTheDocument()
+    expect(screen.queryByText("security")).not.toBeInTheDocument()
+  })
+
   it("renders title as heading", () => {
     render(<SkillCard skill={mockSkill} />)
     expect(screen.getByText("Code Review")).toBeInTheDocument()

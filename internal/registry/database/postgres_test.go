@@ -8,6 +8,7 @@ import (
 
 	internaldb "github.com/agentregistry-dev/agentregistry/internal/registry/database"
 	"github.com/agentregistry-dev/agentregistry/pkg/models"
+	"github.com/agentregistry-dev/agentregistry/pkg/registry/auth"
 	"github.com/agentregistry-dev/agentregistry/pkg/registry/database"
 	"github.com/jackc/pgx/v5"
 	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
@@ -19,6 +20,7 @@ import (
 func TestPostgreSQL_CreateServer(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	ctx := context.Background()
+	ctxWithAuth := internaldb.WithTestSession(ctx)
 
 	tests := []struct {
 		name         string
@@ -67,11 +69,11 @@ func TestPostgreSQL_CreateServer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create the first server to test duplicates
 			if tt.name == "duplicate server version should fail" {
-				_, err := db.CreateServer(ctx, nil, tt.serverJSON, tt.officialMeta, models.OwnershipInput{})
+				_, err := db.CreateServer(ctxWithAuth, nil, tt.serverJSON, tt.officialMeta, models.OwnershipInput{})
 				require.NoError(t, err, "First creation should succeed")
 			}
 
-			result, err := db.CreateServer(ctx, nil, tt.serverJSON, tt.officialMeta, models.OwnershipInput{})
+			result, err := db.CreateServer(ctxWithAuth, nil, tt.serverJSON, tt.officialMeta, models.OwnershipInput{})
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -96,6 +98,7 @@ func TestPostgreSQL_CreateServer(t *testing.T) {
 func TestPostgreSQL_GetServerByName(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	ctx := context.Background()
+	ctxWithAuth := internaldb.WithTestSession(ctx)
 
 	// Setup test data
 	serverJSON := &apiv0.ServerJSON{
@@ -111,7 +114,7 @@ func TestPostgreSQL_GetServerByName(t *testing.T) {
 	}
 
 	// Create the server
-	_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta, models.OwnershipInput{})
+	_, err := db.CreateServer(ctxWithAuth, nil, serverJSON, officialMeta, models.OwnershipInput{})
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -134,7 +137,7 @@ func TestPostgreSQL_GetServerByName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := db.GetServerByName(ctx, nil, tt.serverName)
+			result, err := db.GetServerByName(ctxWithAuth, nil, tt.serverName)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -155,6 +158,7 @@ func TestPostgreSQL_GetServerByName(t *testing.T) {
 func TestPostgreSQL_GetServerByNameAndVersion(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	ctx := context.Background()
+	ctxWithAuth := internaldb.WithTestSession(ctx)
 
 	// Setup test data with multiple versions
 	serverName := "com.example/version-test-server"
@@ -173,7 +177,7 @@ func TestPostgreSQL_GetServerByNameAndVersion(t *testing.T) {
 			IsLatest:    i == len(versions)-1, // Only last version is latest
 		}
 
-		_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta, models.OwnershipInput{})
+		_, err := db.CreateServer(ctxWithAuth, nil, serverJSON, officialMeta, models.OwnershipInput{})
 		require.NoError(t, err)
 	}
 
@@ -207,7 +211,7 @@ func TestPostgreSQL_GetServerByNameAndVersion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := db.GetServerByNameAndVersion(ctx, nil, tt.serverName, tt.version)
+			result, err := db.GetServerByNameAndVersion(ctxWithAuth, nil, tt.serverName, tt.version)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -229,6 +233,7 @@ func TestPostgreSQL_GetServerByNameAndVersion(t *testing.T) {
 func TestPostgreSQL_ListServers(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	ctx := context.Background()
+	ctxWithAuth := internaldb.WithTestSession(ctx)
 
 	// Setup test data
 	testServers := []struct {
@@ -282,7 +287,7 @@ func TestPostgreSQL_ListServers(t *testing.T) {
 			IsLatest:    server.isLatest,
 		}
 
-		_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta, models.OwnershipInput{})
+		_, err := db.CreateServer(ctxWithAuth, nil, serverJSON, officialMeta, models.OwnershipInput{})
 		require.NoError(t, err)
 	}
 
@@ -400,7 +405,7 @@ func TestPostgreSQL_ListServers(t *testing.T) {
 func TestPostgreSQL_UpdateServer(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	ctx := context.Background()
-	setupCtx := internaldb.WithTestSession(ctx)
+	ctxWithAuth := internaldb.WithTestSession(ctx)
 
 	// Setup test data
 	serverName := "com.example/update-test-server"
@@ -417,7 +422,7 @@ func TestPostgreSQL_UpdateServer(t *testing.T) {
 		IsLatest:    true,
 	}
 
-	_, err := db.CreateServer(setupCtx, nil, serverJSON, officialMeta, models.OwnershipInput{})
+	_, err := db.CreateServer(ctxWithAuth, nil, serverJSON, officialMeta, models.OwnershipInput{})
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -480,6 +485,7 @@ func TestPostgreSQL_UpdateServer(t *testing.T) {
 func TestPostgreSQL_SetServerStatus(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	ctx := context.Background()
+	ctxWithAuth := internaldb.WithTestSession(ctx)
 
 	// Setup test data
 	serverName := "com.example/status-test-server"
@@ -496,7 +502,7 @@ func TestPostgreSQL_SetServerStatus(t *testing.T) {
 		IsLatest:    true,
 	}
 
-	_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta, models.OwnershipInput{})
+	_, err := db.CreateServer(ctxWithAuth, nil, serverJSON, officialMeta, models.OwnershipInput{})
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -554,9 +560,10 @@ func TestPostgreSQL_SetServerStatus(t *testing.T) {
 func TestPostgreSQL_TransactionHandling(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	ctx := context.Background()
+	ctxWithAuth := internaldb.WithTestSession(ctx)
 
 	t.Run("successful transaction", func(t *testing.T) {
-		err := db.InTransaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		err := db.InTransaction(ctxWithAuth, func(ctx context.Context, tx pgx.Tx) error {
 			serverJSON := &apiv0.ServerJSON{
 				Name:        "com.example/transaction-success",
 				Description: "Transaction test server",
@@ -576,13 +583,13 @@ func TestPostgreSQL_TransactionHandling(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify server was created
-		result, err := db.GetServerByName(ctx, nil, "com.example/transaction-success")
+		result, err := db.GetServerByName(ctxWithAuth, nil, "com.example/transaction-success")
 		require.NoError(t, err)
 		assert.NotNil(t, result)
 	})
 
 	t.Run("failed transaction rollback", func(t *testing.T) {
-		err := db.InTransaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		err := db.InTransaction(ctxWithAuth, func(ctx context.Context, tx pgx.Tx) error {
 			serverJSON := &apiv0.ServerJSON{
 				Name:        "com.example/transaction-rollback",
 				Description: "Transaction rollback test server",
@@ -608,7 +615,7 @@ func TestPostgreSQL_TransactionHandling(t *testing.T) {
 		assert.Equal(t, assert.AnError, err)
 
 		// Verify server was NOT created due to rollback
-		result, err := db.GetServerByName(ctx, nil, "com.example/transaction-rollback")
+		result, err := db.GetServerByName(ctxWithAuth, nil, "com.example/transaction-rollback")
 		require.Error(t, err)
 		require.ErrorIs(t, err, database.ErrNotFound)
 		assert.Nil(t, result)
@@ -618,6 +625,7 @@ func TestPostgreSQL_TransactionHandling(t *testing.T) {
 func TestPostgreSQL_HelperMethods(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	ctx := context.Background()
+	ctxWithAuth := internaldb.WithTestSession(ctx)
 
 	serverName := "com.example/helper-test-server"
 
@@ -636,33 +644,33 @@ func TestPostgreSQL_HelperMethods(t *testing.T) {
 			IsLatest:    version == "2.0.0",
 		}
 
-		_, err := db.CreateServer(ctx, nil, serverJSON, officialMeta, models.OwnershipInput{})
+		_, err := db.CreateServer(ctxWithAuth, nil, serverJSON, officialMeta, models.OwnershipInput{})
 		require.NoError(t, err)
 	}
 
 	t.Run("CountServerVersions", func(t *testing.T) {
-		count, err := db.CountServerVersions(ctx, nil, serverName)
+		count, err := db.CountServerVersions(ctxWithAuth, nil, serverName)
 		require.NoError(t, err)
 		assert.Equal(t, 3, count)
 
 		// Test non-existent server
-		count, err = db.CountServerVersions(ctx, nil, "com.example/non-existent")
+		count, err = db.CountServerVersions(ctxWithAuth, nil, "com.example/non-existent")
 		require.NoError(t, err)
 		assert.Equal(t, 0, count)
 	})
 
 	t.Run("CheckVersionExists", func(t *testing.T) {
-		exists, err := db.CheckVersionExists(ctx, nil, serverName, "1.1.0")
+		exists, err := db.CheckVersionExists(ctxWithAuth, nil, serverName, "1.1.0")
 		require.NoError(t, err)
 		assert.True(t, exists)
 
-		exists, err = db.CheckVersionExists(ctx, nil, serverName, "3.0.0")
+		exists, err = db.CheckVersionExists(ctxWithAuth, nil, serverName, "3.0.0")
 		require.NoError(t, err)
 		assert.False(t, exists)
 	})
 
 	t.Run("GetCurrentLatestVersion", func(t *testing.T) {
-		latest, err := db.GetCurrentLatestVersion(ctx, nil, serverName)
+		latest, err := db.GetCurrentLatestVersion(ctxWithAuth, nil, serverName)
 		require.NoError(t, err)
 		assert.NotNil(t, latest)
 		assert.Equal(t, "2.0.0", latest.Server.Version)
@@ -670,7 +678,7 @@ func TestPostgreSQL_HelperMethods(t *testing.T) {
 	})
 
 	t.Run("GetAllVersionsByServerName", func(t *testing.T) {
-		allVersions, err := db.GetAllVersionsByServerName(ctx, nil, serverName)
+		allVersions, err := db.GetAllVersionsByServerName(ctxWithAuth, nil, serverName)
 		require.NoError(t, err)
 		assert.Len(t, allVersions, 3)
 
@@ -685,11 +693,11 @@ func TestPostgreSQL_HelperMethods(t *testing.T) {
 	})
 
 	t.Run("UnmarkAsLatest", func(t *testing.T) {
-		err := db.UnmarkAsLatest(ctx, nil, serverName)
+		err := db.UnmarkAsLatest(ctxWithAuth, nil, serverName)
 		require.NoError(t, err)
 
 		// Verify no version is marked as latest
-		latest, err := db.GetCurrentLatestVersion(ctx, nil, serverName)
+		latest, err := db.GetCurrentLatestVersion(ctxWithAuth, nil, serverName)
 		require.Error(t, err)
 		require.ErrorIs(t, err, database.ErrNotFound)
 		assert.Nil(t, latest)
@@ -699,6 +707,7 @@ func TestPostgreSQL_HelperMethods(t *testing.T) {
 func TestPostgreSQL_EdgeCases(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	ctx := context.Background()
+	ctxWithAuth := internaldb.WithTestSession(ctx)
 
 	t.Run("input validation", func(t *testing.T) {
 		// Test nil inputs
@@ -710,6 +719,17 @@ func TestPostgreSQL_EdgeCases(t *testing.T) {
 		_, err = db.CreateServer(ctx, nil, &apiv0.ServerJSON{}, &apiv0.RegistryExtensions{}, models.OwnershipInput{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "server name and version are required")
+	})
+
+	t.Run("unauthenticated create is rejected", func(t *testing.T) {
+		_, err := db.CreateServer(ctx, nil, &apiv0.ServerJSON{
+			Name:    "com.example/unauthenticated-server",
+			Version: "1.0.0",
+		}, &apiv0.RegistryExtensions{
+			Status:   model.StatusActive,
+			IsLatest: true,
+		}, models.OwnershipInput{})
+		require.ErrorIs(t, err, auth.ErrUnauthenticated)
 	})
 
 	t.Run("database constraints", func(t *testing.T) {
@@ -726,7 +746,7 @@ func TestPostgreSQL_EdgeCases(t *testing.T) {
 			IsLatest:    true,
 		}
 
-		_, err := db.CreateServer(ctx, nil, invalidServer, officialMeta, models.OwnershipInput{})
+		_, err := db.CreateServer(ctxWithAuth, nil, invalidServer, officialMeta, models.OwnershipInput{})
 		require.Error(t, err, "Should fail due to server name format constraint")
 	})
 
@@ -750,7 +770,7 @@ func TestPostgreSQL_EdgeCases(t *testing.T) {
 		serverName := "com.example/complex-filter-server"
 		testTime := time.Now().Add(-1 * time.Hour)
 
-		_, err := db.CreateServer(ctx, nil, &apiv0.ServerJSON{
+		_, err := db.CreateServer(ctxWithAuth, nil, &apiv0.ServerJSON{
 			Name:        serverName,
 			Description: "Complex filter test server",
 			Version:     "1.0.0",
@@ -784,7 +804,7 @@ func TestPostgreSQL_EdgeCases(t *testing.T) {
 		version := "1.0.2"
 
 		// Create server
-		_, err := db.CreateServer(ctx, nil, &apiv0.ServerJSON{
+		_, err := db.CreateServer(ctxWithAuth, nil, &apiv0.ServerJSON{
 			Name:        serverName,
 			Description: "Status transition test",
 			Version:     version,
@@ -815,6 +835,7 @@ func TestPostgreSQL_EdgeCases(t *testing.T) {
 func TestPostgreSQL_PerformanceScenarios(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	ctx := context.Background()
+	ctxWithAuth := internaldb.WithTestSession(ctx)
 
 	t.Run("many versions management", func(t *testing.T) {
 		serverName := "com.example/many-versions-server"
@@ -822,7 +843,7 @@ func TestPostgreSQL_PerformanceScenarios(t *testing.T) {
 		// Create many versions (but stay under the limit)
 		versionCount := 50
 		for i := range versionCount {
-			_, err := db.CreateServer(ctx, nil, &apiv0.ServerJSON{
+			_, err := db.CreateServer(ctxWithAuth, nil, &apiv0.ServerJSON{
 				Name:        serverName,
 				Description: fmt.Sprintf("Version %d", i),
 				Version:     fmt.Sprintf("1.0.%d", i),
@@ -836,12 +857,12 @@ func TestPostgreSQL_PerformanceScenarios(t *testing.T) {
 		}
 
 		// Test counting versions
-		count, err := db.CountServerVersions(ctx, nil, serverName)
+		count, err := db.CountServerVersions(ctxWithAuth, nil, serverName)
 		require.NoError(t, err)
 		assert.Equal(t, versionCount, count)
 
 		// Test getting all versions
-		allVersions, err := db.GetAllVersionsByServerName(ctx, nil, serverName)
+		allVersions, err := db.GetAllVersionsByServerName(ctxWithAuth, nil, serverName)
 		require.NoError(t, err)
 		assert.Len(t, allVersions, versionCount)
 
@@ -859,7 +880,7 @@ func TestPostgreSQL_PerformanceScenarios(t *testing.T) {
 		// Create multiple servers for pagination testing
 		serverCount := 25
 		for i := range serverCount {
-			_, err := db.CreateServer(ctx, nil, &apiv0.ServerJSON{
+			_, err := db.CreateServer(ctxWithAuth, nil, &apiv0.ServerJSON{
 				Name:        fmt.Sprintf("com.example/pagination-server-%02d", i),
 				Description: "Pagination test server",
 				Version:     "1.0.0",
@@ -896,6 +917,7 @@ func TestPostgreSQL_PerformanceScenarios(t *testing.T) {
 func TestPostgreSQL_CreateDeployment_AllowsDuplicateArtifactIdentity(t *testing.T) {
 	db := internaldb.NewTestDB(t)
 	ctx := context.Background()
+	ctxWithAuth := internaldb.WithTestSession(ctx)
 
 	first := &models.Deployment{
 		ServerName:   "com.example/multi-weather",
@@ -918,8 +940,8 @@ func TestPostgreSQL_CreateDeployment_AllowsDuplicateArtifactIdentity(t *testing.
 		Origin:       "managed",
 	}
 
-	require.NoError(t, db.CreateDeployment(ctx, nil, first))
-	require.NoError(t, db.CreateDeployment(ctx, nil, second))
+	require.NoError(t, db.CreateDeployment(ctxWithAuth, nil, first))
+	require.NoError(t, db.CreateDeployment(ctxWithAuth, nil, second))
 	require.NotEmpty(t, first.ID)
 	require.NotEmpty(t, second.ID)
 	require.NotEqual(t, first.ID, second.ID)

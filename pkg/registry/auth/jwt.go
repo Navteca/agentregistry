@@ -28,12 +28,14 @@ const (
 type PermissionAction string
 
 const (
-	PermissionActionRead    PermissionAction = "read"
-	PermissionActionPublish PermissionAction = "publish"
-	PermissionActionEdit    PermissionAction = "edit"
-	PermissionActionEditOwn PermissionAction = "edit_own"
-	PermissionActionDelete  PermissionAction = "delete"
-	PermissionActionDeploy  PermissionAction = "deploy"
+	PermissionActionRead     PermissionAction = "read"
+	PermissionActionPublish  PermissionAction = "publish"
+	PermissionActionEdit     PermissionAction = "edit"
+	PermissionActionEditOwn  PermissionAction = "edit_own"
+	PermissionActionDelete   PermissionAction = "delete"
+	PermissionActionDeploy   PermissionAction = "deploy"
+	PermissionActionReview   PermissionAction = "review"
+	PermissionActionOverride PermissionAction = "override"
 
 	// PermissionActionAdmin is a sentinel action that, only when paired with
 	// ResourcePattern "*", grants an unbounded registry-admin bypass (see

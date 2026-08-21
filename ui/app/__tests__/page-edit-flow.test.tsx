@@ -5,12 +5,27 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import AdminPage from "../page"
 import type { ServerResponse } from "@/lib/admin-api"
 import { listServersV0, listSkillsV0, listAgentsV0, listPromptsV0, deleteServerVersionV0 } from "@/lib/admin-api"
+import { capabilityFlags } from "@/lib/capabilities"
 
 vi.mock("@/components/server-card", () => ({
-  ServerCard: ({ server, onEdit }: { server: ServerResponse; onEdit?: (server: ServerResponse) => void }) => (
+  ServerCard: ({
+    server,
+    onEdit,
+    showEdit,
+    showDelete,
+    showDeploy,
+  }: {
+    server: ServerResponse
+    onEdit?: (server: ServerResponse) => void
+    showEdit?: boolean
+    showDelete?: boolean
+    showDeploy?: boolean
+  }) => (
     <div>
       <div>{server.server.name}</div>
-      <button onClick={() => onEdit?.(server)}>Edit server {server.server.name}</button>
+      {showEdit && <button onClick={() => onEdit?.(server)}>Edit server {server.server.name}</button>}
+      {showDelete && <button>Remove server {server.server.name}</button>}
+      {showDeploy && <button>Deploy server {server.server.name}</button>}
     </div>
   ),
 }))
@@ -76,7 +91,13 @@ const mockServer: ServerResponse = {
     description: "hello server",
     version: "0.1.8",
   },
-  _meta: {},
+  _meta: {
+    "aregistry.ai/capabilities": {
+      can_update: true,
+      can_delete: false,
+      can_deploy: false,
+    },
+  },
 }
 
 describe("AdminPage edit server flow", () => {
@@ -112,5 +133,60 @@ describe("AdminPage edit server flow", () => {
       expect(screen.queryByText("Editing io.navteca/hello-mcp")).not.toBeInTheDocument()
       expect(listServersV0).toHaveBeenCalledTimes(2)
     })
+  })
+
+  it("passes all server capability flags to the card controls", async () => {
+    const serverWithCapabilities: ServerResponse = {
+      ...mockServer,
+      _meta: {
+        "aregistry.ai/capabilities": {
+          can_update: true,
+          can_delete: true,
+          can_deploy: true,
+        },
+      },
+    }
+    vi.mocked(listServersV0).mockResolvedValue({
+      data: { servers: [serverWithCapabilities], metadata: { count: 1, nextCursor: undefined } },
+    } as never)
+
+    render(<AdminPage />)
+
+    await screen.findByText("io.navteca/hello-mcp")
+    const flags = capabilityFlags(serverWithCapabilities._meta["aregistry.ai/capabilities"])
+    expect(screen.queryByRole("button", { name: "Edit server io.navteca/hello-mcp" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Remove server io.navteca/hello-mcp" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Deploy server io.navteca/hello-mcp" })).toBeInTheDocument()
+    expect(flags).toEqual({ showEdit: true, showDelete: true, showDeploy: true, showReview: false, showOverride: false })
+  })
+
+  it("hides all server controls when capabilities are absent", async () => {
+    vi.mocked(listServersV0).mockResolvedValue({
+      data: { servers: [{ ...mockServer, _meta: {} }], metadata: { count: 1, nextCursor: undefined } },
+    } as never)
+
+    render(<AdminPage />)
+
+    await screen.findByText("io.navteca/hello-mcp")
+    expect(screen.queryByRole("button", { name: /Edit server/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Remove server/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Deploy server/ })).not.toBeInTheDocument()
+  })
+
+  it("shows the static Models placeholder without fetching model data", async () => {
+    const user = userEvent.setup()
+    render(<AdminPage />)
+
+    await screen.findByText("io.navteca/hello-mcp")
+    await user.click(screen.getByRole("button", { name: "Models" }))
+
+    expect(screen.getByText("Model support is under development")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Models" })).toBeInTheDocument()
+    await user.type(screen.getByPlaceholderText("Search models..."), "forecast")
+    expect(screen.getByText("Model support is under development")).toBeInTheDocument()
+    expect(listServersV0).toHaveBeenCalledTimes(1)
+    expect(listSkillsV0).toHaveBeenCalledTimes(1)
+    expect(listAgentsV0).toHaveBeenCalledTimes(1)
+    expect(listPromptsV0).toHaveBeenCalledTimes(1)
   })
 })

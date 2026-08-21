@@ -335,12 +335,32 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/ErrorModel'
+    /v0/auth/me:
+        get:
+            tags:
+                - auth
+            summary: Get the current principal
+            description: Returns the authenticated caller's subject, display name, and authentication method.
+            operationId: get-current-principal-v0
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CurrentPrincipalResponse'
+                default:
+                    description: Error
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorModel'
     /v0/config/frontend:
         get:
             tags:
                 - auth
-            summary: Frontend OIDC configuration
-            description: Returns the Keycloak URL, realm, and client ID required by the browser to initialise OIDC authentication. This endpoint is intentionally unauthenticated.
+            summary: Frontend OIDC and review configuration
+            description: Returns deployment-wide configuration required by the browser to initialise OIDC authentication and render review controls. This endpoint is intentionally unauthenticated; it contains no identity-dependent data.
             operationId: get-frontend-config
             responses:
                 "200":
@@ -981,6 +1001,127 @@ paths:
             responses:
                 "204":
                     description: No Content
+                default:
+                    description: Error
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorModel'
+    /v0/reviews/{artifactType}/{artifactName}/versions/{version}:
+        get:
+            tags:
+                - reviews
+            summary: List artifact reviews
+            description: List all reviews for a specific artifact version, including current and stale markers.
+            operationId: list-reviews-v0
+            parameters:
+                - name: artifactType
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: artifactName
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: version
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/Review'
+                default:
+                    description: Error
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorModel'
+        post:
+            tags:
+                - reviews
+            summary: Create an artifact review
+            description: Record an append-only review for a specific artifact version.
+            operationId: create-review-v0
+            parameters:
+                - name: artifactType
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: artifactName
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: version
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateReviewBody'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Review'
+                default:
+                    description: Error
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorModel'
+    /v0/reviews/{artifactType}/{artifactName}/versions/{version}/overrides:
+        post:
+            tags:
+                - reviews
+            summary: Override a failed artifact review
+            description: Record an administrative override for a failed review.
+            operationId: create-review-override-v0
+            parameters:
+                - name: artifactType
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: artifactName
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: version
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateReviewOverrideBody'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Review'
                 default:
                     description: Error
                     content:
@@ -1794,10 +1935,14 @@ components:
             type: object
             additionalProperties: false
             properties:
+                aregistry.ai/capabilities:
+                    $ref: '#/components/schemas/CapabilitiesMeta'
                 aregistry.ai/deployments:
                     $ref: '#/components/schemas/ResourceDeploymentsMeta'
                 aregistry.ai/ownership:
                     $ref: '#/components/schemas/OwnershipMeta'
+                aregistry.ai/review:
+                    $ref: '#/components/schemas/ReviewSummary'
                 aregistry.ai/semantic:
                     $ref: '#/components/schemas/AgentSemanticMeta'
                 io.modelcontextprotocol.registry/official:
@@ -1903,6 +2048,26 @@ components:
                         $ref: '#/components/schemas/Input'
             required:
                 - type
+        CapabilitiesMeta:
+            type: object
+            additionalProperties: false
+            properties:
+                can_delete:
+                    type: boolean
+                can_deploy:
+                    type: boolean
+                can_override:
+                    type: boolean
+                can_review:
+                    type: boolean
+                can_update:
+                    type: boolean
+            required:
+                - can_update
+                - can_delete
+                - can_deploy
+                - can_review
+                - can_override
         CategoryDetail:
             type: object
             additionalProperties: false
@@ -1950,6 +2115,52 @@ components:
             required:
                 - name
                 - platform
+        CreateReviewBody:
+            type: object
+            additionalProperties: false
+            properties:
+                notes:
+                    type: string
+                outcome:
+                    type: string
+                review_type:
+                    type: string
+                reviewer_auth_method:
+                    type: string
+                reviewer_display_name:
+                    type: string
+                reviewer_subject:
+                    type: string
+            required:
+                - review_type
+                - outcome
+                - notes
+        CreateReviewOverrideBody:
+            type: object
+            additionalProperties: false
+            properties:
+                reason:
+                    type: string
+                review_id:
+                    type: integer
+                    format: int64
+            required:
+                - review_id
+                - reason
+        CurrentPrincipalResponse:
+            type: object
+            additionalProperties: false
+            properties:
+                auth_method:
+                    type: string
+                display_name:
+                    type: string
+                subject:
+                    type: string
+            required:
+                - subject
+                - display_name
+                - auth_method
         Deployment:
             type: object
             additionalProperties: false
@@ -2157,11 +2368,33 @@ components:
                     type: string
                 keycloak_url:
                     type: string
+                review_failure_outcome:
+                    type: string
+                review_outcomes:
+                    type: array
+                    items:
+                        type: string
+                review_override_outcome:
+                    type: string
+                review_types:
+                    type: array
+                    items:
+                        type: string
+                show_discord_link:
+                    type: boolean
+                show_github_link:
+                    type: boolean
             required:
                 - keycloak_url
                 - keycloak_realm
                 - keycloak_client_id
                 - anonymous_auth_enabled
+                - show_github_link
+                - show_discord_link
+                - review_types
+                - review_outcomes
+                - review_failure_outcome
+                - review_override_outcome
         GitHubOIDCTokenExchangeInputBody:
             type: object
             additionalProperties: false
@@ -2577,8 +2810,12 @@ components:
             type: object
             additionalProperties: false
             properties:
+                aregistry.ai/capabilities:
+                    $ref: '#/components/schemas/CapabilitiesMeta'
                 aregistry.ai/ownership:
                     $ref: '#/components/schemas/OwnershipMeta'
+                aregistry.ai/review:
+                    $ref: '#/components/schemas/ReviewSummary'
                 io.modelcontextprotocol.registry/official:
                     $ref: '#/components/schemas/PromptRegistryExtensions'
         Provider:
@@ -2685,6 +2922,85 @@ components:
             required:
                 - deployments
                 - count
+        Review:
+            type: object
+            additionalProperties: false
+            properties:
+                artifact_name:
+                    type: string
+                artifact_type:
+                    type: string
+                artifact_version:
+                    type: string
+                created_at:
+                    type: string
+                    format: date-time
+                id:
+                    type: integer
+                    format: int64
+                is_current:
+                    type: boolean
+                is_stale:
+                    type: boolean
+                is_superseded:
+                    type: boolean
+                notes:
+                    type: string
+                outcome:
+                    type: string
+                overrides_review_id:
+                    type: integer
+                    format: int64
+                review_type:
+                    type: string
+                reviewer_auth_method:
+                    type: string
+                reviewer_display_name:
+                    type: string
+                reviewer_subject:
+                    type: string
+            required:
+                - id
+                - artifact_type
+                - artifact_name
+                - artifact_version
+                - review_type
+                - outcome
+                - reviewer_subject
+                - reviewer_auth_method
+                - reviewer_display_name
+                - notes
+                - created_at
+        ReviewSummary:
+            type: object
+            additionalProperties: false
+            properties:
+                per_type:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ReviewTypeSummary'
+                status:
+                    type: string
+            required:
+                - status
+                - per_type
+        ReviewTypeSummary:
+            type: object
+            additionalProperties: false
+            properties:
+                outcome:
+                    type: string
+                review_type:
+                    type: string
+                reviewer_display_names:
+                    type: array
+                    items:
+                        type: string
+                status:
+                    type: string
+            required:
+                - review_type
+                - status
         Rule:
             type: object
             additionalProperties: false
@@ -2893,10 +3209,14 @@ components:
             type: object
             additionalProperties: false
             properties:
+                aregistry.ai/capabilities:
+                    $ref: '#/components/schemas/CapabilitiesMeta'
                 aregistry.ai/deployments:
                     $ref: '#/components/schemas/ResourceDeploymentsMeta'
                 aregistry.ai/ownership:
                     $ref: '#/components/schemas/OwnershipMeta'
+                aregistry.ai/review:
+                    $ref: '#/components/schemas/ReviewSummary'
                 aregistry.ai/semantic:
                     $ref: '#/components/schemas/ServerSemanticMeta'
                 io.modelcontextprotocol.registry/official:
@@ -3083,8 +3403,12 @@ components:
             type: object
             additionalProperties: false
             properties:
+                aregistry.ai/capabilities:
+                    $ref: '#/components/schemas/CapabilitiesMeta'
                 aregistry.ai/ownership:
                     $ref: '#/components/schemas/OwnershipMeta'
+                aregistry.ai/review:
+                    $ref: '#/components/schemas/ReviewSummary'
                 io.modelcontextprotocol.registry/official:
                     $ref: '#/components/schemas/SkillRegistryExtensions'
         TokenResponse:

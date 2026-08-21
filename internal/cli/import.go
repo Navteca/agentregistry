@@ -65,7 +65,7 @@ var ImportCmd = &cobra.Command{
 			}
 		}()
 
-		registryService := service.NewRegistryService(db, cfg, nil)
+		registryService := service.NewRegistryService(db, cfg, nil, authz)
 
 		// Build HTTP client and headers for importer
 		httpClient := &http.Client{Timeout: importTimeout}

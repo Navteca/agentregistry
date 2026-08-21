@@ -73,3 +73,144 @@ func TestNewConfig_OIDCRolePatternsDefaultToEmpty(t *testing.T) {
 			cfg.OIDCUserPatterns, cfg.OIDCCuratorPatterns, cfg.OIDCAdminPatterns)
 	}
 }
+
+func TestNewConfig_CommunityLinksDefaultToHidden(t *testing.T) {
+	os.Unsetenv("AGENT_REGISTRY_SHOW_GITHUB_LINK")
+	os.Unsetenv("AGENT_REGISTRY_SHOW_DISCORD_LINK")
+
+	cfg := NewConfig()
+
+	if cfg.ShowGithubLink {
+		t.Fatal("ShowGithubLink should default to false")
+	}
+	if cfg.ShowDiscordLink {
+		t.Fatal("ShowDiscordLink should default to false")
+	}
+}
+
+func TestNewConfig_ExplicitReviewDefaults(t *testing.T) {
+	t.Setenv("AGENT_REGISTRY_REVIEW_TYPES", "security,scientific")
+	t.Setenv("AGENT_REGISTRY_REVIEW_OUTCOMES", "pass,fail")
+	t.Setenv("AGENT_REGISTRY_REVIEW_OVERRIDE_OUTCOME", "override")
+
+	cfg := NewConfig()
+	if got := cfg.ReviewConfig().Types(); !equalStrings(got, []string{"security", "scientific"}) {
+		t.Fatalf("review types default = %v, want [security scientific]", got)
+	}
+	if got := cfg.ReviewConfig().Outcomes(); !equalStrings(got, []string{"pass", "fail"}) {
+		t.Fatalf("review outcomes default = %v, want [pass fail]", got)
+	}
+	if got := cfg.ReviewConfig().FailureOutcome(); got != "fail" {
+		t.Fatalf("review failure outcome default = %q, want fail", got)
+	}
+	if got := cfg.ReviewConfig().OverrideOutcome(); got != "override" {
+		t.Fatalf("review override outcome default = %q, want override", got)
+	}
+}
+
+func TestReviewConfig_ConfiguredValuesPreserveOrder(t *testing.T) {
+	t.Setenv("AGENT_REGISTRY_REVIEW_TYPES", "security,scientific,export-control")
+	t.Setenv("AGENT_REGISTRY_REVIEW_OUTCOMES", "pass,fail,conditional,approved")
+	t.Setenv("AGENT_REGISTRY_REVIEW_FAILURE_OUTCOME", "conditional")
+	t.Setenv("AGENT_REGISTRY_REVIEW_OVERRIDE_OUTCOME", "override")
+
+	cfg := NewConfig()
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	settings := cfg.ReviewConfig()
+	if got := settings.Types(); !equalStrings(got, []string{"security", "scientific", "export-control"}) {
+		t.Fatalf("review types = %v, want configured order", got)
+	}
+	if got := settings.Outcomes(); !equalStrings(got, []string{"pass", "fail", "conditional", "approved"}) {
+		t.Fatalf("review outcomes = %v, want configured order", got)
+	}
+	if !settings.HasType("scientific") || settings.HasType("missing") {
+		t.Fatal("HasType() did not match configured values")
+	}
+	if !settings.HasOutcome("pass") || settings.HasOutcome("pending") {
+		t.Fatal("HasOutcome() did not match configured values")
+	}
+	if settings.FailureOutcome() != "conditional" {
+		t.Fatalf("failure outcome = %q, want conditional", settings.FailureOutcome())
+	}
+	if settings.OverrideOutcome() != "override" {
+		t.Fatalf("override outcome = %q, want override", settings.OverrideOutcome())
+	}
+}
+
+func TestValidate_NormalizesReviewValuesInPlace(t *testing.T) {
+	cfg := &Config{
+		ReviewTypes:           []string{" security ", "scientific"},
+		ReviewOutcomes:        []string{" pass ", "fail"},
+		ReviewFailureOutcome:  " fail ",
+		ReviewOverrideOutcome: " override ",
+	}
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	if !equalStrings(cfg.ReviewTypes, []string{"security", "scientific"}) {
+		t.Fatalf("normalized review types = %v", cfg.ReviewTypes)
+	}
+	if !equalStrings(cfg.ReviewOutcomes, []string{"pass", "fail"}) {
+		t.Fatalf("normalized review outcomes = %v", cfg.ReviewOutcomes)
+	}
+	if cfg.ReviewFailureOutcome != "fail" {
+		t.Fatalf("normalized review failure outcome = %q", cfg.ReviewFailureOutcome)
+	}
+	if cfg.ReviewOverrideOutcome != "override" {
+		t.Fatalf("normalized review override outcome = %q", cfg.ReviewOverrideOutcome)
+	}
+	if got := cfg.ReviewConfig().Types(); !equalStrings(got, cfg.ReviewTypes) {
+		t.Fatalf("accessor review types = %v, fields = %v", got, cfg.ReviewTypes)
+	}
+	if got := cfg.ReviewConfig().Outcomes(); !equalStrings(got, cfg.ReviewOutcomes) {
+		t.Fatalf("accessor review outcomes = %v, fields = %v", got, cfg.ReviewOutcomes)
+	}
+}
+
+func TestValidate_ReviewValues(t *testing.T) {
+	tests := []struct {
+		name     string
+		types    []string
+		outcomes []string
+		failure  string
+		override string
+	}{
+		{name: "empty review types", types: []string{}, outcomes: []string{"pass", "override"}, failure: "pass", override: "override"},
+		{name: "empty outcomes", types: []string{"security"}, outcomes: []string{}, failure: "pass", override: "override"},
+		{name: "duplicate review type", types: []string{"security", "security"}, outcomes: []string{"pass", "override"}, failure: "pass", override: "override"},
+		{name: "duplicate outcome", types: []string{"security"}, outcomes: []string{"pass", "pass", "override"}, failure: "pass", override: "override"},
+		{name: "whitespace-only review type", types: []string{"   "}, outcomes: []string{"pass", "override"}, failure: "pass", override: "override"},
+		{name: "malformed outcome", types: []string{"security"}, outcomes: []string{"not valid", "override"}, failure: "not valid", override: "override"},
+		{name: "unconfigured failure outcome", types: []string{"security"}, outcomes: []string{"pass", "override"}, failure: "fail", override: "override"},
+		{name: "empty override outcome", types: []string{"security"}, outcomes: []string{"pass"}, failure: "pass", override: ""},
+		{name: "override equals failure", types: []string{"security"}, outcomes: []string{"pass"}, failure: "pass", override: "pass"},
+		{name: "override equals ordinary outcome", types: []string{"security"}, outcomes: []string{"pass", "override"}, failure: "fail", override: "override"},
+		{name: "malformed override outcome", types: []string{"security"}, outcomes: []string{"pass"}, failure: "pass", override: "not valid"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{ReviewTypes: tt.types, ReviewOutcomes: tt.outcomes, ReviewFailureOutcome: tt.failure, ReviewOverrideOutcome: tt.override}
+			if err := Validate(cfg); err == nil {
+				t.Fatal("Validate() error = nil, want validation failure")
+			}
+		})
+	}
+}
+
+func equalStrings(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}

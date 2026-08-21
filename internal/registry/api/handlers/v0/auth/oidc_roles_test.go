@@ -122,10 +122,11 @@ func TestResolveRolePermissions(t *testing.T) {
 		assert.ElementsMatch(t, []auth.PermissionAction{
 			auth.PermissionActionRead, auth.PermissionActionPublish,
 			auth.PermissionActionEditOwn, auth.PermissionActionEdit, auth.PermissionActionDelete,
+			auth.PermissionActionReview,
 		}, actions)
 	})
 
-	t.Run("admin role adds deploy on top of curator", func(t *testing.T) {
+	t.Run("admin role adds deploy and override on top of curator", func(t *testing.T) {
 		claims := map[string]any{
 			"realm_access": map[string]any{"roles": []any{"registry-admin"}},
 		}
@@ -135,7 +136,8 @@ func TestResolveRolePermissions(t *testing.T) {
 		assert.ElementsMatch(t, []auth.PermissionAction{
 			auth.PermissionActionRead, auth.PermissionActionPublish,
 			auth.PermissionActionEditOwn, auth.PermissionActionEdit,
-			auth.PermissionActionDelete, auth.PermissionActionDeploy,
+			auth.PermissionActionDelete, auth.PermissionActionDeploy, auth.PermissionActionReview,
+			auth.PermissionActionOverride,
 		}, actions)
 	})
 
