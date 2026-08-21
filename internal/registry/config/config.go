@@ -44,8 +44,8 @@ type Config struct {
 	KeycloakClientID   string `env:"KEYCLOAK_CLIENT_ID" envDefault:""`
 	FrontendAPIURL     string `env:"FRONTEND_API_URL" envDefault:""`
 	FrontendGatewayURL string `env:"FRONTEND_GATEWAY_URL" envDefault:""`
-	ShowGithubLink     bool   `env:"SHOW_GITHUB_LINK" envDefault:"true"`
-	ShowDiscordLink    bool   `env:"SHOW_DISCORD_LINK" envDefault:"true"`
+	ShowGithubLink     bool   `env:"SHOW_GITHUB_LINK" envDefault:"false"`
+	ShowDiscordLink    bool   `env:"SHOW_DISCORD_LINK" envDefault:"false"`
 
 	// OIDC Configuration
 	OIDCEnabled      bool   `env:"OIDC_ENABLED" envDefault:"false"`
