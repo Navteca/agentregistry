@@ -90,6 +90,27 @@ tests:
           path: data.AGENT_REGISTRY_KEYCLOAK_CLIENT_ID
           value: "agentregistry-api"
 
+  - it: sets frontend footer link visibility defaults
+    asserts:
+      - equal:
+          path: data.AGENT_REGISTRY_SHOW_GITHUB_LINK
+          value: "true"
+      - equal:
+          path: data.AGENT_REGISTRY_SHOW_DISCORD_LINK
+          value: "true"
+
+  - it: overrides frontend footer link visibility
+    set:
+      config.showGithubLink: "false"
+      config.showDiscordLink: "true"
+    asserts:
+      - equal:
+          path: data.AGENT_REGISTRY_SHOW_GITHUB_LINK
+          value: "false"
+      - equal:
+          path: data.AGENT_REGISTRY_SHOW_DISCORD_LINK
+          value: "true"
+
   - it: includes backend OIDC config when set
     set:
       config.oidcEnabled: "true"

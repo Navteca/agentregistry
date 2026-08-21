@@ -17,6 +17,8 @@ type FrontendConfigBody struct {
 	APIBaseURL            string   `json:"api_base_url,omitempty"`
 	GatewayBaseURL        string   `json:"gateway_base_url,omitempty"`
 	AnonymousAuth         bool     `json:"anonymous_auth_enabled"`
+	ShowGithubLink        bool     `json:"show_github_link"`
+	ShowDiscordLink       bool     `json:"show_discord_link"`
 	ReviewTypes           []string `json:"review_types"`
 	ReviewOutcomes        []string `json:"review_outcomes"`
 	ReviewFailureOutcome  string   `json:"review_failure_outcome"`
@@ -53,6 +55,8 @@ func RegisterFrontendConfigEndpoint(api huma.API, pathPrefix string, cfg *config
 				APIBaseURL:            cfg.FrontendAPIURL,
 				GatewayBaseURL:        cfg.FrontendGatewayURL,
 				AnonymousAuth:         cfg.EnableAnonymousAuth,
+				ShowGithubLink:        cfg.ShowGithubLink,
+				ShowDiscordLink:       cfg.ShowDiscordLink,
 				ReviewTypes:           reviewConfig.Types(),
 				ReviewOutcomes:        reviewConfig.Outcomes(),
 				ReviewFailureOutcome:  reviewConfig.FailureOutcome(),

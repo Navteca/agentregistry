@@ -1,0 +1,7 @@
+# SMCE deployment overrides for the upstream community links.
+#
+# Apply this file together with the chart defaults when deploying SMCE:
+# helm upgrade --install ... -f charts/agentregistry/values-smce.yaml
+config:
+  showGithubLink: "false"
+  showDiscordLink: "false"

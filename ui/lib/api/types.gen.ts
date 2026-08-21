@@ -323,6 +323,8 @@ export type FrontendConfigBody = {
     review_outcomes: Array<string>;
     review_override_outcome: string;
     review_types: Array<string>;
+    show_discord_link: boolean;
+    show_github_link: boolean;
 };
 
 export type GitHubOidcTokenExchangeInputBody = {

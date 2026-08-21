@@ -69,6 +69,10 @@ config:
   frontendApiURL: ""
   # -- Optional frontend gateway base URL returned by GET /v0/config/frontend
   frontendGatewayURL: ""
+  # -- Show the upstream GitHub link in the frontend footer
+  showGithubLink: "false"
+  # -- Show the upstream Discord link in the frontend footer
+  showDiscordLink: "false"
   # -- Enable OIDC token exchange on the backend ("true" or "false")
   oidcEnabled: ""
   # -- OIDC issuer URL used by the backend to validate ID tokens

@@ -34,6 +34,8 @@ data:
   {{- if .Values.config.frontendGatewayURL }}
   AGENT_REGISTRY_FRONTEND_GATEWAY_URL: {{ .Values.config.frontendGatewayURL | quote }}
   {{- end }}
+  AGENT_REGISTRY_SHOW_GITHUB_LINK: {{ .Values.config.showGithubLink | quote }}
+  AGENT_REGISTRY_SHOW_DISCORD_LINK: {{ .Values.config.showDiscordLink | quote }}
   {{- if ne (printf "%v" .Values.config.oidcEnabled) "" }}
   AGENT_REGISTRY_OIDC_ENABLED: {{ printf "%v" .Values.config.oidcEnabled | quote }}
   {{- end }}

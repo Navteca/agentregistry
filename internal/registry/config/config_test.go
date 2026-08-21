@@ -74,6 +74,20 @@ func TestNewConfig_OIDCRolePatternsDefaultToEmpty(t *testing.T) {
 	}
 }
 
+func TestNewConfig_CommunityLinksDefaultToShown(t *testing.T) {
+	os.Unsetenv("AGENT_REGISTRY_SHOW_GITHUB_LINK")
+	os.Unsetenv("AGENT_REGISTRY_SHOW_DISCORD_LINK")
+
+	cfg := NewConfig()
+
+	if !cfg.ShowGithubLink {
+		t.Fatal("ShowGithubLink should default to true")
+	}
+	if !cfg.ShowDiscordLink {
+		t.Fatal("ShowDiscordLink should default to true")
+	}
+}
+
 func TestNewConfig_ExplicitReviewDefaults(t *testing.T) {
 	t.Setenv("AGENT_REGISTRY_REVIEW_TYPES", "security,scientific")
 	t.Setenv("AGENT_REGISTRY_REVIEW_OUTCOMES", "pass,fail")

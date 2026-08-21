@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import Keycloak from "keycloak-js"
 import { clearRegistryAuthToken, getApiBaseUrl, setApiBaseUrl, setGatewayBaseUrl, setRegistryAuthToken } from "@/lib/admin-api"
+import { FrontendConfigProvider, type FrontendConfig } from "@/lib/frontend-config"
 import { refreshActiveUserProfile, setActiveKeycloakInstance } from "@/lib/keycloak-session"
 
 type GateStatus = "loading" | "ready" | "error"
@@ -20,15 +21,6 @@ interface OIDCExchangeResponse {
 const REFRESH_INTERVAL_MS = 30_000
 const REGISTRY_REFRESH_SKEW_SECONDS = 60
 const OIDC_DISCOVERY_TIMEOUT_MS = 8_000
-
-interface FrontendConfig {
-  keycloak_url: string
-  keycloak_realm: string
-  keycloak_client_id: string
-  api_base_url?: string
-  gateway_base_url?: string
-  anonymous_auth_enabled?: boolean
-}
 
 async function fetchFrontendConfig(): Promise<FrontendConfig> {
   // Always use a relative URL here to bootstrap config from the same host.
@@ -54,6 +46,7 @@ async function fetchFrontendConfig(): Promise<FrontendConfig> {
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GateState>({ status: "loading" })
+  const [frontendConfig, setFrontendConfig] = useState<FrontendConfig | null>(null)
   const keycloakRef = useRef<Keycloak | null>(null)
   const registryExpiresAtRef = useRef<number>(0)
 
@@ -114,6 +107,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     const initAuth = async () => {
       try {
         const cfg = await fetchFrontendConfig()
+        setFrontendConfig(cfg)
         if (cfg.api_base_url) {
           setApiBaseUrl(cfg.api_base_url)
         }
@@ -227,7 +221,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, [])
 
   if (state.status === "ready") {
-    return <>{children}</>
+    if (!frontendConfig) {
+      return null
+    }
+    return <FrontendConfigProvider config={frontendConfig}>{children}</FrontendConfigProvider>
   }
 
   if (state.status === "error") {

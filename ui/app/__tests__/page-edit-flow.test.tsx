@@ -172,4 +172,21 @@ describe("AdminPage edit server flow", () => {
     expect(screen.queryByRole("button", { name: /Remove server/ })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /Deploy server/ })).not.toBeInTheDocument()
   })
+
+  it("shows the static Models placeholder without fetching model data", async () => {
+    const user = userEvent.setup()
+    render(<AdminPage />)
+
+    await screen.findByText("io.navteca/hello-mcp")
+    await user.click(screen.getByRole("button", { name: "Models" }))
+
+    expect(screen.getByText("Model support is under development")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Models" })).toBeInTheDocument()
+    await user.type(screen.getByPlaceholderText("Search models..."), "forecast")
+    expect(screen.getByText("Model support is under development")).toBeInTheDocument()
+    expect(listServersV0).toHaveBeenCalledTimes(1)
+    expect(listSkillsV0).toHaveBeenCalledTimes(1)
+    expect(listAgentsV0).toHaveBeenCalledTimes(1)
+    expect(listPromptsV0).toHaveBeenCalledTimes(1)
+  })
 })

@@ -1414,3 +1414,55 @@ Conventions:
 - **Reapply after bump:** Preserve selected-version wiring, strict capability
   gating, target review IDs, required reasons, stale/current markers, and
   escaped rendered findings.
+
+---
+
+## AR-6A — Configurable footer community links
+
+### `internal/registry/config/config.go`
+### `internal/registry/api/handlers/v0/frontend_config.go`
+### `internal/registry/api/handlers/v0/frontend_config_test.go`
+### `internal/registry/config/config_test.go`
+### `.env.example`
+- **Change:** Added deployment-wide `ShowGithubLink` and `ShowDiscordLink`
+  configuration fields, exposed them through the unauthenticated frontend
+  bootstrap endpoint, and covered their explicit and default behavior.
+  `envDefault:"true"` is deliberate because Go bool zero values are false;
+  an unset `AGENT_REGISTRY_SHOW_GITHUB_LINK` or
+  `AGENT_REGISTRY_SHOW_DISCORD_LINK` therefore preserves the existing links.
+- **Reason:** Allows deployments to hide upstream community links without
+  introducing per-user or request-time behavior.
+- **Reapply after bump:** Re-add the two fields with their `SHOW_*` environment
+  names and true defaults, include them in `FrontendConfigBody`, and regenerate
+  the API contract and client.
+
+### `charts/agentregistry/values.yaml`
+### `charts/agentregistry/templates/configmap.yaml`
+### `charts/agentregistry/tests/configmap_test.yaml`
+- **Change:** Added Helm values and ConfigMap plumbing for the two footer link
+  flags, defaulting both chart values to `"true"` and allowing deployment
+  overrides to emit the corresponding `AGENT_REGISTRY_SHOW_*` variables.
+- **Reason:** Makes the deployment-wide frontend flags configurable through the
+  chart while preserving current behavior by default.
+- **Reapply after bump:** Re-add the two chart values, ConfigMap entries, and
+  default/override assertions.
+
+### `charts/agentregistry/values-smce.yaml`
+- **Change:** Added the SMCE deployment override with both upstream community
+  links explicitly disabled.
+- **Reason:** Keeps the chart defaults compatible with upstream while ensuring
+  SMCE does not advertise the upstream project's GitHub repository or Discord
+  server.
+- **Reapply after bump:** Preserve this deployment override and pass it with
+  `-f` when installing or upgrading the SMCE release.
+
+### `ui/lib/frontend-config.tsx`
+### `ui/components/auth-gate.tsx`
+### `ui/components/footer.tsx`
+- **Change:** Shared the frontend bootstrap response fetched by `AuthGate`
+  through a context and conditionally rendered each footer link. The links
+  container is omitted entirely when both flags are false.
+- **Reason:** Reuses the existing startup request instead of issuing a second
+  request and keeps the logo left-aligned when no community links are shown.
+- **Reapply after bump:** Preserve the shared config context and independent
+  link checks, then regenerate the client with `make gen-client`.

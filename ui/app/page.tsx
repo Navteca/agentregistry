@@ -56,6 +56,7 @@ import {
   ArrowUpDown,
   ChevronDown,
   FileText,
+  Brain,
 } from "lucide-react"
 
 // Grouped server type
@@ -82,13 +83,14 @@ interface GroupedAgent extends AgentResponse {
   allVersions: AgentResponse[]
 }
 
-type TabKey = "servers" | "skills" | "agents" | "prompts"
+type TabKey = "servers" | "skills" | "agents" | "prompts" | "models"
 
 const TAB_CONFIG: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: "servers", label: "Servers", icon: <MCPIcon /> },
   { key: "skills", label: "Skills", icon: <Zap className="h-3.5 w-3.5" /> },
   { key: "agents", label: "Agents", icon: <Bot className="h-3.5 w-3.5" /> },
   { key: "prompts", label: "Prompts", icon: <FileText className="h-3.5 w-3.5" /> },
+  { key: "models", label: "Models", icon: <Brain className="h-3.5 w-3.5" /> },
 ]
 
 export default function AdminPage() {
@@ -515,6 +517,7 @@ export default function AdminPage() {
       case "skills": return groupedSkills.length
       case "agents": return groupedAgents.length
       case "prompts": return groupedPrompts.length
+      case "models": return undefined
     }
   }
 
@@ -547,31 +550,36 @@ export default function AdminPage() {
         {/* Tab bar with counts */}
         <div className="flex items-center justify-between border-b pt-4">
           <div className="flex items-center gap-1">
-            {TAB_CONFIG.map(({ key, label, icon }) => (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                className={`group relative flex items-center gap-2 px-4 py-3 text-[15px] font-medium transition-colors ${activeTab === key
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                  }`}
-              >
-                <span className={`h-4 w-4 flex items-center justify-center transition-colors ${activeTab === key ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                  }`}>
-                  {icon}
-                </span>
-                {label}
-                <span className={`text-[13px] tabular-nums px-1.5 py-0.5 rounded-full transition-colors ${activeTab === key
-                    ? "bg-primary/10 text-primary"
-                    : "bg-muted text-muted-foreground"
-                  }`}>
-                  {getCount(key)}
-                </span>
-                {activeTab === key && (
-                  <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-primary rounded-full" />
-                )}
-              </button>
-            ))}
+            {TAB_CONFIG.map(({ key, label, icon }) => {
+              const count = getCount(key)
+              return (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  className={`group relative flex items-center gap-2 px-4 py-3 text-[15px] font-medium transition-colors ${activeTab === key
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                    }`}
+                >
+                  <span className={`h-4 w-4 flex items-center justify-center transition-colors ${activeTab === key ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                    }`}>
+                    {icon}
+                  </span>
+                  {label}
+                  {count !== undefined && (
+                    <span className={`text-[13px] tabular-nums px-1.5 py-0.5 rounded-full transition-colors ${activeTab === key
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground"
+                      }`}>
+                      {count}
+                    </span>
+                  )}
+                  {activeTab === key && (
+                    <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-primary rounded-full" />
+                  )}
+                </button>
+              )
+            })}
           </div>
 
           <div className="flex items-center gap-2 pb-2">
@@ -790,6 +798,14 @@ export default function AdminPage() {
                 ))}
               </div>
             )
+          )}
+
+          {activeTab === "models" && (
+            <EmptyState
+              icon={<Brain className="h-8 w-8 text-muted-foreground" />}
+              title="Models are coming soon"
+              description="Model support is under development"
+            />
           )}
         </div>
       </div>

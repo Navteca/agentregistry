@@ -2380,11 +2380,17 @@ components:
                     type: array
                     items:
                         type: string
+                show_discord_link:
+                    type: boolean
+                show_github_link:
+                    type: boolean
             required:
                 - keycloak_url
                 - keycloak_realm
                 - keycloak_client_id
                 - anonymous_auth_enabled
+                - show_github_link
+                - show_discord_link
                 - review_types
                 - review_outcomes
                 - review_failure_outcome

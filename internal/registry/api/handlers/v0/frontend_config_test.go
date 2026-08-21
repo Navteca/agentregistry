@@ -27,6 +27,8 @@ func TestFrontendConfigEndpointReturnsPublicReviewVocabulary(t *testing.T) {
 		ReviewFailureOutcome:  "reject",
 		ReviewOverrideOutcome: "overridden",
 		EnableAnonymousAuth:   true,
+		ShowGithubLink:        true,
+		ShowDiscordLink:       false,
 	}
 	v0.RegisterFrontendConfigEndpoint(api, "/v0", cfg)
 
@@ -48,6 +50,8 @@ func TestFrontendConfigEndpointReturnsPublicReviewVocabulary(t *testing.T) {
 		"review_outcomes",
 		"review_override_outcome",
 		"review_types",
+		"show_discord_link",
+		"show_github_link",
 	}, sortedKeys(body))
 
 	var reviewTypes []string
@@ -65,6 +69,14 @@ func TestFrontendConfigEndpointReturnsPublicReviewVocabulary(t *testing.T) {
 	var reviewFailureOutcome string
 	require.NoError(t, json.Unmarshal(body["review_failure_outcome"], &reviewFailureOutcome))
 	require.Equal(t, "reject", reviewFailureOutcome)
+
+	var showGithubLink bool
+	require.NoError(t, json.Unmarshal(body["show_github_link"], &showGithubLink))
+	require.True(t, showGithubLink)
+
+	var showDiscordLink bool
+	require.NoError(t, json.Unmarshal(body["show_discord_link"], &showDiscordLink))
+	require.False(t, showDiscordLink)
 }
 
 func sortedKeys(values map[string]json.RawMessage) []string {
