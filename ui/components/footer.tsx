@@ -11,8 +11,8 @@ export function Footer() {
   const { theme } = useTheme()
   const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
   const frontendConfig = useFrontendConfig()
-  const showGithubLink = frontendConfig?.show_github_link ?? true
-  const showDiscordLink = frontendConfig?.show_discord_link ?? true
+  const showGithubLink = frontendConfig?.show_github_link ?? false
+  const showDiscordLink = frontendConfig?.show_discord_link ?? false
 
   return (
     <footer className="border-t mt-auto">
