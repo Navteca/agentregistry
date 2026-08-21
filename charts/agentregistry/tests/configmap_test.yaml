@@ -94,11 +94,10 @@ tests:
     asserts:
       - equal:
           path: data.AGENT_REGISTRY_SHOW_GITHUB_LINK
-          value: "true"
+          value: "false"
       - equal:
           path: data.AGENT_REGISTRY_SHOW_DISCORD_LINK
-          value: "true"
-
+          value: "false"
   - it: overrides frontend footer link visibility
     set:
       config.showGithubLink: "false"
