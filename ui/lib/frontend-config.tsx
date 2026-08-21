@@ -11,6 +11,10 @@ export interface FrontendConfig {
   anonymous_auth_enabled?: boolean
   show_github_link?: boolean
   show_discord_link?: boolean
+  review_types?: string[]
+  review_outcomes?: string[]
+  review_failure_outcome?: string
+  review_override_outcome?: string
 }
 
 const FrontendConfigContext = createContext<FrontendConfig | null>(null)
