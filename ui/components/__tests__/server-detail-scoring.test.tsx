@@ -1,8 +1,32 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect } from "vitest"
-import { ServerDetail } from "../server-detail"
+import { ServerDetail as ServerDetailComponent } from "../server-detail"
 import type { ServerResponse } from "@/lib/api/types.gen"
+import { FrontendConfigProvider, type FrontendConfig } from "@/lib/frontend-config"
+
+const frontendConfig: FrontendConfig = {
+  keycloak_url: "",
+  keycloak_realm: "",
+  keycloak_client_id: "",
+  anonymous_auth_enabled: true,
+  show_github_link: true,
+  show_discord_link: true,
+  review_types: ["security"],
+  review_outcomes: ["pass", "fail"],
+  review_failure_outcome: "fail",
+  review_override_outcome: "override",
+}
+
+type ServerDetailProps = Parameters<typeof ServerDetailComponent>[0]
+
+function ServerDetail(props: ServerDetailProps) {
+  return (
+    <FrontendConfigProvider config={frontendConfig}>
+      <ServerDetailComponent {...props} />
+    </FrontendConfigProvider>
+  )
+}
 
 function buildMockServer(overrides?: Partial<ServerResponse>): ServerResponse & { allVersions?: ServerResponse[] } {
   return {

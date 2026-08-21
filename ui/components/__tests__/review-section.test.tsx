@@ -2,13 +2,13 @@ import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { ReviewSection } from "../review-section"
-import { createReviewOverrideV0, createReviewV0, getFrontendConfig, listReviewsV0 } from "@/lib/admin-api"
+import { ReviewSection as ReviewSectionComponent } from "../review-section"
+import { createReviewOverrideV0, createReviewV0, listReviewsV0 } from "@/lib/admin-api"
+import { FrontendConfigProvider, type FrontendConfig } from "@/lib/frontend-config"
 
 vi.mock("@/lib/admin-api", () => ({
   createReviewV0: vi.fn(),
   createReviewOverrideV0: vi.fn(),
-  getFrontendConfig: vi.fn(),
   listReviewsV0: vi.fn(),
 }))
 
@@ -19,15 +19,29 @@ vi.mock("sonner", () => ({
   },
 }))
 
-const frontendConfig = {
+const frontendConfig: FrontendConfig = {
   keycloak_url: "",
   keycloak_realm: "",
   keycloak_client_id: "",
   anonymous_auth_enabled: true,
+  show_github_link: true,
+  show_discord_link: true,
   review_types: ["security", "scientific"],
   review_outcomes: ["pass", "fail"],
   review_failure_outcome: "fail",
   review_override_outcome: "override",
+}
+
+let currentFrontendConfig = frontendConfig
+
+type ReviewSectionProps = Parameters<typeof ReviewSectionComponent>[0]
+
+function ReviewSection(props: ReviewSectionProps) {
+  return (
+    <FrontendConfigProvider config={currentFrontendConfig}>
+      <ReviewSectionComponent {...props} />
+    </FrontendConfigProvider>
+  )
 }
 
 const baseProps = {
@@ -61,7 +75,7 @@ const review = (overrides = {}) => ({
 describe("ReviewSection", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(getFrontendConfig).mockResolvedValue({ data: frontendConfig } as never)
+    currentFrontendConfig = frontendConfig
     vi.mocked(listReviewsV0).mockResolvedValue({ data: [] } as never)
     vi.mocked(createReviewV0).mockResolvedValue({ data: review() } as never)
     vi.mocked(createReviewOverrideV0).mockResolvedValue({ data: review({ overrides_review_id: 1, outcome: "override" }) } as never)
@@ -255,13 +269,11 @@ describe("ReviewSection", () => {
   })
 
   it("populates form inputs from the configured vocabulary", async () => {
-    vi.mocked(getFrontendConfig).mockResolvedValue({
-      data: {
-        ...frontendConfig,
-        review_types: ["legal"],
-        review_outcomes: ["approve", "reject", "needs-work"],
-      },
-    } as never)
+    currentFrontendConfig = {
+      ...frontendConfig,
+      review_types: ["legal"],
+      review_outcomes: ["approve", "reject", "needs-work"],
+    }
     render(
       <ReviewSection
         {...baseProps}

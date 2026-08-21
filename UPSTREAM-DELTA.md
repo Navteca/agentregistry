@@ -1460,9 +1460,13 @@ Conventions:
 ### `ui/components/auth-gate.tsx`
 ### `ui/components/footer.tsx`
 - **Change:** Shared the frontend bootstrap response fetched by `AuthGate`
-  through a context and conditionally rendered each footer link. The links
-  container is omitted entirely when both flags are false.
+  through a context, including the review vocabulary, and conditionally
+  rendered each footer link. The links container is omitted entirely when both
+  flags are false. The footer now reads the non-null context directly; the
+  committed defaults for both flags remain `true` in the backend configuration.
 - **Reason:** Reuses the existing startup request instead of issuing a second
-  request and keeps the logo left-aligned when no community links are shown.
+  request for each artifact detail view, keeps the logo left-aligned when no
+  community links are shown, and makes a missing provider fail loudly.
 - **Reapply after bump:** Preserve the shared config context and independent
-  link checks, then regenerate the client with `make gen-client`.
+  link checks, add the review fields to the context type, and regenerate the
+  client with `make gen-client`.

@@ -9,8 +9,12 @@ export interface FrontendConfig {
   api_base_url?: string
   gateway_base_url?: string
   anonymous_auth_enabled?: boolean
-  show_github_link?: boolean
-  show_discord_link?: boolean
+  show_github_link: boolean
+  show_discord_link: boolean
+  review_types: string[]
+  review_outcomes: string[]
+  review_failure_outcome: string
+  review_override_outcome: string
 }
 
 const FrontendConfigContext = createContext<FrontendConfig | null>(null)
@@ -25,6 +29,10 @@ export function FrontendConfigProvider({
   return <FrontendConfigContext.Provider value={config}>{children}</FrontendConfigContext.Provider>
 }
 
-export function useFrontendConfig() {
-  return useContext(FrontendConfigContext)
+export function useFrontendConfig(): FrontendConfig {
+  const config = useContext(FrontendConfigContext)
+  if (!config) {
+    throw new Error("useFrontendConfig must be used within a FrontendConfigProvider")
+  }
+  return config
 }

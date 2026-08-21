@@ -11,14 +11,13 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import {
   createReviewV0,
   createReviewOverrideV0,
-  getFrontendConfig,
   listReviewsV0,
   type CapabilitiesMeta,
-  type FrontendConfigBody,
   type Review,
   type ReviewSummary,
 } from "@/lib/admin-api"
 import { capabilityFlags } from "@/lib/capabilities"
+import { useFrontendConfig } from "@/lib/frontend-config"
 import { overallStatusPresentation, type StatusPresentation } from "@/lib/review-status"
 
 interface ReviewSectionProps {
@@ -89,10 +88,8 @@ export function ReviewSection({
   onReviewSubmitted,
 }: ReviewSectionProps) {
   const [reviews, setReviews] = useState<Review[]>([])
-  const [frontendConfig, setFrontendConfig] = useState<FrontendConfigBody | null>(null)
   const [reviewsLoading, setReviewsLoading] = useState(true)
   const [reviewsError, setReviewsError] = useState<string | null>(null)
-  const [configError, setConfigError] = useState<string | null>(null)
   const [reviewType, setReviewType] = useState("")
   const [outcome, setOutcome] = useState("")
   const [notes, setNotes] = useState("")
@@ -109,6 +106,7 @@ export function ReviewSection({
   )
   const reviewsRequest = useRef(0)
 
+  const frontendConfig = useFrontendConfig()
   const { showReview, showOverride } = capabilityFlags(capabilities)
 
   const loadReviews = useCallback(async () => {
@@ -141,32 +139,12 @@ export function ReviewSection({
   }, [artifactName, artifactType, artifactVersion])
 
   useEffect(() => {
-    let cancelled = false
-    setConfigError(null)
-    getFrontendConfig({ throwOnError: true })
-      .then(({ data }) => {
-        if (!cancelled) {
-          setFrontendConfig(data)
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setFrontendConfig(null)
-          setConfigError(extractErrorMessage(error, "Unable to load review options"))
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
     void loadReviews()
   }, [loadReviews])
 
   useEffect(() => {
-    const types = frontendConfig?.review_types ?? []
-    const outcomes = frontendConfig?.review_outcomes ?? []
+    const types = frontendConfig.review_types
+    const outcomes = frontendConfig.review_outcomes
     setReviewType((current) => (types.includes(current) ? current : (types[0] ?? "")))
     setOutcome((current) => (outcomes.includes(current) ? current : (outcomes[0] ?? "")))
   }, [frontendConfig])
@@ -367,7 +345,7 @@ export function ReviewSection({
               expanded={expandedReviewTypes[type.reviewType] === true}
               onToggle={() => toggleReviewType(type.reviewType)}
               canOverride={showOverride}
-              failureOutcome={frontendConfig?.review_failure_outcome}
+              failureOutcome={frontendConfig.review_failure_outcome}
               overriddenReviewIDs={overriddenReviewIDs}
               overrideTargetID={overrideTargetID}
               overrideReason={overrideReason}
@@ -397,13 +375,7 @@ export function ReviewSection({
       {showReview && (
         <div className="rounded-md border p-4">
           <h3 className="text-sm font-semibold">Submit a review</h3>
-          {configError && (
-            <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
-              Review options could not be loaded: {configError}
-            </p>
-          )}
-          {!configError && frontendConfig && (
-            <form onSubmit={handleSubmit} className="mt-3 space-y-3">
+          <form onSubmit={handleSubmit} className="mt-3 space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="review-type">Review type</Label>
@@ -453,8 +425,7 @@ export function ReviewSection({
               <Button type="submit" disabled={submitting}>
                 {submitting ? "Submitting..." : "Submit review"}
               </Button>
-            </form>
-          )}
+          </form>
         </div>
       )}
       </section>
