@@ -21,7 +21,8 @@ type PromptRegistryExtensions struct {
 
 // PromptResponseMeta contains metadata about a prompt response.
 type PromptResponseMeta struct {
-	Official *PromptRegistryExtensions `json:"io.modelcontextprotocol.registry/official,omitempty"`
+	Official  *PromptRegistryExtensions `json:"io.modelcontextprotocol.registry/official,omitempty"`
+	Ownership *OwnershipMeta            `json:"aregistry.ai/ownership,omitempty"`
 }
 
 // PromptResponse wraps a PromptJSON with its registry metadata.

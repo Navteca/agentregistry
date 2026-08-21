@@ -100,7 +100,7 @@ func (db *PostgreSQL) ListServers(
 	filter *database.ServerFilter,
 	cursor string,
 	limit int,
-) ([]*apiv0.ServerResponse, string, error) {
+) ([]*models.ServerResponse, string, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -181,7 +181,8 @@ func (db *PostgreSQL) ListServers(
 	}
 
 	selectClause := `
-        SELECT server_name, version, status, published_at, updated_at, is_latest, value`
+        SELECT server_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method`
 	orderClause := "ORDER BY server_name, version"
 
 	if semanticActive {
@@ -218,19 +219,20 @@ func (db *PostgreSQL) ListServers(
 	}
 	defer rows.Close()
 
-	var results []*apiv0.ServerResponse
+	var results []*models.ServerResponse
 	for rows.Next() {
 		var serverName, version, status string
 		var isLatest bool
 		var publishedAt, updatedAt time.Time
 		var valueJSON []byte
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
 		var semanticScore sql.NullFloat64
 
 		var scanErr error
 		if semanticActive {
-			scanErr = rows.Scan(&serverName, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &semanticScore)
+			scanErr = rows.Scan(&serverName, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod, &semanticScore)
 		} else {
-			scanErr = rows.Scan(&serverName, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON)
+			scanErr = rows.Scan(&serverName, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod)
 		}
 		if scanErr != nil {
 			return nil, "", fmt.Errorf("failed to scan server row: %w", scanErr)
@@ -241,20 +243,20 @@ func (db *PostgreSQL) ListServers(
 			return nil, "", fmt.Errorf("failed to unmarshal server JSON: %w", err)
 		}
 
-		if semanticActive && semanticScore.Valid {
-			dbUtils.AnnotateServerSemanticScore(&serverJSON, semanticScore.Float64)
-		}
-
-		serverResponse := &apiv0.ServerResponse{
+		serverResponse := &models.ServerResponse{
 			Server: serverJSON,
-			Meta: apiv0.ResponseMeta{
+			Meta: models.ServerResponseMeta{
 				Official: &apiv0.RegistryExtensions{
 					Status:      model.Status(status),
 					PublishedAt: publishedAt,
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
+		}
+		if semanticActive && semanticScore.Valid {
+			serverResponse.Meta.Semantic = &models.ServerSemanticMeta{Score: semanticScore.Float64}
 		}
 
 		results = append(results, serverResponse)
@@ -274,7 +276,7 @@ func (db *PostgreSQL) ListServers(
 }
 
 // GetServerByName retrieves the latest version of a server by server name
-func (db *PostgreSQL) GetServerByName(ctx context.Context, tx pgx.Tx, serverName string) (*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) GetServerByName(ctx context.Context, tx pgx.Tx, serverName string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -287,7 +289,8 @@ func (db *PostgreSQL) GetServerByName(ctx context.Context, tx pgx.Tx, serverName
 	}
 
 	query := `
-		SELECT server_name, version, status, published_at, updated_at, is_latest, value
+		SELECT server_name, version, status, published_at, updated_at, is_latest, value,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM servers
 		WHERE server_name = $1 AND is_latest = true
 		ORDER BY published_at DESC
@@ -298,8 +301,9 @@ func (db *PostgreSQL) GetServerByName(ctx context.Context, tx pgx.Tx, serverName
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
 
-	err := db.getExecutor(tx).QueryRow(ctx, query, serverName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON)
+	err := db.getExecutor(tx).QueryRow(ctx, query, serverName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
@@ -314,15 +318,16 @@ func (db *PostgreSQL) GetServerByName(ctx context.Context, tx pgx.Tx, serverName
 	}
 
 	// Build ServerResponse with separated metadata
-	serverResponse := &apiv0.ServerResponse{
+	serverResponse := &models.ServerResponse{
 		Server: serverJSON,
-		Meta: apiv0.ResponseMeta{
+		Meta: models.ServerResponseMeta{
 			Official: &apiv0.RegistryExtensions{
 				Status:      model.Status(status),
 				PublishedAt: publishedAt,
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}
 
@@ -330,7 +335,7 @@ func (db *PostgreSQL) GetServerByName(ctx context.Context, tx pgx.Tx, serverName
 }
 
 // GetServerByNameAndVersion retrieves a specific version of a server by server name and version
-func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName string, version string) (*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName string, version string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -343,7 +348,8 @@ func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, 
 	}
 
 	query := `
-		SELECT server_name, version, status, published_at, updated_at, is_latest, value
+		SELECT server_name, version, status, published_at, updated_at, is_latest, value,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM servers
 		WHERE server_name = $1 AND version = $2
 		ORDER BY published_at DESC
@@ -354,8 +360,9 @@ func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, 
 	var isLatest bool
 	var publishedAt, updatedAt time.Time
 	var valueJSON []byte
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
 
-	err := db.getExecutor(tx).QueryRow(ctx, query, serverName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON)
+	err := db.getExecutor(tx).QueryRow(ctx, query, serverName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
@@ -370,15 +377,16 @@ func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, 
 	}
 
 	// Build ServerResponse with separated metadata
-	serverResponse := &apiv0.ServerResponse{
+	serverResponse := &models.ServerResponse{
 		Server: serverJSON,
-		Meta: apiv0.ResponseMeta{
+		Meta: models.ServerResponseMeta{
 			Official: &apiv0.RegistryExtensions{
 				Status:      model.Status(status),
 				PublishedAt: publishedAt,
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}
 
@@ -386,7 +394,7 @@ func (db *PostgreSQL) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, 
 }
 
 // GetAllVersionsByServerName retrieves all versions of a server by server name
-func (db *PostgreSQL) GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx, serverName string) ([]*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx, serverName string) ([]*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -399,7 +407,8 @@ func (db *PostgreSQL) GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx,
 	}
 
 	query := `
-		SELECT server_name, version, status, published_at, updated_at, is_latest, value
+		SELECT server_name, version, status, published_at, updated_at, is_latest, value,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM servers
 		WHERE server_name = $1
 		ORDER BY published_at DESC
@@ -411,14 +420,15 @@ func (db *PostgreSQL) GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx,
 	}
 	defer rows.Close()
 
-	var results []*apiv0.ServerResponse
+	var results []*models.ServerResponse
 	for rows.Next() {
 		var name, version, status string
 		var isLatest bool
 		var publishedAt, updatedAt time.Time
 		var valueJSON []byte
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
 
-		err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON)
+		err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan server row: %w", err)
 		}
@@ -430,15 +440,16 @@ func (db *PostgreSQL) GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx,
 		}
 
 		// Build ServerResponse with separated metadata
-		serverResponse := &apiv0.ServerResponse{
+		serverResponse := &models.ServerResponse{
 			Server: serverJSON,
-			Meta: apiv0.ResponseMeta{
+			Meta: models.ServerResponseMeta{
 				Official: &apiv0.RegistryExtensions{
 					Status:      model.Status(status),
 					PublishedAt: publishedAt,
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		}
 
@@ -457,7 +468,7 @@ func (db *PostgreSQL) GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx,
 }
 
 // CreateServer inserts a new server version with official metadata
-func (db *PostgreSQL) CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *apiv0.ServerJSON, officialMeta *apiv0.RegistryExtensions) (*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *apiv0.ServerJSON, officialMeta *apiv0.RegistryExtensions, ownership models.OwnershipInput) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -485,9 +496,23 @@ func (db *PostgreSQL) CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *a
 
 	// Insert the new server version using composite primary key
 	insertQuery := `
-		INSERT INTO servers (server_name, version, status, published_at, updated_at, is_latest, value)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO servers (
+			server_name, version, status, published_at, updated_at, is_latest, value,
+			created_by_subject, created_by_display_name, created_by_auth_method
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
+
+	var createdBySubject, createdByDisplayName, createdByAuthMethod any
+	if ownership.Subject != "" {
+		createdBySubject = ownership.Subject
+		if ownership.DisplayName != "" {
+			createdByDisplayName = ownership.DisplayName
+		}
+		if ownership.AuthMethod != "" {
+			createdByAuthMethod = ownership.AuthMethod
+		}
+	}
 
 	_, err = db.getExecutor(tx).Exec(ctx, insertQuery,
 		serverJSON.Name,
@@ -497,6 +522,9 @@ func (db *PostgreSQL) CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *a
 		officialMeta.UpdatedAt,
 		officialMeta.IsLatest,
 		valueJSON,
+		createdBySubject,
+		createdByDisplayName,
+		createdByAuthMethod,
 	)
 
 	if err != nil {
@@ -504,10 +532,11 @@ func (db *PostgreSQL) CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *a
 	}
 
 	// Return the complete ServerResponse
-	serverResponse := &apiv0.ServerResponse{
+	serverResponse := &models.ServerResponse{
 		Server: *serverJSON,
-		Meta: apiv0.ResponseMeta{
-			Official: officialMeta,
+		Meta: models.ServerResponseMeta{
+			Official:  officialMeta,
+			Ownership: ownershipMetaFromInput(ownership),
 		},
 	}
 
@@ -515,15 +544,12 @@ func (db *PostgreSQL) CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *a
 }
 
 // UpdateServer updates an existing server record with new server details
-func (db *PostgreSQL) UpdateServer(ctx context.Context, tx pgx.Tx, serverName, version string, serverJSON *apiv0.ServerJSON) (*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) UpdateServer(ctx context.Context, tx pgx.Tx, serverName, version string, serverJSON *apiv0.ServerJSON) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
 
-	if err := db.authz.Check(ctx, auth.PermissionActionEdit, auth.Resource{
-		Name: serverName,
-		Type: auth.PermissionArtifactTypeServer,
-	}); err != nil {
+	if err := db.checkServerEditPermission(ctx, serverName); err != nil {
 		return nil, err
 	}
 
@@ -564,9 +590,9 @@ func (db *PostgreSQL) UpdateServer(ctx context.Context, tx pgx.Tx, serverName, v
 	}
 
 	// Return the updated ServerResponse
-	serverResponse := &apiv0.ServerResponse{
+	serverResponse := &models.ServerResponse{
 		Server: *serverJSON,
-		Meta: apiv0.ResponseMeta{
+		Meta: models.ServerResponseMeta{
 			Official: &apiv0.RegistryExtensions{
 				Status:      model.Status(status),
 				PublishedAt: publishedAt,
@@ -579,16 +605,28 @@ func (db *PostgreSQL) UpdateServer(ctx context.Context, tx pgx.Tx, serverName, v
 	return serverResponse, nil
 }
 
+func (db *PostgreSQL) checkServerEditPermission(ctx context.Context, serverName string) error {
+	resource := auth.Resource{
+		Name: serverName,
+		Type: auth.PermissionArtifactTypeServer,
+	}
+
+	if err := db.authz.Check(ctx, auth.PermissionActionEdit, resource); err != nil {
+		if !errors.Is(err, auth.ErrForbidden) {
+			return err
+		}
+		return db.authz.Check(ctx, auth.PermissionActionEditOwn, resource)
+	}
+	return nil
+}
+
 // SetServerStatus updates the status of a specific server version
-func (db *PostgreSQL) SetServerStatus(ctx context.Context, tx pgx.Tx, serverName, version string, status string) (*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) SetServerStatus(ctx context.Context, tx pgx.Tx, serverName, version string, status string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
 
-	if err := db.authz.Check(ctx, auth.PermissionActionEdit, auth.Resource{
-		Name: serverName,
-		Type: auth.PermissionArtifactTypeServer,
-	}); err != nil {
+	if err := db.checkServerEditPermission(ctx, serverName); err != nil {
 		return nil, err
 	}
 
@@ -620,9 +658,9 @@ func (db *PostgreSQL) SetServerStatus(ctx context.Context, tx pgx.Tx, serverName
 	}
 
 	// Return the updated ServerResponse
-	serverResponse := &apiv0.ServerResponse{
+	serverResponse := &models.ServerResponse{
 		Server: serverJSON,
-		Meta: apiv0.ResponseMeta{
+		Meta: models.ServerResponseMeta{
 			Official: &apiv0.RegistryExtensions{
 				Status:      model.Status(currentStatus),
 				PublishedAt: publishedAt,
@@ -666,7 +704,7 @@ func (db *PostgreSQL) InTransaction(ctx context.Context, fn func(ctx context.Con
 }
 
 // GetCurrentLatestVersion retrieves the current latest version of a server by server name
-func (db *PostgreSQL) GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, serverName string) (*apiv0.ServerResponse, error) {
+func (db *PostgreSQL) GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, serverName string) (*models.ServerResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -681,7 +719,8 @@ func (db *PostgreSQL) GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, se
 	executor := db.getExecutor(tx)
 
 	query := `
-		SELECT server_name, version, status, value, published_at, updated_at, is_latest
+		SELECT server_name, version, status, value, published_at, updated_at, is_latest,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM servers
 		WHERE server_name = $1 AND is_latest = true
 	`
@@ -692,8 +731,9 @@ func (db *PostgreSQL) GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, se
 	var isLatest bool
 	var publishedAt, updatedAt time.Time
 	var jsonValue []byte
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
 
-	err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest)
+	err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest, &createdBySubject, &createdByDisplayName, &createdByAuthMethod)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
@@ -708,14 +748,15 @@ func (db *PostgreSQL) GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, se
 	}
 
 	// Build ServerResponse with separated metadata
-	serverResponse := &apiv0.ServerResponse{
+	serverResponse := &models.ServerResponse{
 		Server: serverJSON,
-		Meta: apiv0.ResponseMeta{
+		Meta: models.ServerResponseMeta{
 			Official: &apiv0.RegistryExtensions{
 				PublishedAt: publishedAt,
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}
 
@@ -1252,7 +1293,8 @@ func (db *PostgreSQL) ListAgents(ctx context.Context, tx pgx.Tx, filter *databas
 	}
 
 	selectClause := `
-		SELECT agent_name, version, status, published_at, updated_at, is_latest, value`
+		SELECT agent_name, version, status, published_at, updated_at, is_latest, value,
+		       created_by_subject, created_by_display_name, created_by_auth_method`
 	orderClause := "ORDER BY agent_name, version"
 
 	if semanticActive {
@@ -1296,13 +1338,14 @@ func (db *PostgreSQL) ListAgents(ctx context.Context, tx pgx.Tx, filter *databas
 		var publishedAt, updatedAt time.Time
 		var isLatest bool
 		var valueJSON []byte
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
 		var semanticScore sql.NullFloat64
 
 		var scanErr error
 		if semanticActive {
-			scanErr = rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &semanticScore)
+			scanErr = rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod, &semanticScore)
 		} else {
-			scanErr = rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON)
+			scanErr = rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod)
 		}
 
 		if scanErr != nil {
@@ -1323,6 +1366,7 @@ func (db *PostgreSQL) ListAgents(ctx context.Context, tx pgx.Tx, filter *databas
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		}
 		if semanticActive && semanticScore.Valid {
@@ -1358,7 +1402,8 @@ func (db *PostgreSQL) GetAgentByName(ctx context.Context, tx pgx.Tx, agentName s
 	}
 
 	query := `
-		SELECT agent_name, version, status, published_at, updated_at, is_latest, value
+		SELECT agent_name, version, status, published_at, updated_at, is_latest, value,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM agents
 		WHERE agent_name = $1 AND is_latest = true
 		ORDER BY published_at DESC
@@ -1368,7 +1413,8 @@ func (db *PostgreSQL) GetAgentByName(ctx context.Context, tx pgx.Tx, agentName s
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
-	if err := db.getExecutor(tx).QueryRow(ctx, query, agentName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := db.getExecutor(tx).QueryRow(ctx, query, agentName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -1387,6 +1433,7 @@ func (db *PostgreSQL) GetAgentByName(ctx context.Context, tx pgx.Tx, agentName s
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -1405,7 +1452,8 @@ func (db *PostgreSQL) GetAgentByNameAndVersion(ctx context.Context, tx pgx.Tx, a
 	}
 
 	query := `
-		SELECT agent_name, version, status, published_at, updated_at, is_latest, value
+		SELECT agent_name, version, status, published_at, updated_at, is_latest, value,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM agents
 		WHERE agent_name = $1 AND version = $2
 		LIMIT 1
@@ -1414,7 +1462,8 @@ func (db *PostgreSQL) GetAgentByNameAndVersion(ctx context.Context, tx pgx.Tx, a
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
-	if err := db.getExecutor(tx).QueryRow(ctx, query, agentName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := db.getExecutor(tx).QueryRow(ctx, query, agentName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -1433,6 +1482,7 @@ func (db *PostgreSQL) GetAgentByNameAndVersion(ctx context.Context, tx pgx.Tx, a
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -1450,7 +1500,8 @@ func (db *PostgreSQL) GetAllVersionsByAgentName(ctx context.Context, tx pgx.Tx, 
 	}
 
 	query := `
-		SELECT agent_name, version, status, published_at, updated_at, is_latest, value
+		SELECT agent_name, version, status, published_at, updated_at, is_latest, value,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM agents
 		WHERE agent_name = $1
 		ORDER BY published_at DESC
@@ -1466,7 +1517,8 @@ func (db *PostgreSQL) GetAllVersionsByAgentName(ctx context.Context, tx pgx.Tx, 
 		var publishedAt, updatedAt time.Time
 		var isLatest bool
 		var valueJSON []byte
-		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 			return nil, fmt.Errorf("failed to scan agent row: %w", err)
 		}
 		var agentJSON models.AgentJSON
@@ -1482,6 +1534,7 @@ func (db *PostgreSQL) GetAllVersionsByAgentName(ctx context.Context, tx pgx.Tx, 
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		})
 	}
@@ -1494,7 +1547,7 @@ func (db *PostgreSQL) GetAllVersionsByAgentName(ctx context.Context, tx pgx.Tx, 
 	return results, nil
 }
 
-func (db *PostgreSQL) CreateAgent(ctx context.Context, tx pgx.Tx, agentJSON *models.AgentJSON, officialMeta *models.AgentRegistryExtensions) (*models.AgentResponse, error) {
+func (db *PostgreSQL) CreateAgent(ctx context.Context, tx pgx.Tx, agentJSON *models.AgentJSON, officialMeta *models.AgentRegistryExtensions, ownership models.OwnershipInput) (*models.AgentResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -1517,9 +1570,22 @@ func (db *PostgreSQL) CreateAgent(ctx context.Context, tx pgx.Tx, agentJSON *mod
 		return nil, fmt.Errorf("failed to marshal agent JSON: %w", err)
 	}
 	insert := `
-		INSERT INTO agents (agent_name, version, status, published_at, updated_at, is_latest, value)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO agents (
+			agent_name, version, status, published_at, updated_at, is_latest, value,
+			created_by_subject, created_by_display_name, created_by_auth_method
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
+	var createdBySubject, createdByDisplayName, createdByAuthMethod any
+	if ownership.Subject != "" {
+		createdBySubject = ownership.Subject
+		if ownership.DisplayName != "" {
+			createdByDisplayName = ownership.DisplayName
+		}
+		if ownership.AuthMethod != "" {
+			createdByAuthMethod = ownership.AuthMethod
+		}
+	}
 	if _, err := db.getExecutor(tx).Exec(ctx, insert,
 		agentJSON.Name,
 		agentJSON.Version,
@@ -1528,13 +1594,17 @@ func (db *PostgreSQL) CreateAgent(ctx context.Context, tx pgx.Tx, agentJSON *mod
 		officialMeta.UpdatedAt,
 		officialMeta.IsLatest,
 		valueJSON,
+		createdBySubject,
+		createdByDisplayName,
+		createdByAuthMethod,
 	); err != nil {
 		return nil, fmt.Errorf("failed to insert agent: %w", err)
 	}
 	return &models.AgentResponse{
 		Agent: *agentJSON,
 		Meta: models.AgentResponseMeta{
-			Official: officialMeta,
+			Official:  officialMeta,
+			Ownership: ownershipMetaFromInput(ownership),
 		},
 	}, nil
 }
@@ -1648,7 +1718,8 @@ func (db *PostgreSQL) GetCurrentLatestAgentVersion(ctx context.Context, tx pgx.T
 
 	executor := db.getExecutor(tx)
 	query := `
-		SELECT agent_name, version, status, value, published_at, updated_at, is_latest
+		SELECT agent_name, version, status, value, published_at, updated_at, is_latest,
+		       created_by_subject, created_by_display_name, created_by_auth_method
 		FROM agents
 		WHERE agent_name = $1 AND is_latest = true
 	`
@@ -1657,7 +1728,8 @@ func (db *PostgreSQL) GetCurrentLatestAgentVersion(ctx context.Context, tx pgx.T
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var jsonValue []byte
-	if err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -1676,6 +1748,7 @@ func (db *PostgreSQL) GetCurrentLatestAgentVersion(ctx context.Context, tx pgx.T
 				IsLatest:    isLatest,
 				Status:      status,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -1957,7 +2030,8 @@ func (db *PostgreSQL) ListSkills(ctx context.Context, tx pgx.Tx, filter *databas
 	}
 
 	query := fmt.Sprintf(`
-        SELECT skill_name, version, status, published_at, updated_at, is_latest, value
+        SELECT skill_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM skills
         %s
         ORDER BY skill_name, version
@@ -1977,8 +2051,9 @@ func (db *PostgreSQL) ListSkills(ctx context.Context, tx pgx.Tx, filter *databas
 		var publishedAt, updatedAt time.Time
 		var isLatest bool
 		var valueJSON []byte
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
 
-		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 			return nil, "", fmt.Errorf("failed to scan skill row: %w", err)
 		}
 
@@ -1996,6 +2071,7 @@ func (db *PostgreSQL) ListSkills(ctx context.Context, tx pgx.Tx, filter *databas
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		}
 		results = append(results, resp)
@@ -2025,7 +2101,8 @@ func (db *PostgreSQL) GetSkillByName(ctx context.Context, tx pgx.Tx, skillName s
 	}
 
 	query := `
-        SELECT skill_name, version, status, published_at, updated_at, is_latest, value
+        SELECT skill_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM skills
         WHERE skill_name = $1 AND is_latest = true
         ORDER BY published_at DESC
@@ -2035,7 +2112,8 @@ func (db *PostgreSQL) GetSkillByName(ctx context.Context, tx pgx.Tx, skillName s
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
-	if err := db.getExecutor(tx).QueryRow(ctx, query, skillName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := db.getExecutor(tx).QueryRow(ctx, query, skillName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -2054,6 +2132,7 @@ func (db *PostgreSQL) GetSkillByName(ctx context.Context, tx pgx.Tx, skillName s
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -2071,7 +2150,8 @@ func (db *PostgreSQL) GetSkillByNameAndVersion(ctx context.Context, tx pgx.Tx, s
 	}
 
 	query := `
-        SELECT skill_name, version, status, published_at, updated_at, is_latest, value
+        SELECT skill_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM skills
         WHERE skill_name = $1 AND version = $2
         LIMIT 1
@@ -2080,7 +2160,8 @@ func (db *PostgreSQL) GetSkillByNameAndVersion(ctx context.Context, tx pgx.Tx, s
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
-	if err := db.getExecutor(tx).QueryRow(ctx, query, skillName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := db.getExecutor(tx).QueryRow(ctx, query, skillName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -2099,6 +2180,7 @@ func (db *PostgreSQL) GetSkillByNameAndVersion(ctx context.Context, tx pgx.Tx, s
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -2116,7 +2198,8 @@ func (db *PostgreSQL) GetAllVersionsBySkillName(ctx context.Context, tx pgx.Tx, 
 	}
 
 	query := `
-        SELECT skill_name, version, status, published_at, updated_at, is_latest, value
+        SELECT skill_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM skills
         WHERE skill_name = $1
         ORDER BY published_at DESC
@@ -2132,7 +2215,8 @@ func (db *PostgreSQL) GetAllVersionsBySkillName(ctx context.Context, tx pgx.Tx, 
 		var publishedAt, updatedAt time.Time
 		var isLatest bool
 		var valueJSON []byte
-		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 			return nil, fmt.Errorf("failed to scan skill row: %w", err)
 		}
 		var skillJSON models.SkillJSON
@@ -2148,6 +2232,7 @@ func (db *PostgreSQL) GetAllVersionsBySkillName(ctx context.Context, tx pgx.Tx, 
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		})
 	}
@@ -2160,7 +2245,7 @@ func (db *PostgreSQL) GetAllVersionsBySkillName(ctx context.Context, tx pgx.Tx, 
 	return results, nil
 }
 
-func (db *PostgreSQL) CreateSkill(ctx context.Context, tx pgx.Tx, skillJSON *models.SkillJSON, officialMeta *models.SkillRegistryExtensions) (*models.SkillResponse, error) {
+func (db *PostgreSQL) CreateSkill(ctx context.Context, tx pgx.Tx, skillJSON *models.SkillJSON, officialMeta *models.SkillRegistryExtensions, ownership models.OwnershipInput) (*models.SkillResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -2183,9 +2268,22 @@ func (db *PostgreSQL) CreateSkill(ctx context.Context, tx pgx.Tx, skillJSON *mod
 		return nil, fmt.Errorf("failed to marshal skill JSON: %w", err)
 	}
 	insert := `
-        INSERT INTO skills (skill_name, version, status, published_at, updated_at, is_latest, value)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO skills (
+            skill_name, version, status, published_at, updated_at, is_latest, value,
+            created_by_subject, created_by_display_name, created_by_auth_method
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `
+	var createdBySubject, createdByDisplayName, createdByAuthMethod any
+	if ownership.Subject != "" {
+		createdBySubject = ownership.Subject
+		if ownership.DisplayName != "" {
+			createdByDisplayName = ownership.DisplayName
+		}
+		if ownership.AuthMethod != "" {
+			createdByAuthMethod = ownership.AuthMethod
+		}
+	}
 	if _, err := db.getExecutor(tx).Exec(ctx, insert,
 		skillJSON.Name,
 		skillJSON.Version,
@@ -2194,13 +2292,17 @@ func (db *PostgreSQL) CreateSkill(ctx context.Context, tx pgx.Tx, skillJSON *mod
 		officialMeta.UpdatedAt,
 		officialMeta.IsLatest,
 		valueJSON,
+		createdBySubject,
+		createdByDisplayName,
+		createdByAuthMethod,
 	); err != nil {
 		return nil, fmt.Errorf("failed to insert skill: %w", err)
 	}
 	return &models.SkillResponse{
 		Skill: *skillJSON,
 		Meta: models.SkillResponseMeta{
-			Official: officialMeta,
+			Official:  officialMeta,
+			Ownership: ownershipMetaFromInput(ownership),
 		},
 	}, nil
 }
@@ -2314,7 +2416,8 @@ func (db *PostgreSQL) GetCurrentLatestSkillVersion(ctx context.Context, tx pgx.T
 
 	executor := db.getExecutor(tx)
 	query := `
-        SELECT skill_name, version, status, value, published_at, updated_at, is_latest
+        SELECT skill_name, version, status, value, published_at, updated_at, is_latest,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM skills
         WHERE skill_name = $1 AND is_latest = true
     `
@@ -2323,7 +2426,8 @@ func (db *PostgreSQL) GetCurrentLatestSkillVersion(ctx context.Context, tx pgx.T
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var jsonValue []byte
-	if err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -2342,6 +2446,7 @@ func (db *PostgreSQL) GetCurrentLatestSkillVersion(ctx context.Context, tx pgx.T
 				IsLatest:    isLatest,
 				Status:      status,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -3125,7 +3230,8 @@ func (db *PostgreSQL) ListPrompts(ctx context.Context, tx pgx.Tx, filter *databa
 	}
 
 	query := fmt.Sprintf(`
-        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value
+        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM prompts
         %s
         ORDER BY prompt_name, version
@@ -3145,8 +3251,9 @@ func (db *PostgreSQL) ListPrompts(ctx context.Context, tx pgx.Tx, filter *databa
 		var publishedAt, updatedAt time.Time
 		var isLatest bool
 		var valueJSON []byte
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
 
-		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 			return nil, "", fmt.Errorf("failed to scan prompt row: %w", err)
 		}
 
@@ -3164,6 +3271,7 @@ func (db *PostgreSQL) ListPrompts(ctx context.Context, tx pgx.Tx, filter *databa
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		}
 		results = append(results, resp)
@@ -3193,7 +3301,8 @@ func (db *PostgreSQL) GetPromptByName(ctx context.Context, tx pgx.Tx, promptName
 	}
 
 	query := `
-        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value
+        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM prompts
         WHERE prompt_name = $1 AND is_latest = true
         ORDER BY published_at DESC
@@ -3203,7 +3312,8 @@ func (db *PostgreSQL) GetPromptByName(ctx context.Context, tx pgx.Tx, promptName
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
-	if err := db.getExecutor(tx).QueryRow(ctx, query, promptName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := db.getExecutor(tx).QueryRow(ctx, query, promptName).Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -3222,6 +3332,7 @@ func (db *PostgreSQL) GetPromptByName(ctx context.Context, tx pgx.Tx, promptName
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -3239,7 +3350,8 @@ func (db *PostgreSQL) GetPromptByNameAndVersion(ctx context.Context, tx pgx.Tx, 
 	}
 
 	query := `
-        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value
+        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM prompts
         WHERE prompt_name = $1 AND version = $2
         LIMIT 1
@@ -3248,7 +3360,8 @@ func (db *PostgreSQL) GetPromptByNameAndVersion(ctx context.Context, tx pgx.Tx, 
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var valueJSON []byte
-	if err := db.getExecutor(tx).QueryRow(ctx, query, promptName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := db.getExecutor(tx).QueryRow(ctx, query, promptName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -3267,6 +3380,7 @@ func (db *PostgreSQL) GetPromptByNameAndVersion(ctx context.Context, tx pgx.Tx, 
 				UpdatedAt:   updatedAt,
 				IsLatest:    isLatest,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }
@@ -3284,7 +3398,8 @@ func (db *PostgreSQL) GetAllVersionsByPromptName(ctx context.Context, tx pgx.Tx,
 	}
 
 	query := `
-        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value
+        SELECT prompt_name, version, status, published_at, updated_at, is_latest, value,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM prompts
         WHERE prompt_name = $1
         ORDER BY published_at DESC
@@ -3300,7 +3415,8 @@ func (db *PostgreSQL) GetAllVersionsByPromptName(ctx context.Context, tx pgx.Tx,
 		var publishedAt, updatedAt time.Time
 		var isLatest bool
 		var valueJSON []byte
-		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON); err != nil {
+		var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+		if err := rows.Scan(&name, &version, &status, &publishedAt, &updatedAt, &isLatest, &valueJSON, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 			return nil, fmt.Errorf("failed to scan prompt row: %w", err)
 		}
 		var promptJSON models.PromptJSON
@@ -3316,6 +3432,7 @@ func (db *PostgreSQL) GetAllVersionsByPromptName(ctx context.Context, tx pgx.Tx,
 					UpdatedAt:   updatedAt,
 					IsLatest:    isLatest,
 				},
+				Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 			},
 		})
 	}
@@ -3328,7 +3445,7 @@ func (db *PostgreSQL) GetAllVersionsByPromptName(ctx context.Context, tx pgx.Tx,
 	return results, nil
 }
 
-func (db *PostgreSQL) CreatePrompt(ctx context.Context, tx pgx.Tx, promptJSON *models.PromptJSON, officialMeta *models.PromptRegistryExtensions) (*models.PromptResponse, error) {
+func (db *PostgreSQL) CreatePrompt(ctx context.Context, tx pgx.Tx, promptJSON *models.PromptJSON, officialMeta *models.PromptRegistryExtensions, ownership models.OwnershipInput) (*models.PromptResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -3351,9 +3468,22 @@ func (db *PostgreSQL) CreatePrompt(ctx context.Context, tx pgx.Tx, promptJSON *m
 		return nil, fmt.Errorf("failed to marshal prompt JSON: %w", err)
 	}
 	insert := `
-        INSERT INTO prompts (prompt_name, version, status, published_at, updated_at, is_latest, value)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO prompts (
+            prompt_name, version, status, published_at, updated_at, is_latest, value,
+            created_by_subject, created_by_display_name, created_by_auth_method
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `
+	var createdBySubject, createdByDisplayName, createdByAuthMethod any
+	if ownership.Subject != "" {
+		createdBySubject = ownership.Subject
+		if ownership.DisplayName != "" {
+			createdByDisplayName = ownership.DisplayName
+		}
+		if ownership.AuthMethod != "" {
+			createdByAuthMethod = ownership.AuthMethod
+		}
+	}
 	if _, err := db.getExecutor(tx).Exec(ctx, insert,
 		promptJSON.Name,
 		promptJSON.Version,
@@ -3362,13 +3492,17 @@ func (db *PostgreSQL) CreatePrompt(ctx context.Context, tx pgx.Tx, promptJSON *m
 		officialMeta.UpdatedAt,
 		officialMeta.IsLatest,
 		valueJSON,
+		createdBySubject,
+		createdByDisplayName,
+		createdByAuthMethod,
 	); err != nil {
 		return nil, fmt.Errorf("failed to insert prompt: %w", err)
 	}
 	return &models.PromptResponse{
 		Prompt: *promptJSON,
 		Meta: models.PromptResponseMeta{
-			Official: officialMeta,
+			Official:  officialMeta,
+			Ownership: ownershipMetaFromInput(ownership),
 		},
 	}, nil
 }
@@ -3387,7 +3521,8 @@ func (db *PostgreSQL) GetCurrentLatestPromptVersion(ctx context.Context, tx pgx.
 
 	executor := db.getExecutor(tx)
 	query := `
-        SELECT prompt_name, version, status, value, published_at, updated_at, is_latest
+        SELECT prompt_name, version, status, value, published_at, updated_at, is_latest,
+               created_by_subject, created_by_display_name, created_by_auth_method
         FROM prompts
         WHERE prompt_name = $1 AND is_latest = true
     `
@@ -3396,7 +3531,8 @@ func (db *PostgreSQL) GetCurrentLatestPromptVersion(ctx context.Context, tx pgx.
 	var publishedAt, updatedAt time.Time
 	var isLatest bool
 	var jsonValue []byte
-	if err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest); err != nil {
+	var createdBySubject, createdByDisplayName, createdByAuthMethod sql.NullString
+	if err := row.Scan(&name, &version, &status, &jsonValue, &publishedAt, &updatedAt, &isLatest, &createdBySubject, &createdByDisplayName, &createdByAuthMethod); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, database.ErrNotFound
 		}
@@ -3415,6 +3551,7 @@ func (db *PostgreSQL) GetCurrentLatestPromptVersion(ctx context.Context, tx pgx.
 				IsLatest:    isLatest,
 				Status:      status,
 			},
+			Ownership: ownershipMetaFromColumns(createdBySubject, createdByDisplayName, createdByAuthMethod),
 		},
 	}, nil
 }

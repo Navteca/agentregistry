@@ -1,0 +1,99 @@
+# Local dev Keycloak for exercising OIDC/role-based permissions in the browser.
+#
+# Deliberately has NO PersistentVolumeClaim: Keycloak's embedded dev datastore
+# lives only in the container filesystem, so `kubectl rollout restart` (see
+# `make keycloak-reset`) gives a full, fast reset -- the realm is re-imported
+# from scratch on every pod start from the ConfigMap mounted at
+# /opt/keycloak/data/import.
+#
+# KC_HOSTNAME is fixed to this Service's in-cluster DNS name so the issuer
+# embedded in tokens always matches AGENT_REGISTRY_OIDC_ISSUER, regardless of
+# whether a request actually arrived via that DNS name (the backend pod) or via
+# the NodePort/kind port mapping (the browser, at http://localhost:8888). See
+# https://www.keycloak.org/server/hostname for the reverse-proxy-style
+# decoupling this relies on.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keycloak
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.7
+          args: ["start-dev", "--import-realm"]
+          env:
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              value: "admin"
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              value: "admin"
+            - name: KC_HOSTNAME
+              value: "http://keycloak.agentregistry.local:8080"
+            - name: KC_HOSTNAME_STRICT
+              value: "true"
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9000
+          volumeMounts:
+            - name: realm-import
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+          readinessProbe:
+            # Keycloak 26.x serves /health/* on the management port (9000), not
+            # the main HTTP port (8080).
+            httpGet:
+              path: /health/ready
+              port: 9000
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: realm-import
+          configMap:
+            name: keycloak-realm
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  clusterIP: 10.96.96.198
+  type: NodePort
+  selector:
+    app: keycloak
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      # Fixed so it lines up with the kind extraPortMapping in
+      # scripts/kind/kind-config.yaml (hostPort 8888 -> this NodePort).
+      nodePort: 30880

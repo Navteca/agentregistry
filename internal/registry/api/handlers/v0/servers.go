@@ -19,44 +19,14 @@ import (
 )
 
 const errRecordNotFound = "record not found"
-const semanticMetadataKey = "aregistry.ai/semantic"
 
-// normalizeServerResponse moves semantic metadata into a dedicated response meta
-// field while keeping publisher-provided data untouched.
-func normalizeServerResponse(src *apiv0.ServerResponse) models.ServerResponse {
+// normalizeServerResponse preserves the nil-safe conversion seam used by handlers.
+func normalizeServerResponse(src *models.ServerResponse) models.ServerResponse {
 	if src == nil {
 		return models.ServerResponse{}
 	}
 
-	server := src.Server
-	var semanticScore *float64
-
-	if server.Meta != nil && server.Meta.PublisherProvided != nil { //nolint:nestif
-		if raw, ok := server.Meta.PublisherProvided[semanticMetadataKey]; ok {
-			if m, okm := raw.(map[string]any); okm {
-				if v, okv := m["score"].(float64); okv {
-					semanticScore = &v
-				}
-			}
-			// Remove semantic metadata from publisher-provided to avoid mixing concerns.
-			delete(server.Meta.PublisherProvided, semanticMetadataKey)
-			if len(server.Meta.PublisherProvided) == 0 {
-				server.Meta.PublisherProvided = nil
-			}
-		}
-	}
-
-	meta := models.ServerResponseMeta{
-		Official: src.Meta.Official,
-	}
-	if semanticScore != nil {
-		meta.Semantic = &models.ServerSemanticMeta{Score: *semanticScore}
-	}
-
-	return models.ServerResponse{
-		Server: server,
-		Meta:   meta,
-	}
+	return *src
 }
 
 // ListServersInput represents the input for listing servers
@@ -278,7 +248,7 @@ func RegisterServersEndpoints(api huma.API, pathPrefix string, registry service.
 		}
 
 		// Default behavior: return a single version (wrapped in a list for consistency)
-		var serverResponse *apiv0.ServerResponse
+		var serverResponse *models.ServerResponse
 
 		// Handle "latest" as a special version string
 		if version == "latest" { //nolint:nestif
@@ -300,7 +270,7 @@ func RegisterServersEndpoints(api huma.API, pathPrefix string, registry service.
 				return nil, huma.Error404NotFound("Server not found")
 			}
 			// Find the latest version (should be marked with IsLatest=true)
-			var latestServer *apiv0.ServerResponse
+			var latestServer *models.ServerResponse
 			for _, s := range servers {
 				if s.Meta.Official != nil && s.Meta.Official.IsLatest {
 					latestServer = s

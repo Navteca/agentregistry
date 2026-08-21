@@ -31,8 +31,17 @@ const (
 	PermissionActionRead    PermissionAction = "read"
 	PermissionActionPublish PermissionAction = "publish"
 	PermissionActionEdit    PermissionAction = "edit"
+	PermissionActionEditOwn PermissionAction = "edit_own"
 	PermissionActionDelete  PermissionAction = "delete"
 	PermissionActionDeploy  PermissionAction = "deploy"
+
+	// PermissionActionAdmin is a sentinel action that, only when paired with
+	// ResourcePattern "*", grants an unbounded registry-admin bypass (see
+	// IsRegistryAdmin and GenerateTokenResponse's denylist check). It is never
+	// checked against an individual resource/action by HasPermission in normal
+	// request handling - Check()/IsRegistryAdmin() special-case it before
+	// reaching per-action matching.
+	PermissionActionAdmin PermissionAction = "admin"
 )
 
 type Permission struct {
@@ -44,9 +53,10 @@ type Permission struct {
 type JWTClaims struct {
 	jwt.RegisteredClaims
 	// Authentication method used to obtain this token
-	AuthMethod        Method       `json:"auth_method"`
-	AuthMethodSubject string       `json:"auth_method_sub"`
-	Permissions       []Permission `json:"permissions"`
+	AuthMethod            Method       `json:"auth_method"`
+	AuthMethodSubject     string       `json:"auth_method_sub"`
+	AuthMethodDisplayName string       `json:"auth_method_name,omitempty"`
+	Permissions           []Permission `json:"permissions"`
 }
 
 type TokenResponse struct {
@@ -88,7 +98,7 @@ func (j *JWTManager) GenerateTokenResponse(_ context.Context, claims JWTClaims) 
 	// Check whether they have global permissions (used by admins)
 	hasGlobalPermissions := false
 	for _, perm := range claims.Permissions {
-		if perm.ResourcePattern == "*" {
+		if perm.Action == PermissionActionAdmin && perm.ResourcePattern == "*" {
 			hasGlobalPermissions = true
 			break
 		}
@@ -147,6 +157,9 @@ func (s *jwtSession) Principal() Principal {
 	return Principal{
 		User: User{
 			Permissions: s.claims.Permissions,
+			AuthMethod:  s.claims.AuthMethod,
+			Subject:     s.claims.AuthMethodSubject,
+			DisplayName: s.claims.AuthMethodDisplayName,
 		},
 	}
 }
@@ -195,6 +208,11 @@ func (j *JWTManager) ValidateToken(_ context.Context, tokenString string) (*JWTC
 }
 
 func (j *JWTManager) HasPermission(resource string, action PermissionAction, permissions []Permission) bool {
+	return HasPermission(resource, action, permissions)
+}
+
+// HasPermission reports whether permissions grant action on resource.
+func HasPermission(resource string, action PermissionAction, permissions []Permission) bool {
 	for _, perm := range permissions {
 		if perm.Action == action && isResourceMatch(resource, perm.ResourcePattern) {
 			return true

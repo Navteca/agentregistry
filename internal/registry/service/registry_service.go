@@ -110,7 +110,7 @@ func (s *registryServiceImpl) shouldGenerateEmbeddingsOnPublish() bool {
 }
 
 // ListServers returns registry entries with cursor-based pagination and optional filtering
-func (s *registryServiceImpl) ListServers(ctx context.Context, filter *database.ServerFilter, cursor string, limit int) ([]*apiv0.ServerResponse, string, error) {
+func (s *registryServiceImpl) ListServers(ctx context.Context, filter *database.ServerFilter, cursor string, limit int) ([]*models.ServerResponse, string, error) {
 	// If limit is not set or negative, use a default limit
 	if limit <= 0 {
 		limit = 30
@@ -132,7 +132,7 @@ func (s *registryServiceImpl) ListServers(ctx context.Context, filter *database.
 }
 
 // GetServerByName retrieves the latest version of a server by its server name
-func (s *registryServiceImpl) GetServerByName(ctx context.Context, serverName string) (*apiv0.ServerResponse, error) {
+func (s *registryServiceImpl) GetServerByName(ctx context.Context, serverName string) (*models.ServerResponse, error) {
 	serverRecord, err := s.db.GetServerByName(ctx, nil, serverName)
 	if err != nil {
 		return nil, err
@@ -142,7 +142,7 @@ func (s *registryServiceImpl) GetServerByName(ctx context.Context, serverName st
 }
 
 // GetServerByNameAndVersion retrieves a specific version of a server by server name and version
-func (s *registryServiceImpl) GetServerByNameAndVersion(ctx context.Context, serverName string, version string) (*apiv0.ServerResponse, error) {
+func (s *registryServiceImpl) GetServerByNameAndVersion(ctx context.Context, serverName string, version string) (*models.ServerResponse, error) {
 	serverRecord, err := s.db.GetServerByNameAndVersion(ctx, nil, serverName, version)
 	if err != nil {
 		return nil, err
@@ -152,7 +152,7 @@ func (s *registryServiceImpl) GetServerByNameAndVersion(ctx context.Context, ser
 }
 
 // GetAllVersionsByServerName retrieves all versions of a server by server name
-func (s *registryServiceImpl) GetAllVersionsByServerName(ctx context.Context, serverName string) ([]*apiv0.ServerResponse, error) {
+func (s *registryServiceImpl) GetAllVersionsByServerName(ctx context.Context, serverName string) ([]*models.ServerResponse, error) {
 	serverRecords, err := s.db.GetAllVersionsByServerName(ctx, nil, serverName)
 	if err != nil {
 		return nil, err
@@ -162,15 +162,17 @@ func (s *registryServiceImpl) GetAllVersionsByServerName(ctx context.Context, se
 }
 
 // CreateServer creates a new server version
-func (s *registryServiceImpl) CreateServer(ctx context.Context, req *apiv0.ServerJSON) (*apiv0.ServerResponse, error) {
+func (s *registryServiceImpl) CreateServer(ctx context.Context, req *apiv0.ServerJSON) (*models.ServerResponse, error) {
+	ownership := resolveOwnership(ctx)
+
 	// Wrap the entire operation in a transaction
-	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*apiv0.ServerResponse, error) {
-		return s.createServerInTransaction(ctx, tx, req)
+	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*models.ServerResponse, error) {
+		return s.createServerInTransaction(ctx, tx, req, ownership)
 	})
 }
 
 // createServerInTransaction contains the actual CreateServer logic within a transaction
-func (s *registryServiceImpl) createServerInTransaction(ctx context.Context, tx pgx.Tx, req *apiv0.ServerJSON) (*apiv0.ServerResponse, error) {
+func (s *registryServiceImpl) createServerInTransaction(ctx context.Context, tx pgx.Tx, req *apiv0.ServerJSON, ownership models.OwnershipInput) (*models.ServerResponse, error) {
 	// Validate the request
 	if err := validators.ValidatePublishRequest(ctx, *req, s.cfg); err != nil {
 		return nil, err
@@ -244,7 +246,7 @@ func (s *registryServiceImpl) createServerInTransaction(ctx context.Context, tx 
 	}
 
 	// Insert new server version
-	result, err := s.db.CreateServer(ctx, tx, &serverJSON, officialMeta)
+	result, err := s.db.CreateServer(ctx, tx, &serverJSON, officialMeta, ownership)
 	if err != nil {
 		return nil, err
 	}
@@ -327,12 +329,14 @@ func (s *registryServiceImpl) GetAllVersionsBySkillName(ctx context.Context, ski
 
 // CreateSkill creates a new skill version
 func (s *registryServiceImpl) CreateSkill(ctx context.Context, req *models.SkillJSON) (*models.SkillResponse, error) {
+	ownership := resolveOwnership(ctx)
+
 	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*models.SkillResponse, error) {
-		return s.createSkillInTransaction(ctx, tx, req)
+		return s.createSkillInTransaction(ctx, tx, req, ownership)
 	})
 }
 
-func (s *registryServiceImpl) createSkillInTransaction(ctx context.Context, tx pgx.Tx, req *models.SkillJSON) (*models.SkillResponse, error) {
+func (s *registryServiceImpl) createSkillInTransaction(ctx context.Context, tx pgx.Tx, req *models.SkillJSON, ownership models.OwnershipInput) (*models.SkillResponse, error) {
 	// Basic validation: ensure required fields present
 	if req == nil || req.Name == "" || req.Version == "" {
 		return nil, fmt.Errorf("invalid skill payload: name and version are required")
@@ -404,7 +408,7 @@ func (s *registryServiceImpl) createSkillInTransaction(ctx context.Context, tx p
 		IsLatest:    isNewLatest,
 	}
 
-	return s.db.CreateSkill(ctx, tx, &skillJSON, officialMeta)
+	return s.db.CreateSkill(ctx, tx, &skillJSON, officialMeta, ownership)
 }
 
 // DeleteSkill permanently removes a skill version from the registry
@@ -415,18 +419,22 @@ func (s *registryServiceImpl) DeleteSkill(ctx context.Context, skillName, versio
 }
 
 // UpdateServer updates an existing server with new details
-func (s *registryServiceImpl) UpdateServer(ctx context.Context, serverName, version string, req *apiv0.ServerJSON, newStatus *string) (*apiv0.ServerResponse, error) {
+func (s *registryServiceImpl) UpdateServer(ctx context.Context, serverName, version string, req *apiv0.ServerJSON, newStatus *string) (*models.ServerResponse, error) {
 	// Wrap the entire operation in a transaction
-	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*apiv0.ServerResponse, error) {
+	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*models.ServerResponse, error) {
 		return s.updateServerInTransaction(ctx, tx, serverName, version, req, newStatus)
 	})
 }
 
 // updateServerInTransaction contains the actual UpdateServer logic within a transaction
-func (s *registryServiceImpl) updateServerInTransaction(ctx context.Context, tx pgx.Tx, serverName, version string, req *apiv0.ServerJSON, newStatus *string) (*apiv0.ServerResponse, error) {
+func (s *registryServiceImpl) updateServerInTransaction(ctx context.Context, tx pgx.Tx, serverName, version string, req *apiv0.ServerJSON, newStatus *string) (*models.ServerResponse, error) {
 	// Get current server to check if it's deleted or being deleted
 	currentServer, err := s.db.GetServerByNameAndVersion(ctx, tx, serverName, version)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := authorizeServerUpdate(ctx, serverName, currentServer); err != nil {
 		return nil, err
 	}
 
@@ -466,6 +474,53 @@ func (s *registryServiceImpl) updateServerInTransaction(ctx context.Context, tx 
 	}
 
 	return updatedServerResponse, nil
+}
+
+func authorizeServerUpdate(ctx context.Context, serverName string, currentServer *models.ServerResponse) error {
+	session, ok := auth.AuthSessionFrom(ctx)
+	if !ok || session == nil {
+		return auth.ErrUnauthenticated
+	}
+	if auth.IsSystemSession(session) {
+		return nil
+	}
+
+	user := session.Principal().User
+	if hasEffectivePermission(user, serverName, auth.PermissionActionEdit) {
+		return nil
+	}
+	if !hasEffectivePermission(user, serverName, auth.PermissionActionEditOwn) {
+		return auth.ErrForbidden
+	}
+
+	ownership := currentServer.Meta.Ownership
+	if ownership == nil || ownership.Subject == "" || user.Subject == "" || ownership.Subject != user.Subject {
+		return auth.ErrForbidden
+	}
+	if isArtifactReviewed(currentServer) {
+		return auth.ErrForbidden
+	}
+	return nil
+}
+
+func hasEffectivePermission(user auth.User, resource string, action auth.PermissionAction) bool {
+	if auth.HasPermission(resource, action, user.Permissions) {
+		return true
+	}
+	for _, permission := range user.Permissions {
+		// The admin sentinel clears authz.Check through IsRegistryAdmin, but
+		// HasPermission deliberately does not match it. Without this fallback,
+		// sentinel-only sessions would incorrectly enter owner narrowing.
+		if permission.Action == auth.PermissionActionAdmin && permission.ResourcePattern == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+func isArtifactReviewed(_ *models.ServerResponse) bool {
+	// AR-2 insertion point: replace this stub with the review-state predicate.
+	return false
 }
 
 func (s *registryServiceImpl) StoreServerReadme(ctx context.Context, serverName, version string, content []byte, contentType string) error {
@@ -573,12 +628,14 @@ func (s *registryServiceImpl) GetAllVersionsByAgentName(ctx context.Context, age
 
 // CreateAgent creates a new agent version
 func (s *registryServiceImpl) CreateAgent(ctx context.Context, req *models.AgentJSON) (*models.AgentResponse, error) {
+	ownership := resolveOwnership(ctx)
+
 	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*models.AgentResponse, error) {
-		return s.createAgentInTransaction(ctx, tx, req)
+		return s.createAgentInTransaction(ctx, tx, req, ownership)
 	})
 }
 
-func (s *registryServiceImpl) createAgentInTransaction(ctx context.Context, tx pgx.Tx, req *models.AgentJSON) (*models.AgentResponse, error) {
+func (s *registryServiceImpl) createAgentInTransaction(ctx context.Context, tx pgx.Tx, req *models.AgentJSON, ownership models.OwnershipInput) (*models.AgentResponse, error) {
 	// Basic validation: ensure required fields present
 	if req == nil || req.Name == "" || req.Version == "" {
 		return nil, fmt.Errorf("invalid agent payload: name and version are required")
@@ -650,7 +707,7 @@ func (s *registryServiceImpl) createAgentInTransaction(ctx context.Context, tx p
 		IsLatest:    isNewLatest,
 	}
 
-	result, err := s.db.CreateAgent(ctx, tx, &agentJSON, officialMeta)
+	result, err := s.db.CreateAgent(ctx, tx, &agentJSON, officialMeta, ownership)
 	if err != nil {
 		return nil, err
 	}
@@ -1468,12 +1525,14 @@ func (s *registryServiceImpl) GetAllVersionsByPromptName(ctx context.Context, pr
 
 // CreatePrompt creates a new prompt version
 func (s *registryServiceImpl) CreatePrompt(ctx context.Context, req *models.PromptJSON) (*models.PromptResponse, error) {
+	ownership := resolveOwnership(ctx)
+
 	return database.InTransactionT(ctx, s.db, func(ctx context.Context, tx pgx.Tx) (*models.PromptResponse, error) {
-		return s.createPromptInTransaction(ctx, tx, req)
+		return s.createPromptInTransaction(ctx, tx, req, ownership)
 	})
 }
 
-func (s *registryServiceImpl) createPromptInTransaction(ctx context.Context, tx pgx.Tx, req *models.PromptJSON) (*models.PromptResponse, error) {
+func (s *registryServiceImpl) createPromptInTransaction(ctx context.Context, tx pgx.Tx, req *models.PromptJSON, ownership models.OwnershipInput) (*models.PromptResponse, error) {
 	if req == nil || req.Name == "" || req.Version == "" {
 		return nil, fmt.Errorf("invalid prompt payload: name and version are required")
 	}
@@ -1526,7 +1585,7 @@ func (s *registryServiceImpl) createPromptInTransaction(ctx context.Context, tx 
 		IsLatest:    isNewLatest,
 	}
 
-	return s.db.CreatePrompt(ctx, tx, &promptJSON, officialMeta)
+	return s.db.CreatePrompt(ctx, tx, &promptJSON, officialMeta, ownership)
 }
 
 // DeletePrompt permanently removes a prompt version from the registry

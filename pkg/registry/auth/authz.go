@@ -21,6 +21,9 @@ type AuthzProvider interface {
 	// Used for single-resource operations (get, update, delete).
 	Check(ctx context.Context, s Session, verb PermissionAction, resource Resource) error
 	// IsRegistryAdmin checks if the session has global permissions (i.e. "*") for the registry
+	// specifically via the PermissionActionAdmin sentinel action - a bare "*"
+	// pattern on any other action (read, publish, edit, delete, deploy) grants
+	// only that action across all resources, not a bypass.
 	// Also used by internal operations and database queries that need to bypass filtering.
 	IsRegistryAdmin(ctx context.Context, s Session) bool
 }
@@ -95,7 +98,7 @@ func (o *PublicAuthzProvider) IsRegistryAdmin(ctx context.Context, s Session) bo
 	}
 
 	for _, permission := range s.Principal().User.Permissions {
-		if permission.ResourcePattern == "*" {
+		if permission.Action == PermissionActionAdmin && permission.ResourcePattern == "*" {
 			return true
 		}
 	}

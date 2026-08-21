@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { ServerResponse } from "@/lib/admin-api"
+import { getSafeHttpUrl } from "@/lib/safe-url"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -59,6 +60,8 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
 
   const { server: serverData, _meta } = selectedVersion
   const official = _meta?.['io.modelcontextprotocol.registry/official']
+  const ownership = _meta?.['aregistry.ai/ownership']
+  const registeredBy = ownership?.displayName || ownership?.subject
 
   const publisherProvided = serverData._meta?.['io.modelcontextprotocol.registry/publisher-provided'] as Record<string, unknown> | undefined
   const publisherMetadata = publisherProvided?.['aregistry.ai/metadata'] as Record<string, any> | undefined
@@ -73,6 +76,9 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
   const mcpScoring = publisherMetadata?.mcp_scoring as Record<string, any> | undefined
 
   const icon = serverData.icons?.[0]
+  const safeIconSrc = getSafeHttpUrl(icon?.src)
+  const safeWebsiteUrl = getSafeHttpUrl(serverData.websiteUrl)
+  const safeRepositoryUrl = getSafeHttpUrl(serverData.repository?.url)
 
   const handleVersionChange = (version: string) => {
     const newVersion = allVersions.find(v => v.server.version === version)
@@ -108,8 +114,8 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-start gap-4">
-          {icon && (
-            <img src={icon.src} alt="" className="w-12 h-12 rounded flex-shrink-0" />
+          {safeIconSrc && (
+            <img src={safeIconSrc} alt="" className="w-12 h-12 rounded flex-shrink-0" />
           )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
@@ -170,17 +176,34 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
               {formatDate(official.publishedAt)}
             </span>
           )}
+          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded text-sm">
+            <span className="text-muted-foreground">Registered by</span>
+            {registeredBy || <span className="text-muted-foreground">Unknown</span>}
+          </span>
+          {official?.updatedAt && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded text-sm">
+              <span className="text-muted-foreground">Last modified</span>
+              {formatDate(official.updatedAt)}
+            </span>
+          )}
           {serverData.websiteUrl && (
-            <a
-              href={serverData.websiteUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded text-sm hover:bg-muted/80 transition-colors text-primary"
-            >
-              <Globe className="h-3 w-3" />
-              Website
-              <ExternalLink className="h-2.5 w-2.5" />
-            </a>
+            safeWebsiteUrl ? (
+              <a
+                href={safeWebsiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded text-sm hover:bg-muted/80 transition-colors text-primary"
+              >
+                <Globe className="h-3 w-3" />
+                Website
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            ) : (
+              <span className="flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded text-sm">
+                <Globe className="h-3 w-3" />
+                {serverData.websiteUrl}
+              </span>
+            )
           )}
         </div>
 
@@ -216,14 +239,18 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
                   )}
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">URL</span>
-                    <a
-                      href={serverData.repository.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary hover:underline flex items-center gap-1"
-                    >
-                      {serverData.repository.url} <ExternalLink className="h-3 w-3" />
-                    </a>
+                    {safeRepositoryUrl ? (
+                      <a
+                        href={safeRepositoryUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline flex items-center gap-1"
+                      >
+                        {serverData.repository.url} <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      <span className="text-sm break-all">{serverData.repository.url}</span>
+                    )}
                   </div>
                 </div>
               </section>
@@ -302,15 +329,19 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
                   )}
                 </div>
                 {serverData.repository?.url && (
-                  <a
-                    href={serverData.repository.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-xs text-primary hover:underline mt-3"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    View Repository
-                  </a>
+                  safeRepositoryUrl ? (
+                    <a
+                      href={safeRepositoryUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-primary hover:underline mt-3"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      View Repository
+                    </a>
+                  ) : (
+                    <span className="text-xs break-all">{serverData.repository.url}</span>
+                  )
                 )}
               </section>
             )}
@@ -583,30 +614,37 @@ export function ServerDetail({ server, onServerCopied }: ServerDetailProps) {
           <TabsContent value="remotes" className="space-y-3">
             {serverData.remotes && serverData.remotes.length > 0 ? (
               <div className="space-y-3">
-                {serverData.remotes.map((remote, i) => (
-                  <div key={i} className="p-4 rounded-lg border">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Server className="h-4 w-4 text-primary" />
-                        <h4 className="text-sm font-semibold">Remote {i + 1}</h4>
+                {serverData.remotes.map((remote, i) => {
+                  const safeRemoteUrl = getSafeHttpUrl(remote.url)
+                  return (
+                    <div key={i} className="p-4 rounded-lg border">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Server className="h-4 w-4 text-primary" />
+                          <h4 className="text-sm font-semibold">Remote {i + 1}</h4>
+                        </div>
+                        <Badge variant="outline" className="text-xs">{remote.type}</Badge>
                       </div>
-                      <Badge variant="outline" className="text-xs">{remote.type}</Badge>
+                      {remote.url && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Link className="h-3.5 w-3.5 text-muted-foreground" />
+                          {safeRemoteUrl ? (
+                            <a
+                              href={safeRemoteUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline break-all text-xs"
+                            >
+                              {remote.url}
+                            </a>
+                          ) : (
+                            <span className="break-all text-xs">{remote.url}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {remote.url && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Link className="h-3.5 w-3.5 text-muted-foreground" />
-                        <a
-                          href={remote.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline break-all text-xs"
-                        >
-                          {remote.url}
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <p className="text-center text-sm text-muted-foreground py-8">No remotes defined</p>

@@ -48,6 +48,31 @@ type Config struct {
 	OIDCDeletePerms  string `env:"OIDC_DELETE_PERMISSIONS" envDefault:""`
 	OIDCDeployPerms  string `env:"OIDC_DEPLOY_PERMISSIONS" envDefault:""`
 
+	// OIDC Role Mapping (Optional)
+	// When OIDCRoleClaimPath is empty, role-based permissions are disabled and
+	// callers fall through to the static OIDC_*_PERMISSIONS bundle above.
+	//
+	// OIDCRoleClaimPath is a dotted path (e.g. "realm_access.roles") locating
+	// the external role list within the OIDC claims.
+	OIDCRoleClaimPath string `env:"OIDC_ROLE_CLAIM_PATH" envDefault:""`
+	// OIDCDisplayNameClaimPath is a dotted path (e.g. "name") locating a
+	// human-readable display name within the OIDC claims. Presentation only;
+	// never used for authorization.
+	OIDCDisplayNameClaimPath string `env:"OIDC_DISPLAY_NAME_CLAIM_PATH" envDefault:""`
+	// OIDCRoleMap is a JSON object mapping external role strings to the
+	// internal vocabulary (user, curator, admin), e.g.
+	// {"registry-admin": "admin", "registry-curator": "curator"}.
+	OIDCRoleMap string `env:"OIDC_ROLE_MAP" envDefault:""`
+	// OIDC{User,Curator,Admin}Patterns are comma-separated resource-name
+	// patterns (same glob rules as auth.Permission.ResourcePattern) that the
+	// corresponding internal role's permission bundle is scoped to. A single
+	// flat list per role, applied across all artifact types, so operators
+	// must include both dotted (server/agent) and flat (skill/prompt) name
+	// prefixes where relevant, e.g. "io.example.*,example-*".
+	OIDCUserPatterns    string `env:"OIDC_USER_PATTERNS" envDefault:""`
+	OIDCCuratorPatterns string `env:"OIDC_CURATOR_PATTERNS" envDefault:""`
+	OIDCAdminPatterns   string `env:"OIDC_ADMIN_PATTERNS" envDefault:""`
+
 	// Platform mode: "docker" or "kubernetes". Controls which deployment
 	// provider IDs are available in the UI. Defaults to "kubernetes" so
 	// Helm/K8s deployments work without extra config; docker-compose.yml

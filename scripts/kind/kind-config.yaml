@@ -43,8 +43,15 @@ kubeadmConfigPatches:
 # this is the default configuration for nodes
 nodes:
   - role: control-plane
-# Example of port mappings for the control-plane node
-#    extraPortMappings:
+    # Exposes the local dev Keycloak deployment (scripts/kind/keycloak/) on the
+    # host so the browser can reach it directly at http://localhost:8888
+    # without a live `kubectl port-forward` process or an /etc/hosts entry.
+    # Port mappings are fixed at cluster creation time -- changing this requires
+    # deleting and recreating the kind cluster (`make delete-kind-cluster`).
+    extraPortMappings:
+      - containerPort: 30880
+        hostPort: 8888
+# Example of additional port mappings for the control-plane node
 #      - containerPort: 30884
 #        hostPort: 30884
 #      - containerPort: 30885

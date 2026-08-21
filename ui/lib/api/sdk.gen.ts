@@ -329,7 +329,7 @@ export const getServerVersionV0 = <ThrowOnError extends boolean = false>(options
 /**
  * Edit MCP server
  *
- * Update a specific version of an existing MCP server (admin only).
+ * Update a specific version of an existing MCP server.
  */
 export const editServerV0 = <ThrowOnError extends boolean = false>(options: Options<EditServerV0Data, ThrowOnError>) => (options.client ?? client).put<EditServerV0Responses, EditServerV0Errors, ThrowOnError>({
     url: '/v0/servers/{serverName}/versions/{version}',

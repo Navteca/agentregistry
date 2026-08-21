@@ -98,6 +98,10 @@ spec:
                 echo "waiting for postgres..."; sleep 2
               done
       {{- end }}
+      {{- with .Values.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: agentregistry
           image: {{ include "agentregistry.image" . }}

@@ -28,6 +28,10 @@ const mockSkill: SkillResponse = {
       status: "active",
       isLatest: true,
     },
+    "aregistry.ai/ownership": {
+      displayName: "Acme Registry",
+      subject: "acme-subject",
+    },
   },
 }
 

@@ -44,3 +44,32 @@ func TestNewConfig_RuntimeDirRespectsEnvOverride(t *testing.T) {
 		t.Fatalf("RuntimeDir should be %q when env var is set, got %q", custom, cfg.RuntimeDir)
 	}
 }
+
+func TestNewConfig_OIDCRolePatternsDefaultToEmpty(t *testing.T) {
+	for _, key := range []string{
+		"AGENT_REGISTRY_OIDC_ROLE_CLAIM_PATH",
+		"AGENT_REGISTRY_OIDC_DISPLAY_NAME_CLAIM_PATH",
+		"AGENT_REGISTRY_OIDC_ROLE_MAP",
+		"AGENT_REGISTRY_OIDC_USER_PATTERNS",
+		"AGENT_REGISTRY_OIDC_CURATOR_PATTERNS",
+		"AGENT_REGISTRY_OIDC_ADMIN_PATTERNS",
+	} {
+		os.Unsetenv(key)
+	}
+
+	cfg := NewConfig()
+
+	if cfg.OIDCRoleClaimPath != "" {
+		t.Fatalf("OIDCRoleClaimPath should default to empty (role mapping disabled), got %q", cfg.OIDCRoleClaimPath)
+	}
+	if cfg.OIDCDisplayNameClaimPath != "" {
+		t.Fatalf("OIDCDisplayNameClaimPath should default to empty, got %q", cfg.OIDCDisplayNameClaimPath)
+	}
+	if cfg.OIDCRoleMap != "" {
+		t.Fatalf("OIDCRoleMap should default to empty, got %q", cfg.OIDCRoleMap)
+	}
+	if cfg.OIDCUserPatterns != "" || cfg.OIDCCuratorPatterns != "" || cfg.OIDCAdminPatterns != "" {
+		t.Fatalf("OIDC role pattern lists should default to empty, got user=%q curator=%q admin=%q",
+			cfg.OIDCUserPatterns, cfg.OIDCCuratorPatterns, cfg.OIDCAdminPatterns)
+	}
+}

@@ -13,6 +13,18 @@ BASE_IMAGE_REGISTRY ?= ghcr.io
 DOCKER_REPO ?= agentregistry-dev/agentregistry
 DOCKER_BUILDER ?= docker buildx
 DOCKER_BUILD_ARGS ?= --push --platform linux/$(LOCALARCH)
+
+# Podman compatibility: podman build does not support --push in buildx style.
+# When podman is detected, use podman build directly with a separate push step.
+IS_PODMAN := $(shell docker version 2>/dev/null | grep -i podman | head -1)
+ifdef IS_PODMAN
+  DOCKER_BUILDER = podman
+  DOCKER_BUILD_ARGS = --platform linux/$(LOCALARCH)
+endif
+
+# Only skip TLS verification for local/loopback registries used in local dev
+# (e.g. localhost:5001, 127.0.0.1:5001). Never bypass TLS for remote registries.
+PODMAN_TLS_VERIFY_FLAG := $(if $(filter localhost% 127.0.0.1%,$(DOCKER_REGISTRY)),--tls-verify=false,)
 BUILD_DATE ?= $(shell date -u '+%Y-%m-%d')
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD || echo "unknown")
 VERSION ?= $(shell git describe --tags --always 2>/dev/null | grep v || echo "v0.0.0-$(GIT_COMMIT)")
@@ -259,6 +271,7 @@ dev-build: build-ui ## Build quickly for local development
 docker-agentgateway: ## Build the custom agent gateway image
 	@echo "Building custom agent gateway image..."
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) -f docker/agentgateway.Dockerfile -t $(DOCKER_REGISTRY)/$(DOCKER_REPO)/arctl-agentgateway:$(VERSION) .
+	$(if $(IS_PODMAN),podman push $(PODMAN_TLS_VERIFY_FLAG) $(DOCKER_REGISTRY)/$(DOCKER_REPO)/arctl-agentgateway:$(VERSION),)
 	echo "✓ Agent gateway image built successfully";
 
 .PHONY: docker-server
@@ -270,6 +283,7 @@ docker-server: .env ## Build the server Docker image
 		--build-arg AGENT_REGISTRY_KEYCLOAK_REALM="$(AGENT_REGISTRY_KEYCLOAK_REALM)" \
 		--build-arg AGENT_REGISTRY_KEYCLOAK_CLIENT_ID="$(AGENT_REGISTRY_KEYCLOAK_CLIENT_ID)" \
 		.
+	$(if $(IS_PODMAN),podman push $(PODMAN_TLS_VERIFY_FLAG) $(DOCKER_REGISTRY)/$(DOCKER_REPO)/server:$(VERSION),)
 		@echo "✓ Docker image built successfully"
 .PHONY: local-registry
 local-registry: ## Ensure the local registry (kind-registry) is running on port 5001
@@ -367,7 +381,7 @@ endif
 	    --set image.repository=$(DOCKER_REPO) \
 	    --set image.tag=$(VERSION) \
 	    --set config.jwtPrivateKey="$$JWT_KEY" \
-	    --set config.enableAnonymousAuth="true" \
+	    --set config.enableAnonymousAuth="false" \
 	    --set service.type=LoadBalancer \
 	    --set database.postgres.bundled.image.repository=pgvector \
 	    --set database.postgres.bundled.image.name=pgvector \
@@ -411,6 +425,30 @@ install-kagent-controller: ## Deploy kagent controller (minimal, no agents/tools
 	  --set agents.promql-agent.enabled=false \
 	  --wait \
 	  --timeout=5m
+
+KEYCLOAK_NAMESPACE ?= keycloak
+
+# Local dev Keycloak for exercising OIDC role-based permissions in the browser.
+# Not part of setup-kind-cluster/run by default -- opt in when testing OIDC.
+# See scripts/kind/README.md for the full walkthrough (test users, redirect URIs,
+# and how to apply scripts/kind/values-oidc.yaml on top of install-agentregistry).
+.PHONY: install-keycloak
+install-keycloak: ## Deploy local dev Keycloak (pre-imported realm/roles/users) for OIDC testing (run `make create-kind-cluster` first)
+	kubectl --context $(KIND_CLUSTER_CONTEXT) apply -f scripts/kind/keycloak/keycloak.yaml
+	kubectl --context $(KIND_CLUSTER_CONTEXT) -n $(KEYCLOAK_NAMESPACE) create configmap keycloak-realm \
+	  --from-file=agentregistry-realm.json=scripts/kind/keycloak/realm-export.json \
+	  --dry-run=client -o yaml | kubectl --context $(KIND_CLUSTER_CONTEXT) apply -f -
+	kubectl --context $(KIND_CLUSTER_CONTEXT) -n $(KEYCLOAK_NAMESPACE) rollout restart deployment/keycloak
+	kubectl --context $(KIND_CLUSTER_CONTEXT) -n $(KEYCLOAK_NAMESPACE) rollout status deployment/keycloak --timeout=3m
+
+.PHONY: keycloak-reset
+keycloak-reset: ## Reset local dev Keycloak to a fresh realm import (fast: no PVC, just restarts the pod)
+	kubectl --context $(KIND_CLUSTER_CONTEXT) -n $(KEYCLOAK_NAMESPACE) rollout restart deployment/keycloak
+	kubectl --context $(KIND_CLUSTER_CONTEXT) -n $(KEYCLOAK_NAMESPACE) rollout status deployment/keycloak --timeout=3m
+
+.PHONY: delete-keycloak
+delete-keycloak: ## Remove local dev Keycloak from the Kind cluster
+	kubectl --context $(KIND_CLUSTER_CONTEXT) delete namespace $(KEYCLOAK_NAMESPACE) --ignore-not-found
 
 ## Set up a full local K8s dev environment (Kind + AgentRegistry with bundled PostgreSQL + kagent).
 .PHONY: setup-kind-cluster

@@ -77,6 +77,18 @@ config:
   oidcClientID: ""
   # -- JSON array of additional OIDC claims rules
   oidcExtraClaims: ""
+  # -- Dotted OIDC claim path containing external roles
+  oidcRoleClaimPath: ""
+  # -- Dotted OIDC claim path containing the display name
+  oidcDisplayNameClaimPath: ""
+  # -- JSON object mapping external roles to internal roles
+  oidcRoleMap: ""
+  # -- Comma-separated resource patterns for the user role
+  oidcUserPatterns: ""
+  # -- Comma-separated resource patterns for the curator role
+  oidcCuratorPatterns: ""
+  # -- Comma-separated resource patterns for the admin role
+  oidcAdminPatterns: ""
   # -- Comma-separated edit permission patterns granted after OIDC login
   oidcEditPermissions: ""
   # -- Comma-separated publish permission patterns granted after OIDC login
@@ -328,7 +340,7 @@ database:
         # -- Bundled PostgreSQL image name
         name: postgres
         # -- Bundled PostgreSQL image tag
-        tag: "18"
+        tag: "16"
         # -- Bundled PostgreSQL image pull policy
         pullPolicy: IfNotPresent
       # -- DB name, user, and password are hardcoded ("agentregistry") for the bundled instance.

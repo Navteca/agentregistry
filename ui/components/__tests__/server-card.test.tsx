@@ -64,6 +64,73 @@ describe("ServerCard", () => {
     expect(screen.getByText("github")).toBeInTheDocument()
   })
 
+  it("renders the ownership display name instead of the subject", () => {
+    const ownedServer: ServerResponse = {
+      ...mockServer,
+      _meta: {
+        ...mockServer._meta,
+        "aregistry.ai/ownership": {
+          displayName: "Ada Lovelace",
+          subject: "oidc-subject",
+        },
+      },
+    }
+    render(<ServerCard server={ownedServer} />)
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument()
+    expect(screen.queryByText("oidc-subject")).not.toBeInTheDocument()
+  })
+
+  it("falls back to the ownership subject when the display name is empty", () => {
+    const ownedServer: ServerResponse = {
+      ...mockServer,
+      _meta: {
+        ...mockServer._meta,
+        "aregistry.ai/ownership": {
+          displayName: "",
+          subject: "github-user",
+        },
+      },
+    }
+    render(<ServerCard server={ownedServer} />)
+    expect(screen.getByText("github-user")).toBeInTheDocument()
+  })
+
+  it("renders a placeholder when ownership is absent", () => {
+    render(<ServerCard server={mockServer} />)
+    expect(screen.getByText("Unknown")).toBeInTheDocument()
+  })
+
+  it("does not render a last-modified element when updatedAt is absent", () => {
+    const serverWithoutUpdatedAt: ServerResponse = {
+      ...mockServer,
+      _meta: {
+        "io.modelcontextprotocol.registry/official": {
+          publishedAt: "2024-11-01T00:00:00Z",
+          status: "active",
+          isLatest: true,
+        },
+      },
+    }
+    render(<ServerCard server={serverWithoutUpdatedAt} />)
+    expect(screen.queryByText("Last modified")).not.toBeInTheDocument()
+  })
+
+  it("renders HTML in a display name as literal text", () => {
+    const ownedServer: ServerResponse = {
+      ...mockServer,
+      _meta: {
+        ...mockServer._meta,
+        "aregistry.ai/ownership": {
+          displayName: "<script>alert(1)</script>",
+          subject: "oidc-subject",
+        },
+      },
+    }
+    const { container } = render(<ServerCard server={ownedServer} />)
+    expect(screen.getByText("<script>alert(1)</script>")).toBeInTheDocument()
+    expect(container.querySelector("script")).not.toBeInTheDocument()
+  })
+
   it("falls back to name when title is not set", () => {
     const noTitle: ServerResponse = {
       server: { ...mockServer.server, title: undefined },
@@ -184,6 +251,21 @@ describe("ServerCard", () => {
     render(<ServerCard server={minimal} />)
     expect(screen.getByText("Bare minimum.")).toBeInTheDocument()
     expect(screen.getByText("0.0.1")).toBeInTheDocument()
+    expect(screen.getByText("te")).toBeInTheDocument()
+  })
+
+  it("renders initials instead of an image for an unsafe icon URL", () => {
+    const unsafeIconServer: ServerResponse = {
+      ...mockServer,
+      server: {
+        ...mockServer.server,
+        icons: [{ src: "javascript:alert(1)" }],
+      },
+    }
+    const { container } = render(<ServerCard server={unsafeIconServer} />)
+
+    expect(screen.getByText("ac")).toBeInTheDocument()
+    expect(container.querySelector("img")).not.toBeInTheDocument()
   })
 
   it("opens repository and website links without triggering row click", async () => {
@@ -198,6 +280,20 @@ describe("ServerCard", () => {
     expect(openSpy).toHaveBeenNthCalledWith(2, "https://acme.dev/database-server", "_blank")
     expect(onClick).not.toHaveBeenCalled()
     openSpy.mockRestore()
+  })
+
+  it("does not render actions for javascript URLs", () => {
+    const unsafeServer: ServerResponse = {
+      ...mockServer,
+      server: {
+        ...mockServer.server,
+        repository: { url: "javascript:alert(1)", source: "github" },
+        websiteUrl: "javascript:alert(1)",
+      },
+    }
+    render(<ServerCard server={unsafeServer} />)
+    expect(screen.queryByRole("button", { name: "View repository" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Visit website" })).not.toBeInTheDocument()
   })
 
   it("falls back to raw date string when date formatting throws", () => {

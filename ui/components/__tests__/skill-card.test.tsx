@@ -55,6 +55,80 @@ describe("SkillCard", () => {
     expect(screen.getByText("github")).toBeInTheDocument()
   })
 
+  it("renders the ownership display name instead of the subject", () => {
+    const ownedSkill: SkillResponse = {
+      ...mockSkill,
+      _meta: {
+        ...mockSkill._meta,
+        "aregistry.ai/ownership": {
+          displayName: "Ada Lovelace",
+          subject: "oidc-subject",
+        },
+      },
+    }
+    render(<SkillCard skill={ownedSkill} />)
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument()
+    expect(screen.queryByText("oidc-subject")).not.toBeInTheDocument()
+  })
+
+  it("falls back to the ownership subject when the display name is empty", () => {
+    const ownedSkill: SkillResponse = {
+      ...mockSkill,
+      _meta: {
+        ...mockSkill._meta,
+        "aregistry.ai/ownership": {
+          displayName: "",
+          subject: "github-user",
+        },
+      },
+    }
+    render(<SkillCard skill={ownedSkill} />)
+    expect(screen.getByText("github-user")).toBeInTheDocument()
+  })
+
+  it("renders a placeholder when ownership is absent", () => {
+    render(<SkillCard skill={mockSkill} />)
+    expect(screen.getByText("Unknown")).toBeInTheDocument()
+  })
+
+  it("does not render a last-modified element when updatedAt is absent", () => {
+    const skillWithoutUpdatedAt: SkillResponse = {
+      ...mockSkill,
+      _meta: {},
+    }
+    render(<SkillCard skill={skillWithoutUpdatedAt} />)
+    expect(screen.queryByText("Last modified")).not.toBeInTheDocument()
+  })
+
+  it("renders HTML in a display name as literal text", () => {
+    const ownedSkill: SkillResponse = {
+      ...mockSkill,
+      _meta: {
+        ...mockSkill._meta,
+        "aregistry.ai/ownership": {
+          displayName: "<script>alert(1)</script>",
+          subject: "oidc-subject",
+        },
+      },
+    }
+    const { container } = render(<SkillCard skill={ownedSkill} />)
+    expect(screen.getByText("<script>alert(1)</script>")).toBeInTheDocument()
+    expect(container.querySelector("script")).not.toBeInTheDocument()
+  })
+
+  it("does not render actions for javascript URLs", () => {
+    const unsafeSkill: SkillResponse = {
+      ...mockSkill,
+      skill: {
+        ...mockSkill.skill,
+        repository: { url: "javascript:alert(1)", source: "github" },
+        websiteUrl: "javascript:alert(1)",
+      },
+    }
+    render(<SkillCard skill={unsafeSkill} />)
+    expect(screen.queryByRole("button")).not.toBeInTheDocument()
+  })
+
   it("falls back to name when title is not set", () => {
     const noTitle: SkillResponse = {
       skill: { ...mockSkill.skill, title: undefined },

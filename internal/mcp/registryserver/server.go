@@ -13,7 +13,6 @@ import (
 	"github.com/agentregistry-dev/agentregistry/pkg/models"
 	"github.com/agentregistry-dev/agentregistry/pkg/registry/database"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 )
 
 const (
@@ -131,13 +130,13 @@ func addServerTools(server *mcp.Server, registry service.RegistryService) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_servers",
 		Description: "List published MCP servers with optional search and pagination. Set semantic_search=true for natural-language queries (e.g. 'database management tools').",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args listServersArgs) (*mcp.CallToolResult, apiv0.ServerListResponse, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args listServersArgs) (*mcp.CallToolResult, models.ServerListResponse, error) {
 		filter := &database.ServerFilter{}
 
 		if args.UpdatedSince != "" {
 			ts, err := time.Parse(time.RFC3339, args.UpdatedSince)
 			if err != nil {
-				return nil, apiv0.ServerListResponse{}, fmt.Errorf("invalid updated_since: %w", err)
+				return nil, models.ServerListResponse{}, fmt.Errorf("invalid updated_since: %w", err)
 			}
 			filter.UpdatedSince = &ts
 		}
@@ -145,7 +144,7 @@ func addServerTools(server *mcp.Server, registry service.RegistryService) {
 		// Otherwise fall back to substring name matching.
 		if args.Semantic {
 			if args.Search == "" {
-				return nil, apiv0.ServerListResponse{}, fmt.Errorf("semantic_search requires the search parameter")
+				return nil, models.ServerListResponse{}, fmt.Errorf("semantic_search requires the search parameter")
 			}
 			filter.Semantic = &database.SemanticSearchOptions{
 				RawQuery:  args.Search,
@@ -166,12 +165,12 @@ func addServerTools(server *mcp.Server, registry service.RegistryService) {
 		limit := clampLimit(args.Limit)
 		servers, nextCursor, err := registry.ListServers(ctx, filter, args.Cursor, limit)
 		if err != nil {
-			return nil, apiv0.ServerListResponse{}, err
+			return nil, models.ServerListResponse{}, err
 		}
 
-		out := apiv0.ServerListResponse{
-			Servers:  make([]apiv0.ServerResponse, len(servers)),
-			Metadata: apiv0.Metadata{NextCursor: nextCursor, Count: len(servers)},
+		out := models.ServerListResponse{
+			Servers:  make([]models.ServerResponse, len(servers)),
+			Metadata: models.ServerMetadata{NextCursor: nextCursor, Count: len(servers)},
 		}
 		for i, s := range servers {
 			out.Servers[i] = *s
@@ -186,9 +185,9 @@ func addServerTools(server *mcp.Server, registry service.RegistryService) {
 		Name    string `json:"name"`
 		Version string `json:"version,omitempty"`
 		All     bool   `json:"all_versions,omitempty"`
-	}) (*mcp.CallToolResult, apiv0.ServerListResponse, error) {
+	}) (*mcp.CallToolResult, models.ServerListResponse, error) {
 		if args.Name == "" {
-			return nil, apiv0.ServerListResponse{}, fmt.Errorf("name is required")
+			return nil, models.ServerListResponse{}, fmt.Errorf("name is required")
 		}
 		version := args.Version
 		if version == "" {
@@ -198,11 +197,11 @@ func addServerTools(server *mcp.Server, registry service.RegistryService) {
 		if args.All {
 			servers, err := registry.GetAllVersionsByServerName(ctx, args.Name)
 			if err != nil {
-				return nil, apiv0.ServerListResponse{}, err
+				return nil, models.ServerListResponse{}, err
 			}
-			out := apiv0.ServerListResponse{
-				Servers:  make([]apiv0.ServerResponse, len(servers)),
-				Metadata: apiv0.Metadata{Count: len(servers)},
+			out := models.ServerListResponse{
+				Servers:  make([]models.ServerResponse, len(servers)),
+				Metadata: models.ServerMetadata{Count: len(servers)},
 			}
 			for i, s := range servers {
 				out.Servers[i] = *s
@@ -212,12 +211,12 @@ func addServerTools(server *mcp.Server, registry service.RegistryService) {
 
 		serverResp, err := fetchSingleServer(ctx, registry, args.Name, version)
 		if err != nil {
-			return nil, apiv0.ServerListResponse{}, err
+			return nil, models.ServerListResponse{}, err
 		}
 
-		return nil, apiv0.ServerListResponse{
-			Servers:  []apiv0.ServerResponse{*serverResp},
-			Metadata: apiv0.Metadata{Count: 1},
+		return nil, models.ServerListResponse{
+			Servers:  []models.ServerResponse{*serverResp},
+			Metadata: models.ServerMetadata{Count: 1},
 		}, nil
 	})
 
@@ -486,7 +485,7 @@ type ServerReadmePayload struct {
 	FetchedAt   time.Time `json:"fetched_at"`
 }
 
-func fetchSingleServer(ctx context.Context, registry service.RegistryService, name, version string) (*apiv0.ServerResponse, error) {
+func fetchSingleServer(ctx context.Context, registry service.RegistryService, name, version string) (*models.ServerResponse, error) {
 	if version == "latest" {
 		servers, err := registry.GetAllVersionsByServerName(ctx, name)
 		if err != nil {

@@ -386,8 +386,11 @@ func TestJWTManager_BlockedNamespaces(t *testing.T) {
 			AuthMethodSubject: "admin",
 			Permissions: []auth.Permission{
 				{
-					Action:          auth.PermissionActionPublish,
-					ResourcePattern: "*", // global permission should bypass blocking
+					// Only the admin sentinel action bypasses the denylist now;
+					// see "bare wildcard publish permission no longer bypasses
+					// denylist" below for the (changed) non-admin case.
+					Action:          auth.PermissionActionAdmin,
+					ResourcePattern: "*",
 				},
 			},
 		}
@@ -396,4 +399,100 @@ func TestJWTManager_BlockedNamespaces(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEmpty(t, tokenResponse.RegistryToken)
 	})
+
+	t.Run("bare wildcard publish permission no longer bypasses denylist", func(t *testing.T) {
+		// Prior to the action-aware admin predicate, {Action: publish,
+		// ResourcePattern: "*"} tripped the same bare-"*" bypass as true admin
+		// permissions, silently granting unbounded publish rights (and
+		// skipping the denylist) for any action-agnostic wildcard grant. Now
+		// only PermissionActionAdmin + "*" bypasses; a wildcard publish grant
+		// is checked like any other publish permission and is correctly
+		// blocked for a denylisted namespace.
+		originalBlocked := auth.BlockedNamespaces
+		auth.BlockedNamespaces = []string{"io.github.spammer"}
+		defer func() { auth.BlockedNamespaces = originalBlocked }()
+
+		jwtManager := auth.NewJWTManager(cfg)
+
+		claims := auth.JWTClaims{
+			AuthMethod:        auth.MethodNone,
+			AuthMethodSubject: "wildcard-publisher",
+			Permissions: []auth.Permission{
+				{
+					Action:          auth.PermissionActionPublish,
+					ResourcePattern: "*",
+				},
+			},
+		}
+
+		tokenResponse, err := jwtManager.GenerateTokenResponse(ctx, claims)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "your namespace is blocked")
+		assert.Nil(t, tokenResponse)
+	})
+}
+
+func TestJWTManager_PrincipalExposesIdentity(t *testing.T) {
+	testSeed := make([]byte, ed25519.SeedSize)
+	_, err := rand.Read(testSeed)
+	require.NoError(t, err)
+
+	cfg := &config.Config{JWTPrivateKey: hex.EncodeToString(testSeed)}
+	jwtManager := auth.NewJWTManager(cfg)
+	ctx := context.Background()
+
+	resp, err := jwtManager.GenerateTokenResponse(ctx, auth.JWTClaims{
+		AuthMethod:            auth.MethodOIDC,
+		AuthMethodSubject:     "keycloak-sub-123",
+		AuthMethodDisplayName: "Ada Lovelace",
+		Permissions: []auth.Permission{
+			{Action: auth.PermissionActionRead, ResourcePattern: "*"},
+		},
+	})
+	require.NoError(t, err)
+
+	headers := func(name string) string {
+		if name == "Authorization" {
+			return "Bearer " + resp.RegistryToken
+		}
+		return ""
+	}
+
+	session, err := jwtManager.Authenticate(ctx, headers, nil)
+	require.NoError(t, err)
+	require.NotNil(t, session)
+
+	user := session.Principal().User
+	assert.Equal(t, "keycloak-sub-123", user.Subject, "Subject must be surfaced from AuthMethodSubject")
+	assert.Equal(t, "Ada Lovelace", user.DisplayName, "DisplayName must be surfaced from AuthMethodDisplayName")
+}
+
+func TestJWTManager_PrincipalIdentityEmptyWhenAbsent(t *testing.T) {
+	testSeed := make([]byte, ed25519.SeedSize)
+	_, err := rand.Read(testSeed)
+	require.NoError(t, err)
+
+	cfg := &config.Config{JWTPrivateKey: hex.EncodeToString(testSeed)}
+	jwtManager := auth.NewJWTManager(cfg)
+	ctx := context.Background()
+
+	resp, err := jwtManager.GenerateTokenResponse(ctx, auth.JWTClaims{
+		AuthMethod:        auth.MethodOIDC,
+		AuthMethodSubject: "only-sub",
+		Permissions:       []auth.Permission{{Action: auth.PermissionActionRead, ResourcePattern: "*"}},
+	})
+	require.NoError(t, err)
+
+	headers := func(name string) string {
+		if name == "Authorization" {
+			return "Bearer " + resp.RegistryToken
+		}
+		return ""
+	}
+
+	session, err := jwtManager.Authenticate(ctx, headers, nil)
+	require.NoError(t, err)
+	user := session.Principal().User
+	assert.Equal(t, "only-sub", user.Subject)
+	assert.Empty(t, user.DisplayName, "DisplayName defaults to empty when not minted into the token")
 }

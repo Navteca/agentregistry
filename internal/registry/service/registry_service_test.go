@@ -161,13 +161,13 @@ func TestGetServerByName(t *testing.T) {
 		serverName  string
 		expectError bool
 		errorMsg    string
-		checkResult func(*testing.T, *apiv0.ServerResponse)
+		checkResult func(*testing.T, *models.ServerResponse)
 	}{
 		{
 			name:        "get latest version by server name",
 			serverName:  "com.example/test-server",
 			expectError: false,
-			checkResult: func(t *testing.T, result *apiv0.ServerResponse) {
+			checkResult: func(t *testing.T, result *models.ServerResponse) {
 				t.Helper()
 				assert.Equal(t, "2.0.0", result.Server.Version) // Should get latest version
 				assert.Equal(t, "Test server v2", result.Server.Description)
@@ -233,14 +233,14 @@ func TestGetServerByNameAndVersion(t *testing.T) {
 		version     string
 		expectError bool
 		errorMsg    string
-		checkResult func(*testing.T, *apiv0.ServerResponse)
+		checkResult func(*testing.T, *models.ServerResponse)
 	}{
 		{
 			name:        "get specific version 1.0.0",
 			serverName:  serverName,
 			version:     "1.0.0",
 			expectError: false,
-			checkResult: func(t *testing.T, result *apiv0.ServerResponse) {
+			checkResult: func(t *testing.T, result *models.ServerResponse) {
 				t.Helper()
 				assert.Equal(t, "1.0.0", result.Server.Version)
 				assert.Equal(t, "Versioned server v1", result.Server.Description)
@@ -252,7 +252,7 @@ func TestGetServerByNameAndVersion(t *testing.T) {
 			serverName:  serverName,
 			version:     "2.0.0",
 			expectError: false,
-			checkResult: func(t *testing.T, result *apiv0.ServerResponse) {
+			checkResult: func(t *testing.T, result *models.ServerResponse) {
 				t.Helper()
 				assert.Equal(t, "2.0.0", result.Server.Version)
 				assert.Equal(t, "Versioned server v2", result.Server.Description)
@@ -413,13 +413,13 @@ func TestGetAllVersionsByServerName(t *testing.T) {
 		serverName  string
 		expectError bool
 		errorMsg    string
-		checkResult func(*testing.T, []*apiv0.ServerResponse)
+		checkResult func(*testing.T, []*models.ServerResponse)
 	}{
 		{
 			name:        "get all versions of server",
 			serverName:  serverName,
 			expectError: false,
-			checkResult: func(t *testing.T, result []*apiv0.ServerResponse) {
+			checkResult: func(t *testing.T, result []*models.ServerResponse) {
 				t.Helper()
 				assert.Len(t, result, 3)
 
@@ -479,7 +479,7 @@ func TestCreateServerConcurrentVersionsNoRace(t *testing.T) {
 
 	const concurrency = 100
 	serverName := "com.example/test-concurrent"
-	results := make([]*apiv0.ServerResponse, concurrency)
+	results := make([]*models.ServerResponse, concurrency)
 	errors := make([]error, concurrency)
 
 	var wg sync.WaitGroup
@@ -531,17 +531,28 @@ func TestCreateServerConcurrentVersionsNoRace(t *testing.T) {
 func TestUpdateServer(t *testing.T) {
 	ctx := context.Background()
 	testDB := internaldb.NewTestDB(t)
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false}, nil)
+	service := NewRegistryService(testDB, &config.Config{
+		EnableRegistryValidation:       false,
+		ValidateRepositoryReachability: false,
+	}, nil)
+	ctxWithAuth := internaldb.WithTestSession(ctx)
+	// Reachability validation is disabled in this test config; keep this deliberately
+	// non-existent fixture URL so the test never depends on a live repository.
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	serverName := "com.example/update-test-server"
 	version := "1.0.0"
 
 	// Create initial server
-	_, err := service.CreateServer(ctx, &apiv0.ServerJSON{
+	_, err := service.CreateServer(ctxWithAuth, &apiv0.ServerJSON{
 		Schema:      model.CurrentSchemaURL,
 		Name:        serverName,
 		Description: "Original description",
 		Version:     version,
+		Repository:  fixtureRepository,
 		Remotes: []model.Transport{
 			{Type: "streamable-http", URL: "https://original.example.com/mcp"},
 		},
@@ -556,7 +567,7 @@ func TestUpdateServer(t *testing.T) {
 		newStatus     *string
 		expectError   bool
 		errorMsg      string
-		checkResult   func(*testing.T, *apiv0.ServerResponse)
+		checkResult   func(*testing.T, *models.ServerResponse)
 	}{
 		{
 			name:       "successful server update",
@@ -567,12 +578,13 @@ func TestUpdateServer(t *testing.T) {
 				Name:        serverName,
 				Description: "Updated description",
 				Version:     version,
+				Repository:  fixtureRepository,
 				Remotes: []model.Transport{
 					{Type: "streamable-http", URL: "https://updated.example.com/mcp"},
 				},
 			},
 			expectError: false,
-			checkResult: func(t *testing.T, result *apiv0.ServerResponse) {
+			checkResult: func(t *testing.T, result *models.ServerResponse) {
 				t.Helper()
 				assert.Equal(t, "Updated description", result.Server.Description)
 				assert.Len(t, result.Server.Remotes, 1)
@@ -589,10 +601,11 @@ func TestUpdateServer(t *testing.T) {
 				Name:        serverName,
 				Description: "Updated with status change",
 				Version:     version,
+				Repository:  fixtureRepository,
 			},
 			newStatus:   stringPtr(string(model.StatusDeprecated)),
 			expectError: false,
-			checkResult: func(t *testing.T, result *apiv0.ServerResponse) {
+			checkResult: func(t *testing.T, result *models.ServerResponse) {
 				t.Helper()
 				assert.Equal(t, "Updated with status change", result.Server.Description)
 				assert.Equal(t, model.StatusDeprecated, result.Meta.Official.Status)
@@ -607,6 +620,7 @@ func TestUpdateServer(t *testing.T) {
 				Name:        "com.example/non-existent",
 				Description: "Should fail",
 				Version:     "1.0.0",
+				Repository:  fixtureRepository,
 			},
 			expectError: true,
 			errorMsg:    "record not found",
@@ -615,7 +629,6 @@ func TestUpdateServer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctxWithAuth := internaldb.WithTestSession(ctx)
 			result, err := service.UpdateServer(ctxWithAuth, tt.serverName, tt.version, tt.updatedServer, tt.newStatus)
 
 			if tt.expectError {
@@ -639,7 +652,17 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 	ctx := context.Background()
 	testDB := internaldb.NewTestDB(t)
 	// Enable registry validation to test that it gets skipped for deleted servers
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: true}, nil)
+	service := NewRegistryService(testDB, &config.Config{
+		EnableRegistryValidation:       true,
+		ValidateRepositoryReachability: false,
+	}, nil)
+	ctxWithAuth := internaldb.WithTestSession(ctx)
+	// Reachability validation is disabled in this test config; keep this deliberately
+	// non-existent fixture URL so the test never depends on a live repository.
+	fixtureRepository := &model.Repository{
+		URL:    "https://github.com/fixture-owner/fixture-repository",
+		Source: "git",
+	}
 
 	serverName := "com.example/validation-skip-test"
 	version := "1.0.0"
@@ -650,6 +673,7 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 		Name:        serverName,
 		Description: "Server with invalid package for testing validation skip",
 		Version:     version,
+		Repository:  fixtureRepository,
 		Packages: []model.Package{
 			{
 				RegistryType: "npm",
@@ -663,18 +687,17 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 	// Create initial server (validation disabled for creation in this test)
 	originalConfig := service.(*registryServiceImpl).cfg.EnableRegistryValidation
 	service.(*registryServiceImpl).cfg.EnableRegistryValidation = false
-	_, err := service.CreateServer(ctx, invalidServer)
+	_, err := service.CreateServer(ctxWithAuth, invalidServer)
 	require.NoError(t, err, "failed to create server with validation disabled")
 	service.(*registryServiceImpl).cfg.EnableRegistryValidation = originalConfig
 
 	// First, set server to deleted status
-	ctxWithAuth := internaldb.WithTestSession(ctx)
 	deletedStatus := string(model.StatusDeleted)
 	_, err = service.UpdateServer(ctxWithAuth, serverName, version, invalidServer, &deletedStatus)
 	require.NoError(t, err, "should be able to set server to deleted (validation should be skipped)")
 
 	// Verify server is now deleted
-	updatedServer, err := service.GetServerByNameAndVersion(ctx, serverName, version)
+	updatedServer, err := service.GetServerByNameAndVersion(ctxWithAuth, serverName, version)
 	require.NoError(t, err)
 	assert.Equal(t, model.StatusDeleted, updatedServer.Meta.Official.Status)
 
@@ -684,6 +707,7 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 		Name:        serverName,
 		Description: "Updated description for deleted server",
 		Version:     version,
+		Repository:  fixtureRepository,
 		Packages: []model.Package{
 			{
 				RegistryType: "npm",
@@ -707,6 +731,7 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 		Name:        "com.example/being-deleted-test",
 		Description: "Server being deleted",
 		Version:     "1.0.0",
+		Repository:  fixtureRepository,
 		Packages: []model.Package{
 			{
 				RegistryType: "npm",
@@ -719,7 +744,7 @@ func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
 
 	// Create active server (with validation disabled)
 	service.(*registryServiceImpl).cfg.EnableRegistryValidation = false
-	_, err = service.CreateServer(ctx, activeServer)
+	_, err = service.CreateServer(ctxWithAuth, activeServer)
 	require.NoError(t, err)
 	service.(*registryServiceImpl).cfg.EnableRegistryValidation = originalConfig
 
@@ -885,8 +910,8 @@ func TestDeployServer_AlreadyExistsDoesNotAttemptIdentityCleanup(t *testing.T) {
 		getProviderByIDFn: func(_ context.Context, _ pgx.Tx, providerID string) (*models.Provider, error) {
 			return &models.Provider{ID: providerID, Platform: "local"}, nil
 		},
-		getServerByNameAndVersionFn: func(_ context.Context, _ pgx.Tx, serverName, version string) (*apiv0.ServerResponse, error) {
-			return &apiv0.ServerResponse{
+		getServerByNameAndVersionFn: func(_ context.Context, _ pgx.Tx, serverName, version string) (*models.ServerResponse, error) {
+			return &models.ServerResponse{
 				Server: apiv0.ServerJSON{
 					Name:    serverName,
 					Version: version,
@@ -992,8 +1017,8 @@ func TestCreateManagedDeploymentRecord_UsesDeployingStatus(t *testing.T) {
 	var createdRecord *models.Deployment
 
 	mockDB := &deployCreateMockDB{
-		getServerByNameAndVersionFn: func(_ context.Context, _ pgx.Tx, serverName, version string) (*apiv0.ServerResponse, error) {
-			return &apiv0.ServerResponse{
+		getServerByNameAndVersionFn: func(_ context.Context, _ pgx.Tx, serverName, version string) (*models.ServerResponse, error) {
+			return &models.ServerResponse{
 				Server: apiv0.ServerJSON{
 					Name:    serverName,
 					Version: version,
@@ -1084,7 +1109,7 @@ func TestApplyFailedDeploymentAction_UsesSystemContext(t *testing.T) {
 type deployCreateMockDB struct {
 	database.Database
 	getProviderByIDFn           func(ctx context.Context, tx pgx.Tx, providerID string) (*models.Provider, error)
-	getServerByNameAndVersionFn func(ctx context.Context, tx pgx.Tx, serverName, version string) (*apiv0.ServerResponse, error)
+	getServerByNameAndVersionFn func(ctx context.Context, tx pgx.Tx, serverName, version string) (*models.ServerResponse, error)
 	getAgentByNameAndVersionFn  func(ctx context.Context, tx pgx.Tx, agentName, version string) (*models.AgentResponse, error)
 	createDeploymentFn          func(ctx context.Context, tx pgx.Tx, deployment *models.Deployment) error
 	getDeploymentByIDFn         func(ctx context.Context, tx pgx.Tx, id string) (*models.Deployment, error)
@@ -1108,7 +1133,7 @@ func (m *deployCreateMockDB) GetProviderByID(ctx context.Context, tx pgx.Tx, pro
 	return m.getProviderByIDFn(ctx, tx, providerID)
 }
 
-func (m *deployCreateMockDB) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName, version string) (*apiv0.ServerResponse, error) {
+func (m *deployCreateMockDB) GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName, version string) (*models.ServerResponse, error) {
 	return m.getServerByNameAndVersionFn(ctx, tx, serverName, version)
 }
 
@@ -1426,11 +1451,11 @@ func TestCreateDeployment_UsesAdapterResolvedFromProviderPlatform(t *testing.T) 
 					require.Equal(t, tt.providerID, providerID)
 					return &models.Provider{ID: providerID, Platform: tt.platform}, nil
 				},
-				getServerByNameAndVersionFn: func(_ context.Context, _ pgx.Tx, serverName, version string) (*apiv0.ServerResponse, error) {
+				getServerByNameAndVersionFn: func(_ context.Context, _ pgx.Tx, serverName, version string) (*models.ServerResponse, error) {
 					if tt.resourceType != "mcp" {
 						t.Fatalf("unexpected server lookup for resource type %s", tt.resourceType)
 					}
-					return &apiv0.ServerResponse{
+					return &models.ServerResponse{
 						Server: apiv0.ServerJSON{Name: serverName, Version: version},
 					}, nil
 				},

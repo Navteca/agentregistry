@@ -1,6 +1,7 @@
 "use client"
 
 import { AgentResponse } from "@/lib/admin-api"
+import { getSafeHttpUrl } from "@/lib/safe-url"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -25,7 +26,11 @@ interface AgentCardProps {
 export function AgentCard({ agent, onDeploy, showDeploy = false, onClick, versionCount }: AgentCardProps) {
   const { agent: agentData, _meta } = agent
   const official = _meta?.['io.modelcontextprotocol.registry/official']
+  const ownership = _meta?.['aregistry.ai/ownership']
+  const registeredBy = ownership?.displayName || ownership?.subject
   const hasImage = !!agentData.image
+  const repositoryUrl = agentData.repository?.url
+  const safeRepositoryUrl = getSafeHttpUrl(repositoryUrl)
 
   const formatDate = (dateString: string) => {
     try {
@@ -80,6 +85,11 @@ export function AgentCard({ agent, onDeploy, showDeploy = false, onClick, versio
               <span>{formatDate(official.publishedAt)}</span>
             )}
 
+            <span>
+              <span className="text-muted-foreground">Registered by</span>{" "}
+              {registeredBy || <span className="text-muted-foreground">Unknown</span>}
+            </span>
+
             {agentData.modelProvider && (
               <span className="flex items-center gap-1">
                 <Brain className="h-3 w-3" aria-hidden="true" />
@@ -94,17 +104,24 @@ export function AgentCard({ agent, onDeploy, showDeploy = false, onClick, versio
               </span>
             )}
 
-            {agentData.repository?.url && (
-              <a
-                href={agentData.repository.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 hover:text-primary transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Github className="h-3 w-3" aria-hidden="true" />
-                Repo
-              </a>
+            {repositoryUrl && (
+              safeRepositoryUrl ? (
+                <a
+                  href={safeRepositoryUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 hover:text-primary transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Github className="h-3 w-3" aria-hidden="true" />
+                  Repo
+                </a>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <Github className="h-3 w-3" aria-hidden="true" />
+                  Repo
+                </span>
+              )
             )}
           </div>
         </div>

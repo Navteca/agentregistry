@@ -143,7 +143,10 @@ func TestImportService_RegistryPagination(t *testing.T) {
 		// Convert to response format
 		serverValues := make([]apiv0.ServerResponse, len(servers))
 		for i, server := range servers {
-			serverValues[i] = *server
+			serverValues[i] = apiv0.ServerResponse{
+				Server: server.Server,
+				Meta:   apiv0.ResponseMeta{Official: server.Meta.Official},
+			}
 		}
 
 		response := apiv0.ServerListResponse{

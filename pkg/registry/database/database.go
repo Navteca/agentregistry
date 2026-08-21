@@ -112,21 +112,21 @@ type Database interface {
 	// DeleteServer permanently removes a server version from the database
 	DeleteServer(ctx context.Context, tx pgx.Tx, serverName, version string) error
 	// CreateServer inserts a new server version with official metadata
-	CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *apiv0.ServerJSON, officialMeta *apiv0.RegistryExtensions) (*apiv0.ServerResponse, error)
+	CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *apiv0.ServerJSON, officialMeta *apiv0.RegistryExtensions, ownership models.OwnershipInput) (*models.ServerResponse, error)
 	// UpdateServer updates an existing server record
-	UpdateServer(ctx context.Context, tx pgx.Tx, serverName, version string, serverJSON *apiv0.ServerJSON) (*apiv0.ServerResponse, error)
+	UpdateServer(ctx context.Context, tx pgx.Tx, serverName, version string, serverJSON *apiv0.ServerJSON) (*models.ServerResponse, error)
 	// SetServerStatus updates the status of a specific server version
-	SetServerStatus(ctx context.Context, tx pgx.Tx, serverName, version string, status string) (*apiv0.ServerResponse, error)
+	SetServerStatus(ctx context.Context, tx pgx.Tx, serverName, version string, status string) (*models.ServerResponse, error)
 	// ListServers retrieve server entries with optional filtering
-	ListServers(ctx context.Context, tx pgx.Tx, filter *ServerFilter, cursor string, limit int) ([]*apiv0.ServerResponse, string, error)
+	ListServers(ctx context.Context, tx pgx.Tx, filter *ServerFilter, cursor string, limit int) ([]*models.ServerResponse, string, error)
 	// GetServerByName retrieve a single server by its name
-	GetServerByName(ctx context.Context, tx pgx.Tx, serverName string) (*apiv0.ServerResponse, error)
+	GetServerByName(ctx context.Context, tx pgx.Tx, serverName string) (*models.ServerResponse, error)
 	// GetServerByNameAndVersion retrieve specific version of a server by server name and version
-	GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName string, version string) (*apiv0.ServerResponse, error)
+	GetServerByNameAndVersion(ctx context.Context, tx pgx.Tx, serverName string, version string) (*models.ServerResponse, error)
 	// GetAllVersionsByServerName retrieve all versions of a server by server name
-	GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx, serverName string) ([]*apiv0.ServerResponse, error)
+	GetAllVersionsByServerName(ctx context.Context, tx pgx.Tx, serverName string) ([]*models.ServerResponse, error)
 	// GetCurrentLatestVersion retrieve the current latest version of a server by server name
-	GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, serverName string) (*apiv0.ServerResponse, error)
+	GetCurrentLatestVersion(ctx context.Context, tx pgx.Tx, serverName string) (*models.ServerResponse, error)
 	// CountServerVersions count the number of versions for a server
 	CountServerVersions(ctx context.Context, tx pgx.Tx, serverName string) (int, error)
 	// CheckVersionExists check if a specific version exists for a server
@@ -153,7 +153,7 @@ type Database interface {
 
 	// Agents API
 	// CreateAgent inserts a new agent version with official metadata
-	CreateAgent(ctx context.Context, tx pgx.Tx, agentJSON *models.AgentJSON, officialMeta *models.AgentRegistryExtensions) (*models.AgentResponse, error)
+	CreateAgent(ctx context.Context, tx pgx.Tx, agentJSON *models.AgentJSON, officialMeta *models.AgentRegistryExtensions, ownership models.OwnershipInput) (*models.AgentResponse, error)
 	// UpdateAgent updates an existing agent record
 	UpdateAgent(ctx context.Context, tx pgx.Tx, agentName, version string, agentJSON *models.AgentJSON) (*models.AgentResponse, error)
 	// SetAgentStatus updates the status of a specific agent version
@@ -183,7 +183,7 @@ type Database interface {
 
 	// Skills API
 	// CreateSkill inserts a new skill version with official metadata
-	CreateSkill(ctx context.Context, tx pgx.Tx, skillJSON *models.SkillJSON, officialMeta *models.SkillRegistryExtensions) (*models.SkillResponse, error)
+	CreateSkill(ctx context.Context, tx pgx.Tx, skillJSON *models.SkillJSON, officialMeta *models.SkillRegistryExtensions, ownership models.OwnershipInput) (*models.SkillResponse, error)
 	// UpdateSkill updates an existing skill record
 	UpdateSkill(ctx context.Context, tx pgx.Tx, skillName, version string, skillJSON *models.SkillJSON) (*models.SkillResponse, error)
 	// SetSkillStatus updates the status of a specific skill version
@@ -209,7 +209,7 @@ type Database interface {
 
 	// Prompts API
 	// CreatePrompt inserts a new prompt version with official metadata
-	CreatePrompt(ctx context.Context, tx pgx.Tx, promptJSON *models.PromptJSON, officialMeta *models.PromptRegistryExtensions) (*models.PromptResponse, error)
+	CreatePrompt(ctx context.Context, tx pgx.Tx, promptJSON *models.PromptJSON, officialMeta *models.PromptRegistryExtensions, ownership models.OwnershipInput) (*models.PromptResponse, error)
 	// ListPrompts retrieve prompt entries with optional filtering
 	ListPrompts(ctx context.Context, tx pgx.Tx, filter *PromptFilter, cursor string, limit int) ([]*models.PromptResponse, string, error)
 	// GetPromptByName retrieve a single prompt by its name (latest)

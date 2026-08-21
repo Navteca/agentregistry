@@ -1,30 +1,56 @@
-# OIDC settings for local kind development (Keycloak in-cluster).
+# OIDC settings for local kind development, using the Keycloak deployment in
+# scripts/kind/keycloak/ (installed via `make install-keycloak`).
 #
 # Usage:
+#   make install-keycloak
 #   helm upgrade --install agentregistry charts/agentregistry \
 #     --kube-context kind-agentregistry \
 #     --namespace agentregistry \
 #     --reuse-values \
 #     -f scripts/kind/values-oidc.yaml
-
+#
+# keycloakURL (browser-facing) and oidcIssuer (backend-facing) intentionally
+# point at DIFFERENT addresses -- this is expected, not a bug. Keycloak's
+# `hostname` + `hostname-strict=true` (set in scripts/kind/keycloak/keycloak.yaml)
+# fixes the issuer advertised in tokens to the in-cluster Service DNS name
+# regardless of which address a request actually arrived on, so the browser can
+# reach Keycloak via the kind port mapping (keycloak.agentregistry.local:8080) while the backend
+# pod validates tokens against the in-cluster DNS name it can reach directly.
+# See https://www.keycloak.org/server/hostname.
+hostAliases:
+  - ip: "10.96.96.198"
+    hostnames:
+      - "keycloak.agentregistry.local"
 config:
   # make install-agentregistry forces this to true by default; override for OIDC workflows
   enableAnonymousAuth: "false"
-  keycloakURL: "http://keycloak.default.svc.cluster.local:8080"
+  # Browser-facing: reachable via the kind extraPortMapping in kind-config.yaml
+  # (hostPort 8080 -> Keycloak's NodePort 30880). No port-forward or
+  # /etc/hosts entry needed.
+  keycloakURL: "http://keycloak.agentregistry.local:8080"
   keycloakRealm: "agentregistry"
   keycloakClientID: "agentregistry-api"
   oidcEnabled: "true"
-  oidcIssuer: "http://keycloak.default.svc.cluster.local:8080/realms/agentregistry"
+  # Backend-facing: the agentregistry pod reaches Keycloak directly via
+  # in-cluster Service DNS. Must exactly match the `iss` claim Keycloak embeds
+  # in tokens (i.e. must match KC_HOSTNAME in scripts/kind/keycloak/keycloak.yaml).
+  oidcIssuer: "http://keycloak.agentregistry.local:8080/realms/agentregistry"
   oidcClientID: "agentregistry-api"
+
+  oidcRoleClaimPath: "realm_access.roles"
+  oidcDisplayNameClaimPath: "preferred_username"
+  oidcRoleMap: '{"registry-user":"user","registry-curator":"curator","registry-admin":"admin"}'
+  oidcUserPatterns: "*"
+  oidcCuratorPatterns: "*"
+  oidcAdminPatterns: "*"
+  # These are the default permissions for a user with no roles (should be read only basically)
+  oidcReadPermissions: "*"
+  oidcPushPermissions: ""
+  oidcPublishPermissions: ""
+  oidcEditPermissions: ""
+  oidcDeletePermissions: ""
+  oidcDeployPermissions: ""
 
   # Keep empty while validating connectivity. Set a claim rule once mapper is configured.
   # Example: '[{"ar_role":"publisher"}]'
   oidcExtraClaims: ""
-
-  # Replace io.navteca/* with your desired namespace patterns.
-  oidcReadPermissions: "*"
-  oidcPushPermissions: "*"
-  oidcPublishPermissions: "*"
-  oidcEditPermissions: "*"
-  oidcDeletePermissions: "*"
-  oidcDeployPermissions: "*"

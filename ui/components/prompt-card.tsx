@@ -15,6 +15,8 @@ interface PromptCardProps {
 export function PromptCard({ prompt, onClick, versionCount }: PromptCardProps) {
   const { prompt: promptData, _meta } = prompt
   const official = _meta?.['io.modelcontextprotocol.registry/official']
+  const ownership = _meta?.['aregistry.ai/ownership']
+  const registeredBy = ownership?.displayName || ownership?.subject
 
   const formatDate = (dateString: string) => {
     try {
@@ -58,6 +60,11 @@ export function PromptCard({ prompt, onClick, versionCount }: PromptCardProps) {
             {official?.publishedAt && (
               <span>{formatDate(official.publishedAt)}</span>
             )}
+
+            <span>
+              <span className="text-muted-foreground">Registered by</span>{" "}
+              {registeredBy || <span className="text-muted-foreground">Unknown</span>}
+            </span>
           </div>
         </div>
       </div>

@@ -46,6 +46,24 @@ data:
   {{- if .Values.config.oidcExtraClaims }}
   AGENT_REGISTRY_OIDC_EXTRA_CLAIMS: {{ .Values.config.oidcExtraClaims | quote }}
   {{- end }}
+  {{- if .Values.config.oidcRoleClaimPath }}
+  AGENT_REGISTRY_OIDC_ROLE_CLAIM_PATH: {{ .Values.config.oidcRoleClaimPath | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcDisplayNameClaimPath }}
+  AGENT_REGISTRY_OIDC_DISPLAY_NAME_CLAIM_PATH: {{ .Values.config.oidcDisplayNameClaimPath | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcRoleMap }}
+  AGENT_REGISTRY_OIDC_ROLE_MAP: {{ .Values.config.oidcRoleMap | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcUserPatterns }}
+  AGENT_REGISTRY_OIDC_USER_PATTERNS: {{ .Values.config.oidcUserPatterns | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcCuratorPatterns }}
+  AGENT_REGISTRY_OIDC_CURATOR_PATTERNS: {{ .Values.config.oidcCuratorPatterns | quote }}
+  {{- end }}
+  {{- if .Values.config.oidcAdminPatterns }}
+  AGENT_REGISTRY_OIDC_ADMIN_PATTERNS: {{ .Values.config.oidcAdminPatterns | quote }}
+  {{- end }}
   {{- if .Values.config.oidcEditPermissions }}
   AGENT_REGISTRY_OIDC_EDIT_PERMISSIONS: {{ .Values.config.oidcEditPermissions | quote }}
   {{- end }}

@@ -29,8 +29,10 @@ func (s *testSession) Principal() auth.Principal {
 		User: auth.User{
 			Permissions: []auth.Permission{
 				{
-					Action:          auth.PermissionActionEdit,
-					ResourcePattern: "*", // Allow all resources
+					// Admin sentinel: grants the full IsRegistryAdmin bypass so
+					// integration tests can exercise every action, not just edit.
+					Action:          auth.PermissionActionAdmin,
+					ResourcePattern: "*",
 				},
 			},
 		},

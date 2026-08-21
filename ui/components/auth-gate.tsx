@@ -27,6 +27,7 @@ interface FrontendConfig {
   keycloak_client_id: string
   api_base_url?: string
   gateway_base_url?: string
+  anonymous_auth_enabled?: boolean
 }
 
 async function fetchFrontendConfig(): Promise<FrontendConfig> {
@@ -37,6 +38,10 @@ async function fetchFrontendConfig(): Promise<FrontendConfig> {
     throw new Error(`Failed to fetch frontend config (${response.status})`)
   }
   const cfg = (await response.json()) as FrontendConfig
+  // If the server explicitly signals anonymous auth, skip Keycloak validation
+  if (cfg.anonymous_auth_enabled) {
+    return cfg
+  }
   const missing: string[] = []
   if (!cfg.keycloak_url) missing.push("KEYCLOAK_URL")
   if (!cfg.keycloak_realm) missing.push("KEYCLOAK_REALM")
@@ -114,6 +119,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
         }
         if (cfg.gateway_base_url) {
           setGatewayBaseUrl(cfg.gateway_base_url)
+        }
+
+        // Anonymous auth: get a short-lived JWT from /v0/auth/none, then render
+        if (cfg.anonymous_auth_enabled) {
+          const tokenResp = await fetch(`/v0/auth/none`, { method: "POST" })
+          if (!tokenResp.ok) {
+            throw new Error(`Failed to get anonymous token (${tokenResp.status})`)
+          }
+          const { registry_token, expires_at } = await tokenResp.json()
+          setRegistryAuthToken(registry_token)
+          registryExpiresAtRef.current = expires_at
+          if (!cancelled) {
+            setState({ status: "ready" })
+          }
+          return
         }
 
         const keycloakUrl = cfg.keycloak_url

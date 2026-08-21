@@ -43,7 +43,8 @@ type SkillRegistryExtensions struct {
 }
 
 type SkillResponseMeta struct {
-	Official *SkillRegistryExtensions `json:"io.modelcontextprotocol.registry/official,omitempty"`
+	Official  *SkillRegistryExtensions `json:"io.modelcontextprotocol.registry/official,omitempty"`
+	Ownership *OwnershipMeta           `json:"aregistry.ai/ownership,omitempty"`
 }
 
 type SkillResponse struct {
