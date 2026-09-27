@@ -1,0 +1,8 @@
+[registry."localhost:5001"]
+  mirrors = ["http://kind-registry:5000"]
+  http = true
+  insecure = true
+
+[registry."kind-registry:5000"]
+  http = true
+  insecure = true

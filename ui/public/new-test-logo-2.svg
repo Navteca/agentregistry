@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="50%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#93C5FD"/>
+    </linearGradient>
+
+    <style>
+      .s {
+        stroke: url(#g);
+        stroke-width: 3;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .node {
+        fill: url(#g);
+      }
+
+      text {
+        fill: url(#g);
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 88px;
+        letter-spacing: 0.5px;
+      }
+    </style>
+  </defs>
+
+  <!-- ICON -->
+  <g class="s">
+
+    <!-- central registry node (more precise + premium) -->
+    <circle cx="110" cy="120" r="14" class="node"/>
+
+    <!-- balanced connections (symmetry = premium feel) -->
+    <line x1="110" y1="120" x2="60" y2="90"/>
+    <circle cx="52" cy="85" r="2"/>
+
+    <line x1="110" y1="120" x2="60" y2="150"/>
+    <circle cx="52" cy="155" r="2"/>
+
+    <line x1="110" y1="120" x2="170" y2="90"/>
+    <circle cx="178" cy="85" r="2"/>
+
+    <line x1="110" y1="120" x2="170" y2="150"/>
+    <circle cx="178" cy="155" r="2"/>
+
+    <!-- subtle “base” (feels grounded, not decorative) -->
+    <line x1="80" y1="175" x2="140" y2="175"/>
+    <line x1="90" y1="190" x2="130" y2="190"/>
+
+  </g>
+
+  <!-- TEXT -->
+  <text x="260" y="150">airegistry</text>
+</svg>

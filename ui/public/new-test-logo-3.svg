@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 320">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="60%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#84CC16"/>
+    </linearGradient>
+
+    <style>
+      .stroke {
+        stroke: url(#g);
+        stroke-width: 6;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .dot {
+        fill: url(#g);
+      }
+
+      text {
+        fill: url(#g);
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 150px;
+        letter-spacing: 0.5px;
+      }
+    </style>
+  </defs>
+
+  <!-- ICON -->
+  <g transform="translate(90,60)">
+
+    <!-- smooth stack (pill shapes) -->
+    <rect class="stroke" x="0" y="0" width="260" height="50" rx="25"/>
+    <rect class="stroke" x="0" y="90" width="260" height="50" rx="25"/>
+    <rect class="stroke" x="0" y="180" width="260" height="50" rx="25"/>
+
+    <!-- soft flow connections (curves instead of lines) -->
+    <path class="stroke" d="M260 25 C300 25, 300 25, 340 25"/>
+    <circle class="dot" cx="365" cy="25" r="7"/>
+
+    <path class="stroke" d="M260 115 C300 115, 300 115, 340 115"/>
+    <circle class="dot" cx="365" cy="115" r="7"/>
+
+    <path class="stroke" d="M260 205 C300 205, 300 205, 340 205"/>
+    <circle class="dot" cx="365" cy="205" r="7"/>
+
+    <!-- subtle internal indicators -->
+    <circle class="dot" cx="40" cy="25" r="6"/>
+    <circle class="dot" cx="40" cy="115" r="6"/>
+    <circle class="dot" cx="40" cy="205" r="6"/>
+
+  </g>
+
+  <!-- TEXT -->
+  <text x="520" y="210">airegistry</text>
+
+</svg>

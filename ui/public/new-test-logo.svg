@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300">
+  <defs>
+    <linearGradient id="g-light" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#40c4ff"/>
+      <stop offset="100%" stop-color="#9be26a"/>
+    </linearGradient>
+
+    <linearGradient id="g-dark" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#bef264"/>
+    </linearGradient>
+
+    <style>
+      .logo { stroke: url(#g-light); fill: none; }
+      .fill { fill: url(#g-light); }
+
+      text {
+        fill: url(#g-light);
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 90px;
+      }
+
+      /* Dark mode override */
+      @media (prefers-color-scheme: dark) {
+        .logo { stroke: url(#g-dark); }
+        .fill { fill: url(#g-dark); }
+        text { fill: url(#g-dark); }
+      }
+    </style>
+  </defs>
+
+  <!-- ICON -->
+  <g class="logo" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    
+    <rect x="40" y="60" width="120" height="30" rx="6"/>
+    <rect x="40" y="105" width="120" height="30" rx="6"/>
+    <rect x="40" y="150" width="120" height="30" rx="6"/>
+
+    <!-- lights -->
+    <circle class="fill" cx="60" cy="75" r="2"/>
+    <circle class="fill" cx="60" cy="120" r="2"/>
+    <circle class="fill" cx="60" cy="165" r="2"/>
+
+    <!-- circuits -->
+    <line x1="160" y1="75" x2="200" y2="75"/>
+    <circle cx="210" cy="75" r="3"/>
+
+    <line x1="160" y1="120" x2="200" y2="120"/>
+    <circle cx="210" cy="120" r="3"/>
+
+    <line x1="160" y1="165" x2="200" y2="165"/>
+    <circle cx="210" cy="165" r="3"/>
+  </g>
+
+  <!-- TEXT -->
+  <text x="260" y="155">airegistry</text>
+
+</svg>

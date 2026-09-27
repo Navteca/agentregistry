@@ -16,6 +16,9 @@ AWS_REGION ?= us-east-1
 
 ECR_REGISTRY ?= 607399646027.dkr.ecr.us-east-1.amazonaws.com
 ECR_REPO ?= navteca/images/agentregistry
+HELM_CHART_DIR ?= charts/agentregistry
+HELM_CHART_REPO ?= navteca/helm
+HELM_CHART_NAME ?= agentregistry
 TAG ?= 0.3.0
 
 IMAGE_ROOT ?= $(ECR_REGISTRY)/$(ECR_REPO)
@@ -49,13 +52,15 @@ help:
 	@echo "  KUBECONFIG_CONTEXT=$(KUBECONFIG_CONTEXT)"
 	@echo ""
 	@echo "Targets:"
-	@echo "  auth-ecr           Login Docker to ECR"
+	@echo "  auth-ecr           Login Docker and Helm to ECR"
 	@echo "  ensure-repo        Create ECR repository if missing"
 	@echo "  build-amd64        Build/push the root amd64 image only"
 	@echo "  build-arm64        Build/push the root arm64 image only"
 	@echo "  create-manifest    Create TAG from amd64+arm64 tags"
 	@echo "  inspect-manifest   Inspect final manifest"
-	@echo "  publish            Full publish workflow"
+	@echo "  publish            Full image publish workflow"
+	@echo "  publish-helm       Package and push Helm chart to ECR"
+	@echo "  publish-all        publish + publish-helm"
 	@echo "  publish-and-test   publish + test-pull"
 	@echo "  test-pull          Run in-cluster pull test"
 	@echo "  cleanup-test       Remove test pod"
@@ -64,6 +69,8 @@ help:
 auth-ecr:
 	aws --profile $(AWS_PROFILE) --region $(AWS_REGION) ecr get-login-password | \
 		docker login --username AWS --password-stdin $(ECR_REGISTRY)
+	aws --profile $(AWS_PROFILE) --region $(AWS_REGION) ecr get-login-password | \
+		helm registry login --username AWS --password-stdin $(ECR_REGISTRY)
 
 .PHONY: ensure-repo
 ensure-repo:
@@ -106,8 +113,24 @@ create-manifest:
 inspect-manifest:
 	docker buildx imagetools inspect $(IMAGE_ROOT):$(TAG)
 
+.PHONY: ensure-helm-repo
+ensure-helm-repo:
+	@aws --profile $(AWS_PROFILE) --region $(AWS_REGION) ecr describe-repositories \
+		--repository-names $(HELM_CHART_REPO)/$(HELM_CHART_NAME) >/dev/null 2>&1 || \
+	aws --profile $(AWS_PROFILE) --region $(AWS_REGION) ecr create-repository \
+		--repository-name $(HELM_CHART_REPO)/$(HELM_CHART_NAME) >/dev/null
+
+.PHONY: publish-helm
+publish-helm: auth-ecr ensure-helm-repo
+	helm package $(HELM_CHART_DIR) --version $(TAG) --app-version $(TAG) -d /tmp/helm-pkg
+	helm push /tmp/helm-pkg/$(HELM_CHART_NAME)-$(TAG).tgz oci://$(ECR_REGISTRY)/$(HELM_CHART_REPO)
+	@rm -f /tmp/helm-pkg/$(HELM_CHART_NAME)-$(TAG).tgz
+
 .PHONY: publish
 publish: auth-ecr ensure-repo build-amd64 prune-buildx build-arm64 create-manifest inspect-manifest
+
+.PHONY: publish-all
+publish-all: publish publish-helm
 
 .PHONY: publish-and-test
 publish-and-test: publish test-pull
